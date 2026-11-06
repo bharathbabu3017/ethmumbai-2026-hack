@@ -1,0 +1,14 @@
+{
+  "name": "flashmob",
+  "private": true,
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "spike": "pnpm --filter @flashmob/flash spike"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}
