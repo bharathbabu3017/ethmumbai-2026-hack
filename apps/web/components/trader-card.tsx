@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { Avatar } from "@/components/avatar";
-import { pct } from "@/lib/format";
+import { pct, shortAddress } from "@/lib/format";
 
 interface Props {
   rank: number;
-  trader: { id: string; displayName: string; bio: string | null; trades: number; closed: number; wins: number; realizedUsd: number; soldCostUsd: number; followers: number };
+  trader: { id: string; displayName: string; bio: string | null; trades: number; closed: number; wins: number; realizedUsd: number; soldCostUsd: number; followers: number; walletAddress: string | null };
 }
 
 export function TraderCard({ rank, trader: t }: Props) {
@@ -19,7 +19,10 @@ export function TraderCard({ rank, trader: t }: Props) {
       <div className="between" style={{ alignItems: "center" }}>
         <span className="row" style={{ gap: 10, flexWrap: "nowrap", minWidth: 0 }}>
           <Avatar name={t.displayName} />
-          <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.displayName}</span>
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: "block", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.displayName}</span>
+            {t.walletAddress && <span className="m mut" style={{ display: "block", fontSize: 12 }}>{shortAddress(t.walletAddress)}</span>}
+          </span>
         </span>
         <span className="m mut" style={{ fontSize: 12 }}>#{rank}</span>
       </div>

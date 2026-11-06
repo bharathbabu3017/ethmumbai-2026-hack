@@ -17,3 +17,6 @@ export function tradeSize(o: { side: string | null; qty: string | null; tokenSym
   if (o.side === "buy") return `$${Number(o.qty).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
   return `${Number(o.qty).toPrecision(4)} ${o.tokenSymbol}`;
 }
+
+export const shortAddress = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+export const basescan = (a: string) => `https://basescan.org/address/${a}`;

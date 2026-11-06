@@ -9,7 +9,7 @@ import { ResultsCurve } from "@/components/results-curve";
 import { TradeRow } from "@/components/trade-row";
 import { COPYABLE_TYPES } from "@flashmob/flash";
 import { db } from "@/lib/db";
-import { pct } from "@/lib/format";
+import { basescan, pct, shortAddress } from "@/lib/format";
 import { getSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +43,7 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
             <div style={{ minWidth: 0 }}>
               <h1 style={{ fontSize: 28 }}>{trader.displayName}</h1>
               {trader.bio && <p className="mut" style={{ margin: "4px 0 0" }}>{trader.bio}</p>}
+              {trader.walletAddress && <a className="m mut" style={{ display: "block", fontSize: 12, marginTop: 4 }} href={basescan(trader.walletAddress)} target="_blank" rel="noreferrer">{shortAddress(trader.walletAddress)} · View on Basescan</a>}
               {trader.xHandle && <a className="tag" href={`https://x.com/${encodeURIComponent(trader.xHandle)}`}>@{trader.xHandle} on X</a>}
             </div>
           </section>

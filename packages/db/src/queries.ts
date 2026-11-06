@@ -281,6 +281,7 @@ export const leaderboard = (db: Db, traderIds?: string[]) =>
       realizedUsd: sql<number>`coalesce(sum(${orders.realizedUsd}), 0)::float`,
       soldCostUsd: sql<number>`coalesce(sum(${orders.soldCostUsd}), 0)::float`,
       followers: sql<number>`(select count(*) from ${follows} where ${follows.traderId} = ${traders.id})::int`,
+      walletAddress: sql<string | null>`(select ${wallets.address} from ${wallets} where ${wallets.userId} = ${traders.userId} order by (${wallets.type} = 'external') desc limit 1)`,
     })
     .from(traders)
     .leftJoin(orders, and(eq(orders.userId, traders.userId), eq(orders.isPublic, true)))

@@ -153,6 +153,7 @@ test("the leaderboard uses realized results and private orders never show", asyn
   await applyOrderFrame(db, hidden);
   const [row] = await leaderboard(db, [t.id]);
   assert.deepEqual([row!.trades, row!.closed, row!.wins, row!.realizedUsd, row!.soldCostUsd], [3, 2, 1, 10, 200]);
+  assert.equal(row!.walletAddress, "0xD6");
   assert.equal(await getTrade(db, hidden.id), undefined);
   assert.ok(!(await listTrades(db, 100)).some((r) => r.order.id === hidden.id));
 });

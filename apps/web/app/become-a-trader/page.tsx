@@ -39,7 +39,7 @@ export default function BecomeATrader() {
       <Nav />
       <main className="wrap" style={{ maxWidth: 480, paddingTop: 44, paddingBottom: 64 }}>
         <h1 className="big" style={{ marginBottom: 6 }}>Become a trader</h1>
-        <p className="mut" style={{ margin: "0 0 24px" }}>Once you create a profile, every order you place on Flashmob is public: it shows on your profile, alerts your followers, and can be copied.</p>
+        <p className="mut" style={{ margin: "0 0 24px" }}>Once you create a profile, every order you place on Flashmob is public: it shows on your profile, alerts your followers, and can be copied. Your wallet address is shown too, so anyone can check your record onchain.</p>
         {me?.trader ? (
           <Link href={`/traders/${me.trader.id}`} className="btn">View your profile</Link>
         ) : !address ? (
