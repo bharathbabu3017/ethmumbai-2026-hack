@@ -48,7 +48,7 @@ test("followers hear a trade placed, filled and sold, each once", async () => {
   await handleOrder(db, flash, send, filled, true);
   await handleOrder(db, flash, send, filled, true);
   await handleOrder(db, flash, send, frame({ orderId: "o2", orderType: "market", side: "sell", status: "ORDER_STATUS_FILLED", qty: "0.0125", filled: { targetAmount: "0.0125", contraAmount: "30" } }), true);
-  assert.deepEqual(toFollower(), ["🕓 <b>Ana placed a limit buy of WETH</b>\n<pre>Size   $25\nPrice  $2,000</pre>", "🟢 <b>Ana bought WETH</b>\n<pre>Size   $25\nPrice  $2,000</pre>", "🔴 <b>Ana sold WETH</b>\n<pre>Size    $30\nPrice   $2,400\nResult  +20.0%</pre>"]);
+  assert.deepEqual(toFollower(), ["🕓 <b>Ana placed a limit buy of WETH</b>\n<pre>Size   $25\nPrice  $2,000</pre>", "🟢 <b>Ana bought WETH</b>\n<pre>Size   $25.00\nPrice  $2,000</pre>", "🔴 <b>Ana sold WETH</b>\n<pre>Size    $30.00\nPrice   $2,400\nResult  +20.0%</pre>"]);
 });
 
 test("a trader's cancel reaches followers", async () => {
@@ -123,7 +123,7 @@ test("sync catches a fill the stream missed, and followers hear about it", async
   await syncOrders(db, syncFlash([rest()]), send);
   const wallet = (await findWallet(db, TRADER))!;
   assert.equal((await getPosition(db, wallet.id, "0xweth"))!.qty, 0.5);
-  assert.deepEqual(toFollower(), ["🟢 <b>Ana bought WETH</b>\n<pre>Size   $1,000\nPrice  $2,000</pre>"]);
+  assert.deepEqual(toFollower(), ["🟢 <b>Ana bought WETH</b>\n<pre>Size   $1,000.00\nPrice  $2,000</pre>"]);
 });
 
 test("syncing the same order again changes nothing and stays quiet", async () => {

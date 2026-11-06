@@ -42,12 +42,12 @@ test("a new limit order alerts with its details", () => {
 test("a market order alerts on its fill, not when placed", () => {
   assert.equal(tradeAlert("Ana", row({ orderType: "market", limitPrice: null }), { isNew: true, statusChanged: true }), null);
   const filled = row({ orderType: "market", status: "ORDER_STATUS_FILLED", filledQty: 2, filledUsd: 4000 });
-  assert.equal(tradeAlert("Ana", filled, { isNew: true, statusChanged: true }), "🟢 <b>Ana bought WETH</b>\n<pre>Size   $4,000\nPrice  $2,000</pre>");
+  assert.equal(tradeAlert("Ana", filled, { isNew: true, statusChanged: true }), "🟢 <b>Ana bought WETH</b>\n<pre>Size   $4,000.00\nPrice  $2,000</pre>");
 });
 
 test("a sale alerts with its result", () => {
   const sold = row({ side: "sell", orderType: "market", status: "ORDER_STATUS_FILLED", filledQty: 1, filledUsd: 2200, realizedUsd: 200, soldCostUsd: 2000 });
-  assert.equal(tradeAlert("Ana", sold, { isNew: false, statusChanged: true }), "🔴 <b>Ana sold WETH</b>\n<pre>Size    $2,200\nPrice   $2,200\nResult  +10.0%</pre>");
+  assert.equal(tradeAlert("Ana", sold, { isNew: false, statusChanged: true }), "🔴 <b>Ana sold WETH</b>\n<pre>Size    $2,200.00\nPrice   $2,200\nResult  +10.0%</pre>");
 });
 
 test("a trader's cancel is relayed, but a discarded protective pair is not", () => {

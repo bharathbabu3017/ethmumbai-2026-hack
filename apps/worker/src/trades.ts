@@ -88,6 +88,9 @@ const usd = (n: number) => (n > 0 && n < 0.01
   ? `$${n.toLocaleString("en-US", { maximumSignificantDigits: 3, maximumFractionDigits: 20 })}`
   : `$${n.toLocaleString("en-US", { maximumFractionDigits: n < 10 ? 4 : 2 })}`);
 
+// Amounts read like money, while prices keep the detail a small token needs.
+const amount = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 export const esc = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 type Row = [string, string | null | undefined | false];
@@ -122,7 +125,7 @@ const resultOf = (t: TradeRow) => {
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
 };
 
-const fillRows = (t: TradeRow): Row[] => (t.filledQty > 0 && t.filledUsd > 0 ? [["Size", usd(t.filledUsd)], ["Price", usd(t.filledUsd / t.filledQty)]] : []);
+const fillRows = (t: TradeRow): Row[] => (t.filledQty > 0 && t.filledUsd > 0 ? [["Size", amount(t.filledUsd)], ["Price", usd(t.filledUsd / t.filledQty)]] : []);
 const exitRows = (t: TradeRow): Row[] => [["Stop", t.stopPrice ? usd(t.stopPrice) : null], ["Target", t.targetPrice ? usd(t.targetPrice) : null]];
 
 /** What followers should hear about this frame, if anything. `other` is the token on the far side of a swap. */
@@ -171,7 +174,7 @@ export function ownOrderAlert(o: OrderFrame, t?: TradeRow, copiedFrom?: string) 
     const contra = Number(o.filled?.contraAmount ?? 0);
     return card(copiedFrom ? "🔁" : "✅", title, [
       ["Amount", amount],
-      [sold ? "Received" : "Paid", swap ? (contra > 0 && `${Number(contra.toPrecision(4))} ${swap}`) : t?.filledUsd ? usd(t.filledUsd) : null],
+      [sold ? "Received" : "Paid", swap ? (contra > 0 && `${Number(contra.toPrecision(4))} ${swap}`) : t?.filledUsd ? amount(t.filledUsd) : null],
       ["Price", t && t.filledQty > 0 && t.filledUsd > 0 ? usd(t.filledUsd / t.filledQty) : null],
       ["Result", sold && t ? resultOf(t) : null],
     ]);
