@@ -134,6 +134,24 @@ export const copies = pgTable(
   (t) => [uniqueIndex("one_copy_per_wallet").on(t.sourceOrderId, t.walletId)],
 );
 
+export const agentStatus = pgEnum("agent_status", ["funding", "running", "paused", "stopped"]);
+
+// An agent is a trader with its own user and wallet, so its record and funds stay separate from its owner's.
+export const agents = pgTable(
+  "agents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id").notNull().references(() => users.id),
+    userId: uuid("user_id").notNull().unique().references(() => users.id),
+    traderId: uuid("trader_id").notNull().unique().references(() => traders.id),
+    walletId: uuid("wallet_id").notNull().unique().references(() => wallets.id),
+    settings: jsonb("settings").notNull(),
+    status: agentStatus("status").notNull().default("funding"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("agents_owner").on(t.ownerId)],
+);
+
 // Every Telegram alert claims a row here before it's sent, so nothing is delivered twice, even across restarts.
 export const sentAlerts = pgTable(
   "sent_alerts",

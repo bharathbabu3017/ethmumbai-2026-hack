@@ -6,7 +6,7 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import {
   alertRecipients, applyOrderFrame, getOrCreateTelegramAccount, getTradingWallet, getUserByTelegram, syncPrivyUser, claimJobs, claimMirror, completeMirror, createMirrors, dismissMirror, listCopyOrders, listMirrors, releaseMirror, enqueueJob, finishJob, getJob, recordOrder, claimAction, confirmCopy, countCopies, createAction, createLinkToken, createTrader, findWallet,
   getOrCreateWalletUser, getPosition, getTrade, getTraderByUser, leaderboard, linkTelegram, listTrades, releaseCopy, reserveCopy,
-  setFollow, type Db, type OrderFields,
+  countAgents, createAgent, getTraderByName, listAgents, setFollow, type Db, type OrderFields,
 } from "./queries";
 import { sql } from "drizzle-orm";
 import * as schema from "./schema";
@@ -353,4 +353,16 @@ test("two trader profiles are never merged", async () => {
   await syncPrivyUser(db, { privyId: "did:6", telegramId: 5002, externalAddresses: ["0xT1"] });
   assert.ok(await getTraderByUser(db, a));
   assert.ok(await getTraderByUser(db, tg.id));
+});
+
+test("an agent gets its own wallet and public profile, kept apart from its owner", async () => {
+  const ownerId = await getOrCreateWalletUser(db, "0xOwner");
+  const agent = await createAgent(db, { ownerId, name: "Dip Hunter", settings: { strategy: "dip" }, address: "0xAgent", privyWalletId: "w1" });
+  assert.notEqual(agent.userId, ownerId);
+  const wallet = await getTradingWallet(db, agent.userId);
+  assert.deepEqual([wallet?.address, wallet?.delegated], ["0xAgent", true]);
+  assert.equal(await getTradingWallet(db, ownerId), undefined);
+  assert.equal((await getTraderByName(db, "dip hunter"))?.id, agent.traderId);
+  assert.equal((await listAgents(db, ownerId))[0]?.status, "funding");
+  assert.equal(await countAgents(db, ownerId), 1);
 });

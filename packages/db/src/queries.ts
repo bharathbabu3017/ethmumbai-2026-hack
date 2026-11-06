@@ -2,7 +2,7 @@ import { and, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-
 import { alias, type PgDatabase, type PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
 import { applyFill } from "./position";
-import { copies, copySettings, copySkips, follows, sentAlerts, linkTokens, mirrors, orders, pendingActions, positions, traders, users, wallets, walletJobs } from "./schema";
+import { agents, copies, copySettings, copySkips, follows, sentAlerts, linkTokens, mirrors, orders, pendingActions, positions, traders, users, wallets, walletJobs } from "./schema";
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -445,6 +445,36 @@ export async function claimAlert(db: Db, chatId: number, key: string) {
 }
 
 export const pruneAlerts = (db: Db) => db.delete(sentAlerts).where(sql`${sentAlerts.createdAt} < now() - interval '30 days'`);
+
+export const getTraderByName = async (db: Db, displayName: string) => {
+  const [row] = await db.select().from(traders).where(sql`lower(${traders.displayName}) = ${displayName.toLowerCase()}`);
+  return row;
+};
+
+export const countAgents = async (db: Db, ownerId: string) => {
+  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(agents).where(and(eq(agents.ownerId, ownerId), sql`${agents.status} <> 'stopped'`));
+  return row?.n ?? 0;
+};
+
+/** An agent gets its own user, approved wallet and public trader profile, so everything built for traders works for it. */
+export function createAgent(db: Db, a: { ownerId: string; name: string; settings: unknown; address: string; privyWalletId: string }) {
+  return db.transaction(async (tx) => {
+    const [user] = await tx.insert(users).values({}).returning();
+    const [wallet] = await tx.insert(wallets).values({ userId: user!.id, type: "embedded", address: a.address, privyWalletId: a.privyWalletId, delegated: true }).returning();
+    const [trader] = await tx.insert(traders).values({ userId: user!.id, displayName: a.name }).returning();
+    const [agent] = await tx.insert(agents).values({ ownerId: a.ownerId, userId: user!.id, traderId: trader!.id, walletId: wallet!.id, settings: a.settings }).returning();
+    return { ...agent!, displayName: a.name, address: a.address };
+  });
+}
+
+export const listAgents = (db: Db, ownerId: string) =>
+  db
+    .select({ id: agents.id, traderId: agents.traderId, status: agents.status, settings: agents.settings, displayName: traders.displayName, address: wallets.address, createdAt: agents.createdAt })
+    .from(agents)
+    .innerJoin(traders, eq(agents.traderId, traders.id))
+    .innerJoin(wallets, eq(agents.walletId, wallets.id))
+    .where(eq(agents.ownerId, ownerId))
+    .orderBy(desc(agents.createdAt));
 
 /** Auto-copies of a trade, with the state of each copy's own order. */
 export const autoCopiesOf = (db: Db, sourceOrderId: string) =>
