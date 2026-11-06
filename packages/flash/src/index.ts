@@ -1,4 +1,5 @@
 export * from "./agent-decision";
+export * from "./agent-model";
 export * from "./agent-plan";
 export * from "./agents";
 export * from "./build";

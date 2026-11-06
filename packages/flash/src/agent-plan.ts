@@ -140,7 +140,7 @@ export function planLimitsError(plan: AgentPlan, s: Pick<AgentSettings, "maxTrad
 export function ruleLabel(r: PlanRule) {
   const metric = PLAN_METRICS[r.metric];
   const value = metric.unit === "$" ? money(r.value) : `${r.value}${metric.unit}`;
-  return `${metric.label}${metric.timed ? `, ${r.timeframe ?? "1h"}` : ""} ${r.op} ${value}`;
+  return `${metric.label}${metric.timed ? `, ${r.timeframe ?? "1h"}` : ""} ${r.op === "above" ? "at least" : "at most"} ${value}`;
 }
 
 export function entryLabel(e: PlanEntry) {
@@ -186,7 +186,7 @@ export function checkRules(plan: AgentPlan, token: AgentToken, read: IndicatorsB
     const value = reading(rule, token, read, mobBuyers);
     const { unit } = PLAN_METRICS[rule.metric];
     const shown = value === null ? "No data" : unit === "$" ? money(value) : `${Number(value.toFixed(unit === "x" ? 2 : 1))}${unit}`;
-    return { label: `${token.symbol}: ${ruleLabel(rule)}`, value: shown, pass: value !== null && (rule.op === "above" ? value > rule.value : value < rule.value) };
+    return { label: `${token.symbol}: ${ruleLabel(rule)}`, value: shown, pass: value !== null && (rule.op === "above" ? value >= rule.value : value <= rule.value) };
   });
   return { checks, passed: checks.every((c) => c.pass) };
 }

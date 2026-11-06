@@ -1,10 +1,14 @@
+import { planError, planLimitsError, type AgentPlan, type PlanExit } from "./agent-plan";
+
 export const AGENT_STRATEGIES = {
   dip: { label: "Dip buyer", about: "Buys below the price, with protection.", orders: "Limit + stop and target" },
   trend: { label: "Trend follower", about: "Buys breakouts and lets winners run.", orders: "Stop buy + trailing stop" },
   stack: { label: "Accumulator", about: "Buys steadily over time.", orders: "TWAP with a limit price" },
+  custom: { label: "Custom", about: "Follows a strategy its creator wrote.", orders: "Set by its plan" },
 } as const;
 
 export type AgentStrategy = keyof typeof AGENT_STRATEGIES;
+export type TemplateStrategy = Exclude<AgentStrategy, "custom">;
 
 export const AGENT_CHECK_MINUTES = [15, 60, 240] as const;
 export const MAX_AGENTS_PER_USER = 3;
@@ -18,10 +22,19 @@ export interface AgentSettings {
   budgetUsd: number;
   maxTradeUsd: number;
   everyMinutes: number;
+  /** A custom agent's rules, fixed when it's created. */
+  plan?: AgentPlan;
+  /** Hides the written strategy from its public profile. Trades and decisions stay public. */
+  hideStrategy?: boolean;
 }
 
+/** Trend templates ask for a trail, which is placed once the buy fills. */
+const TEMPLATE_TRAIL_PERCENT = 5;
+
+export const agentExit = (s: AgentSettings): PlanExit | undefined => s.plan?.exit ?? (s.strategy === "trend" ? { trailPercent: TEMPLATE_TRAIL_PERCENT } : undefined);
+
 const MIN_TRADE_USD = 1;
-const MAX_STYLE = 500;
+const MAX_STYLE = 800;
 const MAX_TOKENS = 10;
 
 /** A plain-English reason these settings can't be used, or null if they can. */
@@ -33,7 +46,11 @@ export function agentSettingsError(s: AgentSettings) {
   if (!(s.maxTradeUsd >= MIN_TRADE_USD)) return `Max per trade must be at least $${MIN_TRADE_USD}.`;
   if (!(s.budgetUsd >= s.maxTradeUsd)) return "The budget must be at least the max per trade.";
   if (!AGENT_CHECK_MINUTES.includes(s.everyMinutes as never)) return "Pick how often it checks the market.";
-  if (s.style.length > MAX_STYLE) return `Keep its style under ${MAX_STYLE} characters.`;
+  if (s.style.length > MAX_STYLE) return `Keep it under ${MAX_STYLE} characters.`;
+  if (s.strategy === "custom") {
+    if (!s.plan) return "Turn your strategy into a plan first.";
+    return planError(s.plan) ?? planLimitsError(s.plan, s);
+  }
   return null;
 }
 

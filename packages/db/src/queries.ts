@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { alias, type PgDatabase, type PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
 import { applyFill } from "./position";
@@ -536,7 +536,34 @@ export async function recordDecision(db: Db, d: typeof agentDecisions.$inferInse
   return row!;
 }
 
-export const failDecision = (db: Db, id: string, note: string) => db.update(agentDecisions).set({ status: "failed", note }).where(eq(agentDecisions.id, id));
+/** With an amount, only that part failed, so the rest of a multi-order decision still counts against the budget. */
+export const failDecision = (db: Db, id: string, note: string, amountUsd?: number) =>
+  db
+    .update(agentDecisions)
+    .set(amountUsd
+      ? { note, amountUsd: sql`greatest(${agentDecisions.amountUsd} - ${amountUsd}, 0)`, status: sql`case when ${agentDecisions.amountUsd} - ${amountUsd} > 0.001 then 'placed'::decision_status else 'failed'::decision_status end` }
+      : { status: "failed", note })
+    .where(eq(agentDecisions.id, id));
+
+/** When it last acted on a token, to space out buys and avoid placing the same exit twice. */
+export async function lastDecisionAt(db: Db, agentId: string, action: string, tokenSymbol: string) {
+  const [row] = await db
+    .select({ at: agentDecisions.createdAt })
+    .from(agentDecisions)
+    .where(and(eq(agentDecisions.agentId, agentId), eq(agentDecisions.action, action), eq(agentDecisions.tokenSymbol, tokenSymbol), sql`${agentDecisions.status} in ('placed', 'failed')`))
+    .orderBy(desc(agentDecisions.createdAt))
+    .limit(1);
+  return row?.at ?? null;
+}
+
+/** How many public traders bought a token lately, leaving out the agent asking. */
+export async function recentBuyers(db: Db, tokenAddress: string, since: Date, exceptUserId?: string) {
+  const [row] = await db
+    .select({ count: sql<number>`count(distinct ${orders.userId})::int` })
+    .from(orders)
+    .where(and(eq(orders.isPublic, true), eq(orders.side, "buy"), sql`${orders.filledQty} > 0`, sql`lower(${orders.tokenAddress}) = ${tokenAddress.toLowerCase()}`, gte(orders.placedAt, since), exceptUserId ? ne(orders.userId, exceptUserId) : undefined));
+  return row?.count ?? 0;
+}
 
 /** What an agent has committed so far. Failed orders don't count, and sales never use budget. */
 export async function agentSpentUsd(db: Db, agentId: string) {

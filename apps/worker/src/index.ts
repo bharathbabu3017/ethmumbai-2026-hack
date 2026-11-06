@@ -1,5 +1,5 @@
 import { pruneAlerts, createDb } from "@flashmob/db";
-import { askModel, createFlashClient } from "@flashmob/flash";
+import { askModel, createChartData, createFlashClient, judge, readIndicators } from "@flashmob/flash";
 import { createPrivy } from "@flashmob/signer";
 import { run } from "@grammyjs/runner";
 import { createBot } from "./bot";
@@ -87,7 +87,15 @@ await pruneAlerts(db).catch(() => {});
 startListener(db, flash, send, apiKey, { enabled: autoCopyEnabled, searchFlash: flash });
 const stopJobs = startJobs({ db, flash, feeBps, rpcUrl: process.env.BASE_RPC_URL, privy, send });
 const modelKey = process.env.MODEL_API_KEY;
-if (modelKey) startAgents({ db, flash, searchFlash: flash, ask: (settings, context) => askModel(modelKey, settings, context) });
+const getCandles = createChartData();
+if (modelKey) {
+  startAgents({
+    db, flash, searchFlash: flash,
+    ask: (settings, context) => askModel(modelKey, settings, context),
+    readMarket: (address, timeframes) => readIndicators(getCandles, address, timeframes),
+    judge: (plan, symbol, checks) => judge(modelKey, plan.judgment!, !!plan.useNews, symbol, checks),
+  });
+}
 console.log(`Agents are ${modelKey ? "ON" : "off (no MODEL_API_KEY)"}`);
 if (appUrl) await bot.api.setChatMenuButton({ menu_button: { type: "web_app", text: "Open app", web_app: { url: `${appUrl}/mini` } } });
 

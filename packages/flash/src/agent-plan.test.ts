@@ -49,8 +49,8 @@ test("every metric reads the right number", () => {
   assert.ok(passes("volumeRatio", "above", 1));
   assert.ok(passes("change24h", "below", -5));
   assert.ok(passes("liquidity", "above", 1e6));
-  assert.ok(passes("mobBuyers", "above", 2, 3));
-  assert.ok(!passes("mobBuyers", "above", 2, 1));
+  assert.ok(passes("mobBuyers", "above", 3, 3));
+  assert.ok(!passes("mobBuyers", "above", 3, 2));
 });
 
 test("a rule on another timeframe reads that timeframe", () => {
@@ -113,8 +113,8 @@ test("tiny prices stay plain decimals", () => {
 });
 
 test("labels read plainly", () => {
-  assert.equal(ruleLabel({ metric: "rsi", op: "below", value: 30 }), "RSI, 1h below 30");
-  assert.equal(ruleLabel({ metric: "liquidity", op: "above", value: 500000 }), "Liquidity above $500,000");
+  assert.equal(ruleLabel({ metric: "rsi", op: "below", value: 30 }), "RSI, 1h at most 30");
+  assert.equal(ruleLabel({ metric: "liquidity", op: "above", value: 500000 }), "Liquidity at least $500,000");
   assert.equal(entryLabel(plan.entry), "3 limit buys, 1% apart");
   assert.deepEqual(exitLabels(plan.exit), ["Half: stop at -5%, target at +8%", "Other half: 4% trailing stop"]);
   assert.deepEqual(exitLabels({}), ["Holds what it buys"]);

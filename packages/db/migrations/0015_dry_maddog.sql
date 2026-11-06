@@ -1,0 +1,1 @@
+ALTER TABLE "agent_decisions" ADD COLUMN "details" jsonb;

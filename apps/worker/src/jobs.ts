@@ -47,10 +47,10 @@ async function run(deps: JobDeps, job: Job) {
   const payload = job.payload as Record<string, never>;
 
   if (job.kind === "order") {
-    const { request: asked, minReceived, copyId, decisionId } = payload as unknown as { request: OrderRequest; minReceived?: number; copyId?: string; decisionId?: string };
+    const { request: asked, minReceived, copyId, decisionId, decisionUsd } = payload as unknown as { request: OrderRequest; minReceived?: number; copyId?: string; decisionId?: string; decisionUsd?: number };
     // An owner can pause or stop an agent after this was queued, and that always wins.
     if (decisionId && (await getAgentByUser(db, job.userId))?.status !== "running") {
-      await failDecision(db, decisionId, "The agent was paused or stopped first.");
+      await failDecision(db, decisionId, "The agent was paused or stopped first.", decisionUsd);
       return { skipped: true };
     }
     const problem = unsafeReason(asked, wallet.address);
@@ -67,10 +67,10 @@ async function run(deps: JobDeps, job: Job) {
       if (minReceived !== undefined && Number(quote.to.amount) < minReceived * (1 - MAX_PRICE_MOVE)) {
         throw new Error("The price moved too much since your preview, so nothing was placed.");
       }
-      // Nobody reviews an auto-copy, so one with unusually high costs is skipped. Sales are never blocked, because they're exits.
-      const cost = copyId && asked.orderType === "market" ? orderCost(quote) : null;
+      // Nobody reviews an auto-copy or an agent's buy, so one with unusually high costs is skipped. Sales are never blocked, because they're exits.
+      const cost = (copyId || (decisionId && asked.side === "buy")) && asked.orderType === "market" ? orderCost(quote) : null;
       if (cost && cost.percent > HIGH_COST_PERCENT) {
-        throw new Error(`Trading costs were ${cost.percent.toFixed(1)}% on this copy, over the ${HIGH_COST_PERCENT}% limit. Nothing was placed.`);
+        throw new Error(`Trading costs were ${cost.percent.toFixed(1)}% on this ${copyId ? "copy" : "buy"}, over the ${HIGH_COST_PERCENT}% limit. Nothing was placed.`);
       }
     } catch (e) {
       // Nothing was submitted, so a reservation can be freed. After submitting we can't be sure, so it stays.
@@ -192,8 +192,8 @@ export async function runJob(deps: JobDeps, job: Job) {
     const known = e instanceof FlashError || (e instanceof Error && !/key|decrypt|auth/i.test(e.message));
     const error = known ? (e as Error).message : "Something went wrong. Check your orders before trying again.";
     await finishJob(deps.db, job.id, { error });
-    const { decisionId } = job.payload as { decisionId?: string };
-    if (decisionId) await failDecision(deps.db, decisionId, error);
+    const { decisionId, decisionUsd } = job.payload as { decisionId?: string; decisionUsd?: number };
+    if (decisionId) await failDecision(deps.db, decisionId, error, decisionUsd);
     if (automatic) await tell(deps, job, card("⚠️", "Auto-copy failed", [], error));
     if (job.kind === "agent-exit" || job.kind === "agent-withdraw") await tellOwner(deps, job, card("⚠️", "Withdrawal didn't finish", [], `${error} Your funds are safe in the agent's wallet.`));
   }

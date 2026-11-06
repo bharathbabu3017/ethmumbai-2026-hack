@@ -167,6 +167,7 @@ export const agentDecisions = pgTable(
     reason: text("reason").notNull(),
     status: decisionStatus("status").notNull(),
     note: text("note"), // why our checks refused it, or why placing it failed
+    details: jsonb("details"), // what it checked and what it placed, for its public log
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("agent_decisions_agent").on(t.agentId, t.createdAt)],
