@@ -1,6 +1,11 @@
 import { OPEN_STATUSES } from "@flashmob/flash";
 
-export const usd = (n: number | null) => (n === null ? "-" : `$${n.toLocaleString("en-US", { maximumFractionDigits: n < 10 ? 4 : 2 })}`);
+export const usd = (n: number | null) => {
+  if (n === null) return "-";
+  // Tiny token prices keep their significant digits, so they never read as $0.
+  if (n > 0 && n < 0.01) return `$${n.toLocaleString("en-US", { maximumSignificantDigits: 3, maximumFractionDigits: 20 })}`;
+  return `$${n.toLocaleString("en-US", { maximumFractionDigits: n < 10 ? 4 : 2 })}`;
+};
 export const pct = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
 
 

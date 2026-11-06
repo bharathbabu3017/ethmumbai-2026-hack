@@ -26,7 +26,7 @@ export interface OrderFrame {
   qty: string;
   targetAsset: Asset;
   contraAsset: Asset;
-  filled?: { targetAmount?: string | null; contraAmount?: string | null } | null;
+  filled?: { targetAmount?: string | null; contraAmount?: string | null; averageNotionalPrice?: string | null } | null;
   limitNotionalPrice?: string | null;
   limitCrossPrice?: string | null;
   trigger?: Leg | null;
@@ -52,7 +52,11 @@ function frameLevels(o: OrderFrame): Levels {
 }
 
 export function orderFields(o: OrderFrame, owner: { userId: string; walletId: string }, isPublic: boolean, attached?: Levels): OrderFields {
-  const usdPriced = o.contraAsset.address.toLowerCase() === USDC_BASE.toLowerCase();
+  // Paid in USDC, what was spent is the cost. Paid in another token, Flash's average USD price gives it.
+  const qty = Number(o.filled?.targetAmount ?? 0);
+  const paidInUsdc = o.contraAsset.address.toLowerCase() === USDC_BASE.toLowerCase();
+  const usd = paidInUsdc ? Number(o.filled?.contraAmount ?? 0) : qty * Number(o.filled?.averageNotionalPrice ?? 0);
+  const usdPriced = paidInUsdc || usd > 0;
   const levels = attached ?? frameLevels(o);
   const limit = Number(o.limitNotionalPrice ?? o.limitCrossPrice);
   const { chain } = o.targetAsset;
@@ -72,8 +76,9 @@ export function orderFields(o: OrderFrame, owner: { userId: string; walletId: st
     stopPrice: levels.stop,
     targetPrice: levels.target,
     entryOrderId: o.sourceEntryOrderId ?? null,
-    filledQty: Number(o.filled?.targetAmount ?? 0),
-    filledUsd: usdPriced ? Number(o.filled?.contraAmount ?? 0) : 0,
+    // A fill we can't value yet stays unrecorded, so the next read with a price still counts it.
+    filledQty: usdPriced ? qty : 0,
+    filledUsd: usdPriced ? usd : 0,
     usdPriced,
     placedAt: o.placedAt ? new Date(o.placedAt) : null,
   };

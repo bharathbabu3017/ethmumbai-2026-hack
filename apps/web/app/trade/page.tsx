@@ -22,6 +22,7 @@ import { useWallet } from "@/lib/wallet";
 
 const QUOTE_REFRESH_MS = 15_000;
 const STATS_REFRESH_MS = 30_000;
+const MIN_PAY_USD = 0.5;
 const compactUsd = (n: number) => `$${Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n)}`;
 
 interface TokenTrader {
@@ -65,6 +66,7 @@ function Trade() {
   const [type, setType] = useState<OrderTypeName>("market");
   const [token, setToken] = useState<PickedToken>(linkedToken(linked, params.get("symbol")));
   const [payChain, setPayChain] = useState<PayChain>("base");
+  const [payToken, setPayToken] = useState<{ address: string; symbol: string }>();
   const [direction, setDirection] = useState<"upper" | "lower">("upper");
   const [f, setF] = useState<Fields>(EMPTY);
   const [advanced, setAdvanced] = useState(false);
@@ -100,15 +102,19 @@ function Trade() {
     setDirection("upper");
     if (!(ORDER_TYPES[type].sides as readonly string[]).includes(s)) setType("market");
     setPayChain("base");
+    setPayToken(undefined);
     setF({ ...f, qty: "", stop: "", target: "" });
     change();
   };
 
   // On a buy you spend USDC on the chain you pay from. On a sell you spend the token.
-  const spendAsset = side === "buy" ? USDC_BY_CHAIN[payChain].toLowerCase() : token.address.toLowerCase();
+  const spendAsset = side === "buy" ? (payToken?.address ?? USDC_BY_CHAIN[payChain]).toLowerCase() : token.address.toLowerCase();
   const spendChain = side === "buy" ? payChain : "base";
   const spendBalance = balances.find((b) => b.address.toLowerCase() === spendAsset && b.chain === spendChain)?.balance;
-  const spendSymbol = side === "buy" ? "USDC" : token.symbol;
+  const spendSymbol = side === "buy" ? payToken?.symbol ?? "USDC" : token.symbol;
+  // Native ETH stays out: it needs wrapping first, and it's what pays for gas.
+  const payOptions = balances.filter((b) => b.chain === "base" && !b.isNative && Number(b.notional) >= MIN_PAY_USD
+    && b.address.toLowerCase() !== USDC_BY_CHAIN.base.toLowerCase() && b.address.toLowerCase() !== token.address.toLowerCase());
 
   const reference = (type === "limit" && Number(f.price)) || stats?.price || null;
   const attachable = side === "buy" && (type === "market" || type === "limit" || type === "twap") && payChain === "base";
@@ -119,10 +125,10 @@ function Trade() {
 
   const fetchQuote = useCallback(async () => {
     if (!address) throw new Error("Connect a wallet first");
-    const built = buildOrder({ ...f, side, type, tokenAddress: token.address, funder: address, payChain, triggerDirection: direction });
+    const built = buildOrder({ ...f, side, type, tokenAddress: token.address, funder: address, payChain, payToken: payToken?.address, triggerDirection: direction });
     if ("error" in built) throw new Error(built.error);
     return { request: built.request, quote: await prepareOrder(flash, address, built.request) };
-  }, [address, f, side, type, token, payChain, direction]);
+  }, [address, f, side, type, token, payChain, payToken, direction]);
 
   const run = (fn: () => Promise<void>) => async () => {
     setBusy(true);
@@ -163,6 +169,7 @@ function Trade() {
     setSide("sell");
     setType("market");
     setPayChain("base");
+    setPayToken(undefined);
     setF({ ...EMPTY, qty: h.balance });
     change();
   };
@@ -189,7 +196,7 @@ function Trade() {
       <Nav />
       <section className="market-bar" aria-label="Market">
         <div className="wrap wide">
-          <div style={{ width: 220 }}><TokenPicker value={token} onChange={(t) => { setToken(t); change(); }} /></div>
+          <TokenPicker value={token} onChange={(t) => { setToken(t); setPayToken(undefined); change(); }} />
           <h1 className="m" style={{ fontSize: 24, fontWeight: 500 }}>{stats ? usd(stats.price) : "-"}</h1>
           {barStats.map(([label, value, tone]) => (
             <div key={label}>
@@ -222,7 +229,7 @@ function Trade() {
 
           <div>
             <label className="lab" htmlFor="type">Order type</label>
-            <select id="type" className="inp" value={type} onChange={(e) => { setType(e.target.value as OrderTypeName); setPayChain("base"); change(); }}>
+            <select id="type" className="inp" value={type} onChange={(e) => { setType(e.target.value as OrderTypeName); setPayChain("base"); setPayToken(undefined); change(); }}>
               {(Object.keys(ORDER_TYPES) as OrderTypeName[]).filter((t) => (ORDER_TYPES[t].sides as readonly string[]).includes(side)).map((t) => (
                 <option key={t} value={t}>{ORDER_TYPES[t].label}</option>
               ))}
@@ -232,16 +239,23 @@ function Trade() {
 
           {type === "market" && (
             <div>
-              <label className="lab" htmlFor="pay">{side === "buy" ? "Pay with USDC on" : "Receive USDC on"}</label>
-              <select id="pay" className="inp" value={payChain} onChange={(e) => { setPayChain(e.target.value as PayChain); change(); }}>
-                {(Object.keys(CHAIN_NAMES) as PayChain[]).map((c) => <option key={c} value={c}>{CHAIN_NAMES[c]}{c === "base" ? "" : " (cross-chain)"}</option>)}
+              <label className="lab" htmlFor="pay">{side === "buy" ? "Pay with" : "Receive USDC on"}</label>
+              <select id="pay" className="inp" value={payToken?.address ?? payChain} onChange={(e) => {
+                const held = payOptions.find((b) => b.address === e.target.value);
+                setPayToken(held && { address: held.address, symbol: held.symbol });
+                setPayChain(held ? "base" : e.target.value as PayChain);
+                setF({ ...f, qty: "" });
+                change();
+              }}>
+                {(Object.keys(CHAIN_NAMES) as PayChain[]).map((c) => <option key={c} value={c}>{side === "buy" ? "USDC on " : ""}{CHAIN_NAMES[c]}{c === "base" ? "" : " (cross-chain)"}</option>)}
+                {side === "buy" && payOptions.map((b) => <option key={b.address} value={b.address}>{b.symbol} (${Number(b.notional).toFixed(2)})</option>)}
               </select>
             </div>
           )}
 
           <div>
             <div className="between">
-              <label className="lab" htmlFor="qty">{side === "buy" ? "Spend (USDC)" : `Sell (${token.symbol})`}</label>
+              <label className="lab" htmlFor="qty">{side === "buy" ? `Spend (${spendSymbol})` : `Sell (${token.symbol})`}</label>
               {address && <span className="mut m" style={{ fontSize: 12 }}>{spendBalance ? Number(spendBalance).toFixed(4) : "0"} {spendSymbol}</span>}
             </div>
             <input id="qty" className="inp" inputMode="decimal" {...set("qty")} />

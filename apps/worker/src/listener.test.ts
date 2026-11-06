@@ -151,6 +151,17 @@ test("a stale read can't take a filled order back, so its owner hears about the 
   assert.equal((await getOrder(db, "o1"))?.status, "ORDER_STATUS_FILLED");
 });
 
+test("a buy paid with another token still records its cost, even if the first frame has no price", async () => {
+  const wallet = (await findWallet(db, TRADER))!;
+  const contraAsset = { ticker: "AERO", address: "0xaero", chain: "base" };
+  const unpriced = frame({ orderType: "market", status: "ORDER_STATUS_FILLED", contraAsset, filled: { targetAmount: "0.5", contraAmount: "1500" } });
+  await handleOrder(db, flash, send, unpriced, true);
+  assert.equal(await getPosition(db, wallet.id, "0xweth"), undefined);
+  await syncOrders(db, syncFlash([frame({ orderType: "market", status: "ORDER_STATUS_FILLED", contraAsset, filled: { targetAmount: "0.5", contraAmount: "1500", averageNotionalPrice: "2000" } })]), send);
+  const held = (await getPosition(db, wallet.id, "0xweth"))!;
+  assert.deepEqual([held.qty, held.costUsd], [0.5, 1000]);
+});
+
 test("old orders found after a restart are recorded but never alert", async () => {
   const old = new Date(Date.now() - 3600_000).toISOString();
   await syncOrders(db, syncFlash([rest({ placedAt: old, closedAt: old })]), send);
