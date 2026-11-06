@@ -13,7 +13,7 @@ const Bell = () => (
 
 /** The alerts bell. With `compact` it's icon-only, for rows in a list. */
 export function SubscribeButton({ traderId, initial, compact, onChange }: { traderId: string; initial: boolean; compact?: boolean; onChange?(on: boolean): void }) {
-  const { address, login, getSigner } = useWallet();
+  const { address, ready, login, getSigner } = useWallet();
   const [subscribed, setSubscribed] = useState(initial);
   const [linked, setLinked] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -49,7 +49,7 @@ export function SubscribeButton({ traderId, initial, compact, onChange }: { trad
   const label = subscribed ? "Telegram alerts are on. Tap to turn off." : "Turn on Telegram alerts";
   return (
     <span className="row" style={{ gap: 8 }}>
-      <button className={`btn ${compact ? "icon" : ""}`} style={{ gap: 8, color: subscribed ? "var(--up)" : undefined }} disabled={busy} aria-label={label} title={label} onClick={toggle}>
+      <button className={`btn ${compact ? "icon" : ""}`} style={{ gap: 8, color: subscribed ? "var(--up)" : undefined }} disabled={busy || !ready} aria-label={label} title={label} onClick={toggle}>
         <Bell />{!compact && (subscribed ? "Alerts on" : "Get alerts")}
       </button>
       {!compact && subscribed && !linked && <button className="btn" onClick={linkTelegram}>Link Telegram</button>}

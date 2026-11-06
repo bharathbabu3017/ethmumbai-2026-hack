@@ -99,7 +99,7 @@ const TABS = ["Positions", "Pending orders", "Order history"] as const;
 export type OrdersTab = (typeof TABS)[number];
 
 export function OrdersPanel({ reloadKey, focus, onSell }: { reloadKey: number; focus?: OrdersTab; onSell?(holding: Holding): void }) {
-  const { address } = useWallet();
+  const { address, ready } = useWallet();
   const [tab, setTab] = useState<(typeof TABS)[number]>("Positions");
   const [pending, setPending] = useState(0);
   useEffect(() => {
@@ -115,7 +115,7 @@ export function OrdersPanel({ reloadKey, focus, onSell }: { reloadKey: number; f
           </button>
         ))}
       </div>
-      {!address ? (
+      {!ready ? <div className="sk" style={{ height: 60 }} /> : !address ? (
         <p className="mut" style={empty}>Connect a wallet to see your orders.</p>
       ) : (
         <>

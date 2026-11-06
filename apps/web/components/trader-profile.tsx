@@ -14,7 +14,7 @@ type Dashboard = Pick<TraderDashboard, "trader" | "copies">;
 const COLUMNS = "minmax(150px,1fr) 100px 110px 140px";
 
 export function TraderProfile({ initial }: { initial?: Dashboard }) {
-  const { address, login, getSigner } = useWallet();
+  const { address, ready, login, getSigner } = useWallet();
   const [data, setData] = useState<Dashboard | undefined>(initial);
   const [profile, setProfile] = useState({ displayName: "", bio: "", xHandle: "" });
   const [error, setError] = useState("");
@@ -95,7 +95,7 @@ export function TraderProfile({ initial }: { initial?: Dashboard }) {
         <main className="wrap" style={{ maxWidth: 480, paddingTop: 44, paddingBottom: 64 }}>
           <h1 style={{ fontSize: 26, marginBottom: 6 }}>Become a trader</h1>
           <p className="mut" style={{ margin: "0 0 20px" }}>Build a public record and let others copy you.</p>
-          {!address ? <button className="btn pri" onClick={login}>Connect a wallet</button> : !data ? <div className="sk" style={{ height: 320 }} /> : (
+          {!ready ? <div className="sk" style={{ height: 320 }} /> : !address ? <button className="btn pri" onClick={login}>Connect a wallet</button> : !data ? <div className="sk" style={{ height: 320 }} /> : (
             <section className="panel" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div><label className="lab" htmlFor="name">Display name</label><input id="name" className="inp" {...edit("displayName")} /></div>
               <div><label className="lab" htmlFor="bio">What do you trade?</label><input id="bio" className="inp" {...edit("bio")} /></div>

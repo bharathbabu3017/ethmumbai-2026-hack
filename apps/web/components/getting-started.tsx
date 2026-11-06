@@ -22,8 +22,8 @@ function Step({ done, title, text, action }: { done: boolean; title: string; tex
 }
 
 /** Shows new users what the product does, using their real progress. */
-export function GettingStarted() {
-  const { address, login, getSigner } = useWallet();
+export function GettingStarted({ signedIn }: { signedIn: boolean }) {
+  const { address, ready, login, getSigner } = useWallet();
   const [me, setMe] = useState<Me>();
   const [funded, setFunded] = useState(false);
   const [funds, setFunds] = useState(false);
@@ -52,7 +52,7 @@ export function GettingStarted() {
         <p className="mut" style={{ margin: "4px 0 0" }}>Browsing needs no account. Sign in when you&apos;re ready to copy.</p>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 16 }}>
-        <Step done={!!address} title="Sign in" text="Your wallet is created for you." action={<button className="btn" onClick={login}>Sign in</button>} />
+        <Step done={signedIn || !!address} title="Sign in" text="Your wallet is created for you." action={ready ? <button className="btn" onClick={login}>Sign in</button> : undefined} />
         <Step done={funded} title="Add funds" text="USDC to trade with, and a little ETH on Base." action={address ? <button className="btn" onClick={() => setFunds(true)}>Add funds</button> : undefined} />
         <Step done={false} title="Pick a trader" text="Set your limits, and your wallet copies them." />
         <Step done={!!me?.telegramLinked} title="Link Telegram (optional)" text="Get a message for trades and copies." action={address ? <button className="btn" onClick={linkTelegram}>Link Telegram</button> : undefined} />

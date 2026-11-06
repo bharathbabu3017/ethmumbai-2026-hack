@@ -47,7 +47,7 @@ export default async function Home() {
       <main className="wrap wide" style={{ paddingTop: 28, paddingBottom: 56, display: "flex", flexDirection: "column", gap: 20 }}>
         {copying.size > 0 && <StatusStrip copying={copying.size} paused={!!user?.copyPaused} />}
         <SellPrompts />
-        {copying.size === 0 && copied.length === 0 && <GettingStarted />}
+        {copying.size === 0 && copied.length === 0 && <GettingStarted signedIn={!!session} />}
         <div>
           <h1 style={{ fontSize: 26 }}>Discover traders</h1>
           <p className="mut" style={{ margin: "4px 0 0" }}>Ranked from real fills. Pick one and your wallet can copy their trades.</p>

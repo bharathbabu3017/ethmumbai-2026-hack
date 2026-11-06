@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { identityFrom } from "@/lib/privy-user";
 import { rateLimited } from "@/lib/rate-limit";
-import { sameOrigin, startSession } from "@/lib/session";
+import { getSession, sameOrigin, startSession } from "@/lib/session";
 
 /** Trusts only Privy's verified token: which wallets a user owns, and whether they approved our signer, come from Privy. */
 export async function POST(req: NextRequest) {
@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
 
   const owned = [identity.embedded?.address, ...identity.externalAddresses].filter(Boolean) as string[];
   const address = owned.find((a) => a.toLowerCase() === String(active).toLowerCase()) ?? owned[0];
+  const fresh = !(await getSession());
   if (address) await startSession(address, true);
-  return NextResponse.json({ delegated: !!identity.embedded?.delegated });
+  return NextResponse.json({ delegated: !!identity.embedded?.delegated, fresh });
 }

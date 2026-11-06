@@ -61,7 +61,7 @@ export default function TradePage() {
 }
 
 function Trade() {
-  const { address, actions } = useWallet();
+  const { address, ready, actions } = useWallet();
   const params = useSearchParams();
   const linked = params.get("token");
   const [side, setSide] = useState<Side>(params.get("side") === "sell" ? "sell" : "buy");
@@ -377,7 +377,7 @@ function Trade() {
 
           {preview
             ? <button className="btn pri" disabled={busy} onClick={confirm}>{busy ? <><span className="spin" />{stepLabel}</> : actionLabel}</button>
-            : <button className="btn pri" disabled={busy || !address} onClick={review}>{!address ? "Connect a wallet to trade" : busy ? <><span className="spin" />Getting a quote</> : "Review order"}</button>}
+            : <button className="btn pri" disabled={busy || !address} onClick={review}>{!ready ? "Loading…" : !address ? "Connect a wallet to trade" : busy ? <><span className="spin" />Getting a quote</> : "Review order"}</button>}
           {preview && !busy && <button className="btn" onClick={change}>Back</button>}
           {status && <p role="alert" className="dn" style={{ margin: 0 }}>{status}</p>}
           {tracked && address && (

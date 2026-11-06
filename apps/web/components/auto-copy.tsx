@@ -213,13 +213,14 @@ export function AutoCopySetup({ traderId, name, onClose, onSaved }: { traderId: 
 
 /** The trader page's view of auto-copy: what's happening, and the one next step. */
 export function AutoCopyCard({ traderId, name }: { traderId: string; name: string }) {
-  const { address, login, getSigner } = useWallet();
+  const { address, ready, login, getSigner } = useWallet();
   const { status, load } = useCopyStatus(traderId);
   const [setup, setSetup] = useState(false);
   const [funds, setFunds] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  if (!ready) return <div className="sk" style={{ height: 150 }} />;
   if (!address) return <><h2 style={{ fontSize: 16 }}>Auto-copy</h2><p className="mut" style={{ margin: 0 }}>Your wallet follows their trades within your limits.</p><button className="btn pri" onClick={login}>Connect to start</button></>;
   if (!status) return <div className="sk" style={{ height: 150 }} />;
 

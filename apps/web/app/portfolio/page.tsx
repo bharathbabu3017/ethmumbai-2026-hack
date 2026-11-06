@@ -25,7 +25,7 @@ interface Data {
 const pnlClass = (n: number) => (n < 0 ? "dn" : n > 0 ? "up" : "");
 
 export default function Portfolio() {
-  const { address, login } = useWallet();
+  const { address, ready, login } = useWallet();
   const { data, refresh: load } = useCached<Data>(address ? `portfolio:${address}` : null, async () => {
     const [{ balances }, paid] = await Promise.all([
       flash.balances(address!),
@@ -45,7 +45,7 @@ export default function Portfolio() {
     <>
       <Nav />
       <main className="wrap wide" style={{ paddingTop: 28, paddingBottom: 56, display: "flex", flexDirection: "column", gap: 24 }}>
-        {!address ? <div><button className="btn pri" onClick={login}>Connect to see your portfolio</button></div> : (
+        {!ready ? <div className="sk" style={{ height: 240 }} /> : !address ? <div><button className="btn pri" onClick={login}>Connect to see your portfolio</button></div> : (
           <>
             <section className="between" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
               <div className="row" style={{ gap: "16px 40px", alignItems: "flex-end" }}>

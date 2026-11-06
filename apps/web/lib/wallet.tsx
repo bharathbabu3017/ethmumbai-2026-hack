@@ -2,7 +2,8 @@
 
 import { PrivyProvider, useCreateWallet, usePrivy, useSigners, useWallets } from "@privy-io/react-auth";
 import { batchCancelMessage, buildUpdate, cancelMessage, submitPrepared, type EditableOrder, type OrderRequest, type OrderStep, type QuoteResponse } from "@flashmob/flash";
-import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPublicClient, createWalletClient, custom, http, type Hex } from "viem";
 import { postJson } from "./account";
 import { pickWallet } from "./pick-wallet";
@@ -79,20 +80,40 @@ export const useWallet = () => useContext(WalletContext);
 export const TELEGRAM_LOGIN = process.env.NEXT_PUBLIC_PRIVY_TELEGRAM === "true";
 const SIGNER_ID = process.env.NEXT_PUBLIC_PRIVY_SIGNER_ID;
 
+// A signed-in user with no wallet after this long really has none, so pages stop waiting.
+const WALLET_WAIT_MS = 4_000;
+
+/** Fired when a session starts, so anything that loaded signed-out can load again. */
+export const SESSION_EVENT = "flashmob:session";
+
 function PrivyBridge({ children }: { children: ReactNode }) {
-  const { ready, authenticated, user, login, logout, getAccessToken } = usePrivy();
-  const { wallets } = useWallets();
+  const { ready: privyReady, authenticated, user, login, logout, getAccessToken } = usePrivy();
+  const { wallets, ready: walletsReady } = useWallets();
+  const router = useRouter();
+  const [gaveUp, setGaveUp] = useState(false);
   const { addSigners } = useSigners();
   const { createWallet } = useCreateWallet();
   const embedded = wallets.find((w) => w.walletClientType === "privy");
   const linked = (user?.linkedAccounts ?? []).flatMap((a) => (a.type === "wallet" ? [a.address] : []));
   const wallet = authenticated ? pickWallet(wallets, linked) : undefined;
+  // "Ready" means we know who this is, so a returning user never sees a Connect button first.
+  const ready = privyReady && (!authenticated || !!wallet || (walletsReady && gaveUp));
+
+  useEffect(() => {
+    if (!authenticated || wallet) return;
+    const timer = setTimeout(() => setGaveUp(true), WALLET_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [authenticated, wallet]);
 
   // Tells our server who this is, using Privy's verified token.
   const sync = useCallback(async () => {
     const accessToken = await getAccessToken();
-    if (accessToken) await postJson("/api/privy/sync", { accessToken, active: wallet?.address });
-  }, [getAccessToken, wallet?.address]);
+    if (!accessToken) return;
+    const { fresh } = await postJson<{ fresh?: boolean }>("/api/privy/sync", { accessToken, active: wallet?.address });
+    if (!fresh) return;
+    window.dispatchEvent(new Event(SESSION_EVENT));
+    router.refresh();
+  }, [getAccessToken, wallet?.address, router]);
 
   useEffect(() => {
     if (authenticated && wallet) sync().catch(() => {});

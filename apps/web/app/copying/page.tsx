@@ -83,7 +83,7 @@ function HistoryRow({ e }: { e: Entry }) {
 }
 
 export default function Copying() {
-  const { address, login, getSigner } = useWallet();
+  const { address, ready, login, getSigner } = useWallet();
   const { data, refresh: load } = useCached<Data>(address ? `copying:${address}` : null, () => fetch("/api/copying").then((r) => (r.ok ? r.json() : undefined)));
   const [filter, setFilter] = useState<Filter>("All");
   const [editing, setEditing] = useState<Row>();
@@ -146,7 +146,7 @@ export default function Copying() {
         </div>
         {error && <p role="alert" className="dn" style={{ margin: 0 }}>{error}</p>}
 
-        {!address ? <div><button className="btn pri" onClick={login}>Connect to get started</button></div> : !data ? <div className="sk" style={{ height: 240 }} /> : (
+        {!ready ? <div className="sk" style={{ height: 240 }} /> : !address ? <div><button className="btn pri" onClick={login}>Connect to get started</button></div> : !data ? <div className="sk" style={{ height: 240 }} /> : (
           <>
             {problem?.state && (
               <section className="between" style={{ flexWrap: "wrap", alignItems: "center", padding: "12px 16px", border: "1px solid var(--orange)", borderRadius: 10 }}>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SESSION_EVENT } from "./wallet";
 
 const store = new Map<string, unknown>();
 
@@ -24,6 +25,11 @@ export function useCached<T>(key: string | null, load: () => Promise<T | undefin
     setData(key ? (store.get(key) as T | undefined) : undefined);
     refresh();
   }, [key, refresh]);
+
+  useEffect(() => {
+    window.addEventListener(SESSION_EVENT, refresh);
+    return () => window.removeEventListener(SESSION_EVENT, refresh);
+  }, [refresh]);
 
   return { data, refresh };
 }
