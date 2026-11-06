@@ -3,6 +3,7 @@
 import { editableFields, OPEN_STATUSES, type FlashOrder } from "@flashmob/flash";
 import { useCallback, useEffect, useState } from "react";
 import { flash } from "@/lib/flash";
+import { plainError } from "@/lib/format";
 import { useWallet } from "@/lib/wallet";
 
 const REFRESH_MS = 3_000;
@@ -29,6 +30,7 @@ export function OpenOrders({ reloadKey = 0, title, onCount }: { reloadKey?: numb
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [cancelling, setCancelling] = useState<string>();
 
   const refresh = useCallback(async () => {
     if (!address) return setOrders([]);
@@ -51,13 +53,17 @@ export function OpenOrders({ reloadKey = 0, title, onCount }: { reloadKey?: numb
       await fn();
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
+      setError(plainError(e));
     } finally {
       setBusy(false);
     }
   };
 
-  const cancel = (id: string) => run(() => actions.cancel(id));
+  const cancel = async (id: string) => {
+    setCancelling(id);
+    await run(() => actions.cancel(id));
+    setCancelling(undefined);
+  };
   const cancelAll = () => run(() => actions.cancelMany(orders.slice(0, 25).map((o) => o.orderId)));
 
   const startEdit = (o: FlashOrder) => {
@@ -92,7 +98,7 @@ export function OpenOrders({ reloadKey = 0, title, onCount }: { reloadKey?: numb
               </span>
               <span className="row" style={{ gap: 6 }}>
                 {fields.length > 0 && <button className="btn" disabled={busy} onClick={() => (editing === o.orderId ? setEditing(undefined) : startEdit(o))}>Edit</button>}
-                <button className="btn warn" disabled={busy} onClick={() => cancel(o.orderId)}>Cancel</button>
+                <button className="btn warn" disabled={busy} onClick={() => cancel(o.orderId)}>{cancelling === o.orderId ? <><span className="spin" />Cancelling</> : "Cancel"}</button>
               </span>
             </div>
             {editing === o.orderId && (

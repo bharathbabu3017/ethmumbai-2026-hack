@@ -1,7 +1,7 @@
 "use client";
 
 import { PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
-import { batchCancelMessage, buildUpdate, cancelMessage, submitPrepared, type EditableOrder, type OrderRequest, type QuoteResponse } from "@flashmob/flash";
+import { batchCancelMessage, buildUpdate, cancelMessage, submitPrepared, type EditableOrder, type OrderRequest, type OrderStep, type QuoteResponse } from "@flashmob/flash";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPublicClient, createWalletClient, custom, http, type Hex } from "viem";
 import { fetchMe, postJson } from "./account";
@@ -20,7 +20,7 @@ export interface BrowserSigner {
 
 /** Everything that needs the wallet's approval. A browser wallet signs, and the Mini App asks the worker. */
 export interface WalletActions {
-  place(request: OrderRequest, quote: QuoteResponse, chain?: string): Promise<{ orderId: string }>;
+  place(request: OrderRequest, quote: QuoteResponse, chain?: string, onStep?: (step: OrderStep) => void): Promise<{ orderId: string }>;
   cancel(orderId: string): Promise<void>;
   cancelMany(orderIds: string[]): Promise<void>;
   update(orderId: string, order: EditableOrder, next: Record<string, string>): Promise<void>;
@@ -51,7 +51,7 @@ const notConfigured: WalletState = {
 
 function browserActions(getSigner: (chain?: string) => Promise<BrowserSigner>): WalletActions {
   return {
-    place: async (request, quote, chain) => submitPrepared(flash, await getSigner(chain), request, quote),
+    place: async (request, quote, chain, onStep) => submitPrepared(flash, await getSigner(chain), request, quote, onStep),
     async cancel(orderId) {
       const signer = await getSigner();
       const message = cancelMessage(orderId);
@@ -87,7 +87,10 @@ async function runJob<T>(kind: string, payload: unknown): Promise<T> {
 }
 
 const miniActions: WalletActions = {
-  place: (request, quote) => runJob("order", { request, minReceived: request.orderType === "market" ? Number(quote.to.amount) : undefined }),
+  place: (request, quote, _chain, onStep) => {
+    onStep?.("submitting");
+    return runJob("order", { request, minReceived: request.orderType === "market" ? Number(quote.to.amount) : undefined });
+  },
   cancel: (orderId) => runJob("cancel", { orderId }),
   cancelMany: (orderIds) => runJob("cancelMany", { orderIds }),
   update: (orderId, _order, next) => runJob("update", { orderId, next }),

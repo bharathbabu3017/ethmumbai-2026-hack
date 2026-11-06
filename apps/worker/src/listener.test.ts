@@ -6,7 +6,7 @@ import { USDC_BASE, type FlashClient } from "@flashmob/flash";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { handleOrder, type AlertButton } from "./listener";
+import { handleOrder, syncOrders, type AlertButton } from "./listener";
 import type { OrderFrame } from "./trades";
 
 let db: Db;
@@ -109,4 +109,45 @@ test("buy alerts carry a Copy button, and sells don't", async () => {
   const [buy, sell] = sent.filter((m) => m.chatId === FOLLOWER_CHAT);
   assert.deepEqual(buy!.button, { label: "Copy", path: "/trades/o1", opens: "miniApp" });
   assert.equal(sell!.button, undefined);
+});
+
+const syncFlash = (orders: unknown[]) => ({ ...flash, listOrders: async () => ({ orders }) }) as unknown as FlashClient;
+const rest = (over: object = {}) => ({
+  ...frame({ orderType: "market", status: "ORDER_STATUS_FILLED", filled: { targetAmount: "0.5", contraAmount: "1000" } }),
+  targetAsset: { ticker: "WETH", address: "0xweth", chain: { id: "8453", name: "base", namespace: "eip155" } },
+  placedAt: new Date().toISOString(), closedAt: new Date().toISOString(), ...over,
+});
+
+test("sync catches a fill the stream missed, and followers hear about it", async () => {
+  await syncOrders(db, syncFlash([rest()]), send);
+  const wallet = (await findWallet(db, TRADER))!;
+  assert.equal((await getPosition(db, wallet.id, "0xweth"))!.qty, 0.5);
+  assert.deepEqual(toFollower(), ["Ana bought WETH at $2,000."]);
+});
+
+test("syncing the same order again changes nothing and stays quiet", async () => {
+  await syncOrders(db, syncFlash([rest()]), send);
+  await syncOrders(db, syncFlash([rest()]), send);
+  const wallet = (await findWallet(db, TRADER))!;
+  assert.equal((await getPosition(db, wallet.id, "0xweth"))!.qty, 0.5);
+  assert.equal(toFollower().length, 1);
+});
+
+test("an order the stream already handled isn't repeated by sync", async () => {
+  await handleOrder(db, flash, send, frame({ orderType: "market", status: "ORDER_STATUS_FILLED", filled: { targetAmount: "0.5", contraAmount: "1000" } }), true);
+  await syncOrders(db, syncFlash([rest()]), send);
+  assert.equal(toFollower().length, 1);
+});
+
+test("old orders found after a restart are recorded but never alert", async () => {
+  const old = new Date(Date.now() - 3600_000).toISOString();
+  await syncOrders(db, syncFlash([rest({ placedAt: old, closedAt: old })]), send);
+  assert.ok(await getOrder(db, "o1"));
+  assert.deepEqual(toFollower(), []);
+});
+
+test("sync applies orders oldest first, so a buy lands before its sale", async () => {
+  const sell = rest({ orderId: "o2", side: "sell", filled: { targetAmount: "0.5", contraAmount: "1200" } });
+  await syncOrders(db, syncFlash([sell, rest()]), send);
+  assert.equal((await getOrder(db, "o2"))!.realizedUsd, 200);
 });

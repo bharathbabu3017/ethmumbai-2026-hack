@@ -9,6 +9,9 @@ export interface OrderSigner {
 /** The platform fee for an order. With no fee, the field is left out entirely. */
 export const feeFields = (feeBps: string) => (Number(feeBps) > 0 ? { flashIntegratorFeeBps: feeBps } : {});
 
+/** Where an order is in being placed, so the app can say what the wallet is waiting for. */
+export type OrderStep = "approving" | "signing" | "submitting";
+
 export type OrderRequest = Omit<QuoteRequest, "funderAddress">;
 
 // These only apply when quoting and are not part of the submit body.
@@ -18,14 +21,18 @@ export const prepareOrder = (flash: FlashClient, funderAddress: string, request:
   flash.quote({ ...request, funderAddress });
 
 /** Runs approvals, signs and submits an order. Do not retry after a failure: re-quote and ask again. */
-export async function submitPrepared(flash: FlashClient, signer: OrderSigner, request: OrderRequest, quote: QuoteResponse) {
+export async function submitPrepared(flash: FlashClient, signer: OrderSigner, request: OrderRequest, quote: QuoteResponse, onStep: (step: OrderStep) => void = () => {}) {
   const evm = quote.evm;
   if (!evm?.orderTypedData) throw new Error("Quote has no EVM signing payload");
 
   const body = { ...request } as Record<string, unknown>;
   for (const key of QUOTE_ONLY) delete body[key];
 
-  if (evm.approveTx) await signer.sendTransaction(evm.approveTx);
+  if (evm.approveTx) {
+    onStep("approving");
+    await signer.sendTransaction(evm.approveTx);
+  }
+  onStep("signing");
   const permit = evm.permitTypedData
     ? { evmPermitTypedData: evm.permitTypedData, evmPermitSignature: await signer.signTypedData(evm.permitTypedData) }
     : {};
@@ -34,7 +41,11 @@ export async function submitPrepared(flash: FlashClient, signer: OrderSigner, re
   const pair = quote.attachedBracket;
   if (request.attachedBracket) {
     if (!pair?.evm) throw new Error("Quote has no signing payload for the bracket");
-    if (pair.evm.approveTx) await signer.sendTransaction(pair.evm.approveTx);
+    if (pair.evm.approveTx) {
+      onStep("approving");
+      await signer.sendTransaction(pair.evm.approveTx);
+      onStep("signing");
+    }
     const pairPermit = pair.evm.permitTypedData
       ? { evmPermitTypedData: pair.evm.permitTypedData, evmPermitSignature: await signer.signTypedData(pair.evm.permitTypedData) }
       : {};
@@ -49,12 +60,14 @@ export async function submitPrepared(flash: FlashClient, signer: OrderSigner, re
     };
   }
 
+  const userSignature = await signer.signTypedData(evm.orderTypedData);
+  onStep("submitting");
   return flash.submitOrder({
     ...(body as Omit<SubmitOrderRequest, "funderAddress" | "userSignature">),
     funderAddress: signer.address,
     quoteId: quote.quoteId,
     ...(quote.bridgeQuoteId ? { bridgeQuoteId: quote.bridgeQuoteId } : {}),
-    userSignature: await signer.signTypedData(evm.orderTypedData),
+    userSignature,
     evmOrderTypedData: evm.orderTypedData,
     ...permit,
     ...(attachedBracket ? { attachedBracket } : {}),

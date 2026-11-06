@@ -2,15 +2,17 @@
 
 import {
   BASE_TOKENS, buildOrder, ORDER_TYPES, prepareOrder, USDC_BY_CHAIN,
-  type FlashBalancesResponse, type OrderRequest, type OrderTypeName, type PayChain, type QuoteResponse, type Side,
+  type FlashBalancesResponse, type OrderRequest, type OrderStep, type OrderTypeName, type PayChain, type QuoteResponse, type Side,
 } from "@flashmob/flash";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { Nav } from "@/components/nav";
-import { OrdersPanel } from "@/components/orders-panel";
+import { OrderProgress } from "@/components/order-progress";
+import { OrdersPanel, type OrdersTab } from "@/components/orders-panel";
 import { PriceChart } from "@/components/price-chart";
 import { TokenPicker, type PickedToken } from "@/components/token-picker";
 import { flash } from "@/lib/flash";
+import { plainError } from "@/lib/format";
 import { useWallet } from "@/lib/wallet";
 
 const QUOTE_REFRESH_MS = 15_000;
@@ -49,6 +51,9 @@ function Trade() {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [placed, setPlaced] = useState(0);
+  const [step, setStep] = useState<OrderStep>();
+  const [tracked, setTracked] = useState<{ orderId: string; market: boolean; side: Side; symbol: string }>();
+  const [focus, setFocus] = useState<OrdersTab>();
 
   const loadBalances = useCallback(() => {
     if (address) flash.balances(address).then((b) => setBalances(b.balances)).catch(() => {});
@@ -97,13 +102,17 @@ function Trade() {
     try {
       await fn();
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : "Something went wrong");
+      setStatus(plainError(e));
     } finally {
       setBusy(false);
+      setStep(undefined);
     }
   };
 
-  const review = run(async () => setPreview(await fetchQuote()));
+  const review = run(async () => {
+    setTracked(undefined);
+    setPreview(await fetchQuote());
+  });
 
   // A market quote goes stale fast, so it's kept fresh while it's on screen.
   useEffect(() => {
@@ -114,12 +123,15 @@ function Trade() {
 
   const confirm = run(async () => {
     if (!preview) return;
-    const { orderId } = await actions.place(preview.request, preview.quote, spendChain);
+    const { orderId } = await actions.place(preview.request, preview.quote, spendChain, setStep);
     setPreview(undefined);
-    setF({ ...f, qty: "" });
+    setF({ ...f, qty: "", stop: "", target: "" });
+    setTracked({ orderId, market: type === "market", side, symbol: token.symbol });
     setPlaced((n) => n + 1);
-    setStatus(`Order placed: ${orderId}`);
   });
+
+  const stepLabel = step === "approving" ? `Approve ${spendSymbol} in your wallet` : step === "signing" ? "Sign in your wallet" : step === "submitting" ? "Placing your order" : miniApp ? "Placing your order" : "Check your wallet";
+  const actionLabel = type === "market" ? `${side === "buy" ? "Buy" : "Sell"} ${token.symbol}` : `Place ${ORDER_TYPES[type].label.toLowerCase()} order`;
 
   const slippage = preview?.quote.recommendedSlippage;
   const impact = preview?.quote.estimatedPriceImpact;
@@ -139,7 +151,7 @@ function Trade() {
               { label: "Target", price: Number(type === "bracket" ? f.bracketTarget : attachable ? f.target : 0) || null, tone: "target" },
             ]} />
           </div>
-          <OrdersPanel reloadKey={placed} />
+          <OrdersPanel reloadKey={placed} focus={focus} />
         </section>
 
         <section className="side" style={{ gap: 14 }}>
@@ -270,9 +282,22 @@ function Trade() {
           )}
 
           {preview
-            ? <button className="btn pri" disabled={busy} onClick={confirm}>{busy ? (miniApp ? "Placing order" : "Check your wallet") : miniApp ? "Place order" : "Confirm in wallet"}</button>
-            : <button className="btn pri" disabled={busy || !address} onClick={review}>{address ? (busy ? "Getting quote" : "Review order") : "Connect a wallet to trade"}</button>}
-          {status && <p role="status" style={{ margin: 0 }}>{status}</p>}
+            ? <button className="btn pri" disabled={busy} onClick={confirm}>{busy ? <><span className="spin" />{stepLabel}</> : actionLabel}</button>
+            : <button className="btn pri" disabled={busy || !address} onClick={review}>{!address ? "Connect a wallet to trade" : busy ? <><span className="spin" />Getting a quote</> : "Review order"}</button>}
+          {preview && !busy && <button className="btn" onClick={change}>Back</button>}
+          {status && <p role="alert" className="dn" style={{ margin: 0 }}>{status}</p>}
+          {tracked && address && (
+            <OrderProgress
+              key={tracked.orderId}
+              {...tracked}
+              funder={address}
+              onResting={() => setFocus("Pending orders")}
+              onClosed={() => {
+                setFocus("Order history");
+                setPlaced((n) => n + 1);
+              }}
+            />
+          )}
         </section>
       </main>
     </>

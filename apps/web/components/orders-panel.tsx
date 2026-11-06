@@ -70,10 +70,15 @@ function Balances({ reloadKey }: { reloadKey: number }) {
 
 const TABS = ["Pending orders", "Order history", "Balances"] as const;
 
-export function OrdersPanel({ reloadKey }: { reloadKey: number }) {
+export type OrdersTab = (typeof TABS)[number];
+
+export function OrdersPanel({ reloadKey, focus }: { reloadKey: number; focus?: OrdersTab }) {
   const { address } = useWallet();
   const [tab, setTab] = useState<(typeof TABS)[number]>("Pending orders");
   const [pending, setPending] = useState(0);
+  useEffect(() => {
+    if (focus) setTab(focus);
+  }, [focus]);
 
   return (
     <section>

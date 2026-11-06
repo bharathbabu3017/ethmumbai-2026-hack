@@ -73,6 +73,25 @@ export async function handleOrder(db: Db, flash: FlashClient, send: Send, o: Ord
   }
 }
 
+const SYNC_MS = 5_000;
+const ALERT_WINDOW_MS = 2 * 60_000;
+
+/**
+ * The stream can miss an order, such as one that fills instantly or one placed while the worker was down.
+ * So recent orders are also read from Flash, and anything new or changed goes through the same path.
+ * Only orders from the last couple of minutes alert or copy, so a restart never acts on old trades.
+ */
+export async function syncOrders(db: Db, flash: FlashClient, send: Send, auto?: AutoCopy, now = Date.now()) {
+  const { orders } = await flash.listOrders({ pageSize: 50 });
+  for (const order of [...orders].reverse()) {
+    const known = await getOrder(db, order.orderId);
+    const filled = Number(order.filled?.targetAmount ?? 0);
+    if (known?.side && known.status === order.status && known.filledQty === filled) continue;
+    const recent = now - Date.parse(order.closedAt ?? order.placedAt) < ALERT_WINDOW_MS;
+    await handleOrder(db, flash, send, order as unknown as OrderFrame, recent, auto);
+  }
+}
+
 export function startListener(db: Db, flash: FlashClient, send: Send, apiKey: string, auto?: AutoCopy) {
   let attempts = 0;
   // Frames are handled one at a time so a status change can't overtake the one before it.
@@ -123,4 +142,9 @@ export function startListener(db: Db, flash: FlashClient, send: Send, apiKey: st
   };
 
   connect();
+  setInterval(() => {
+    queue = queue
+      .then(() => syncOrders(db, flash, send, auto))
+      .catch((err) => console.error("Could not sync orders:", err instanceof Error ? err.message : "unknown"));
+  }, SYNC_MS);
 }

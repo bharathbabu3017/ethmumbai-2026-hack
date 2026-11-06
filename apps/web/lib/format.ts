@@ -20,3 +20,24 @@ export function tradeSize(o: { side: string | null; qty: string | null; tokenSym
 
 export const shortAddress = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 export const basescan = (a: string) => `https://basescan.org/address/${a}`;
+
+const CLOSE_REASONS: Record<string, string> = {
+  REASON_INSUFFICIENT_FUNDER_BALANCE: "Not enough balance in your wallet.",
+  REASON_INSUFFICIENT_ASSET_BALANCE: "Not enough balance.",
+  REASON_MAXIMUM_SLIPPAGE_EXCEEDED: "The price moved past the slippage limit.",
+  REASON_EXECUTION_COST_EXCEEDS_LIMIT: "This order is too small for its execution costs. Try a larger amount.",
+  REASON_ORDER_REJECTED_AT_VENUE: "The network was congested. Try again.",
+  REASON_ORDER_TRIGGERED_ON_ENTRY: "The trigger price had already been crossed.",
+  REASON_ORDER_EXPIRED: "It expired.",
+  REASON_USER_REQUESTED: "You cancelled it.",
+};
+
+export const closeReason = (reason: string | null | undefined) => (reason ? CLOSE_REASONS[reason] ?? "The order couldn't be completed." : "");
+
+/** Wallet errors are long and technical, so this keeps the useful part. */
+export function plainError(e: unknown) {
+  const error = e as { shortMessage?: string; message?: string; code?: number };
+  const text = error?.shortMessage ?? error?.message ?? "Something went wrong";
+  if (error?.code === 4001 || /user (rejected|denied)|rejected the request/i.test(text)) return "You cancelled in your wallet. Nothing was placed.";
+  return text.split("\n")[0]!.slice(0, 160);
+}

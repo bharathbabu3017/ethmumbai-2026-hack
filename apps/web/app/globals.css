@@ -79,3 +79,7 @@ select.inp{font-family:var(--font-inter),sans-serif;appearance:auto}
 .tab:hover{color:var(--text)}
 .tab.active{color:var(--text);border-bottom-color:var(--lime)}
 .tab:focus-visible{outline:2px solid var(--line2);outline-offset:2px}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line2);border-top-color:var(--up);border-radius:50%;animation:spin .7s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn .spin{margin-right:8px;border-color:currentColor;border-top-color:transparent}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:2s}}

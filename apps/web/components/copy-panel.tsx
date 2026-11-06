@@ -6,7 +6,7 @@ import { useState } from "react";
 import { ensureSession, postJson } from "@/lib/account";
 import { canAttach, copyForm, copyInputError, copySummary, entryPrice, tradeBlock, type CopyableTrade } from "@flashmob/flash";
 import { flash } from "@/lib/flash";
-import { usd } from "@/lib/format";
+import { plainError, usd } from "@/lib/format";
 import { useWallet } from "@/lib/wallet";
 
 const PRESETS = ["25", "50", "100", "250"];
@@ -36,7 +36,7 @@ export function CopyPanel({ trade }: { trade: CopyableTrade & { id: string; toke
     try {
       await fn();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
+      setError(plainError(e));
     } finally {
       setBusy(false);
     }
@@ -118,8 +118,8 @@ export function CopyPanel({ trade }: { trade: CopyableTrade & { id: string; toke
       {!address
         ? <button className="btn pri" onClick={login}>Connect a wallet to copy</button>
         : preview
-          ? <button className="btn pri" disabled={busy} onClick={confirm}>{busy ? (miniApp ? "Placing order" : "Check your wallet") : miniApp ? "Confirm copy" : "Confirm in wallet"}</button>
-          : <button className="btn pri" disabled={busy} onClick={review}>{busy ? "Getting quote" : "Review copy"}</button>}
+          ? <button className="btn pri" disabled={busy} onClick={confirm}>{busy ? <><span className="spin" />{miniApp ? "Placing your copy" : "Check your wallet"}</> : "Copy this trade"}</button>
+          : <button className="btn pri" disabled={busy} onClick={review}>{busy ? <><span className="spin" />Getting a quote</> : "Review copy"}</button>}
       {error && <p role="alert" className="dn" style={{ margin: 0 }}>{error}</p>}
     </div>
   );
