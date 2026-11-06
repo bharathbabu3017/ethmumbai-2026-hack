@@ -17,6 +17,9 @@ export type FlashSearchAssetsResponse = Schemas["FlashSearchAssetsResponse"];
 export type FlashBalancesResponse = Schemas["FlashBalancesResponse"];
 export type Chain = Schemas["Chain"];
 
+/** Statuses of an order that can still fill. Any other status is final. */
+export const OPEN_STATUSES = ["ORDER_STATUS_PENDING", "ORDER_STATUS_ACCEPTED", "ORDER_STATUS_PARTIALLY_FILLED"];
+
 export const FLASH_BASE_URL = "https://flash.definitive.fi/v1";
 export const PUBLIC_DEV_KEY = "dpka_513a2bd7_57a2_46d2_927b_2a3857fe271b";
 

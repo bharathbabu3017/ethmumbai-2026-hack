@@ -1,4 +1,4 @@
-export const OPEN_STATUSES = ["ORDER_STATUS_PENDING", "ORDER_STATUS_ACCEPTED", "ORDER_STATUS_PARTIALLY_FILLED"];
+import { OPEN_STATUSES } from "@flashmob/flash";
 
 export interface CopyableTrade {
   side: string | null;

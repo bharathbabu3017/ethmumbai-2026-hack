@@ -4,6 +4,7 @@ import { bigint, boolean, doublePrecision, index, jsonb, pgEnum, pgTable, primar
 export const walletType = pgEnum("wallet_type", ["bot", "external"]);
 export const orderSource = pgEnum("order_source", ["manual", "copy"]);
 export const actionStatus = pgEnum("action_status", ["pending", "used"]);
+export const mirrorStatus = pgEnum("mirror_status", ["pending", "executing", "placed", "dismissed"]);
 export const jobStatus = pgEnum("job_status", ["queued", "running", "done", "failed"]);
 export const copyStatus = pgEnum("copy_status", ["pending", "placed"]);
 
@@ -64,6 +65,7 @@ export const orders = pgTable(
     filledUsd: doublePrecision("filled_usd").notNull().default(0),
     realizedUsd: doublePrecision("realized_usd").notNull().default(0), // profit on what this order sold
     soldCostUsd: doublePrecision("sold_cost_usd").notNull().default(0), // what that sold amount cost
+    heldBeforeSell: doublePrecision("held_before_sell"), // position size when this sell first filled
     placedAt: timestamp("placed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -142,4 +144,25 @@ export const walletJobs = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("wallet_jobs_status").on(t.status, t.createdAt)],
+);
+
+// A prompt for a follower to sell the same share of their copied position as the trader sold.
+export const mirrors = pgTable(
+  "mirrors",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sellOrderId: text("sell_order_id").notNull().references(() => orders.id),
+    traderUserId: uuid("trader_user_id").notNull().references(() => users.id),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    walletId: uuid("wallet_id").notNull().references(() => wallets.id),
+    tokenAddress: text("token_address").notNull(),
+    tokenSymbol: text("token_symbol").notNull(),
+    percent: doublePrecision("percent").notNull(),
+    qty: doublePrecision("qty").notNull(),
+    status: mirrorStatus("status").notNull().default("pending"),
+    orderId: text("order_id").unique(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("one_mirror_per_wallet").on(t.sellOrderId, t.walletId), index("mirrors_user").on(t.userId)],
 );

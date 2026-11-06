@@ -1,5 +1,5 @@
 import { claimAction, createAction, getOrCreateTelegramUser, linkTelegram, recordOrder, type Db } from "@flashmob/db";
-import { batchCancelMessage, buildOrder, cancelMessage, FlashError, prepareOrder, resolveBaseToken, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
+import { batchCancelMessage, buildOrder, cancelMessage, FlashError, OPEN_STATUSES, prepareOrder, resolveBaseToken, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
 import { createBotSigner, decryptKey, generateBotWallet } from "@flashmob/signer";
 import { sequentialize } from "@grammyjs/runner";
 import { Bot, InlineKeyboard, type BotConfig, type Context } from "grammy";
@@ -11,7 +11,6 @@ const CHAIN = "base";
 const SAFE_APPROVALS = { forceMinimalAllowance: true, evmUsePermit2: true };
 const MAX_PRICE_MOVE = 0.02; // abort if a market order got this much worse between preview and confirm
 const EXPORT_VISIBLE_MS = 60_000;
-const OPEN_STATUSES = ["ORDER_STATUS_PENDING", "ORDER_STATUS_ACCEPTED", "ORDER_STATUS_PARTIALLY_FILLED"];
 
 const HELP = `Flashmob commands
 

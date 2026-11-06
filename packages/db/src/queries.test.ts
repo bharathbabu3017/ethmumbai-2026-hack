@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import {
-  alertRecipients, applyOrderFrame, claimJobs, enqueueJob, finishJob, getJob, recordOrder, claimAction, confirmCopy, countCopies, createAction, createLinkToken, createTrader, findWallet, getBotWallet,
+  alertRecipients, applyOrderFrame, claimJobs, claimMirror, completeMirror, createMirrors, dismissMirror, listCopyOrders, listMirrors, releaseMirror, enqueueJob, finishJob, getJob, recordOrder, claimAction, confirmCopy, countCopies, createAction, createLinkToken, createTrader, findWallet, getBotWallet,
   getOrCreateTelegramUser, getOrCreateWalletUser, getPosition, getTrade, getTraderByUser, leaderboard, linkTelegram, listTrades, releaseCopy, reserveCopy,
   setFollow, type Db, type OrderFields,
 } from "./queries";
@@ -225,4 +225,99 @@ test("a job is only visible to its owner, and records its outcome", async () => 
   assert.equal(await getJob(db, id, other.userId), undefined);
   await finishJob(db, id, { result: { orderId: "o" } });
   assert.deepEqual((await getJob(db, id, w.userId))!.result, { orderId: "o" });
+});
+
+// A trader buys, a follower copies, and each fill goes through the same path as the live stream.
+async function mirrorSetup(n: number, copyQty = 0.02, traderQty = 2) {
+  const trader = await wallet(`0xF${n}a`);
+  await createTrader(db, { userId: trader.userId, displayName: `mirrored${n}` });
+  const token = `0xtoken${n}`;
+  const { order: buy } = await applyOrderFrame(db, frame(trader, { tokenAddress: token, filledQty: traderQty, filledUsd: traderQty * 100 }));
+  const follower = await wallet(`0xF${n}b`);
+  const { order: copied } = await applyOrderFrame(db, frame(follower, { isPublic: false, tokenAddress: token, filledQty: copyQty, filledUsd: copyQty * 100 }));
+  const copy = (await reserveCopy(db, { sourceOrderId: buy.id, ...follower, amountUsd: 2 }))!;
+  await confirmCopy(db, copy.id, follower.userId, copied.id);
+  const sell = async (qty: number) => (await applyOrderFrame(db, frame(trader, { side: "sell", tokenAddress: token, filledQty: qty, filledUsd: qty * 120 }))).order;
+  return { trader, follower, token, sell };
+}
+
+test("a follower is prompted to sell the same share, not the same amount", async () => {
+  const { follower, token, sell } = await mirrorSetup(1);
+  const [m] = await createMirrors(db, await sell(1));
+  assert.deepEqual([m!.percent, m!.qty, m!.tokenAddress], [50, 0.01, token]);
+  assert.equal(m!.userId, follower.userId);
+});
+
+test("a repeated sale event creates no second prompt", async () => {
+  const { sell } = await mirrorSetup(2);
+  const order = await sell(1);
+  assert.equal((await createMirrors(db, order)).length, 1);
+  assert.equal((await createMirrors(db, order)).length, 0);
+});
+
+test("a second sale is a share of what's left", async () => {
+  const { follower, sell } = await mirrorSetup(3);
+  const [first] = await createMirrors(db, await sell(1));
+  await claimMirror(db, first!.id, follower.userId);
+  await completeMirror(db, first!.id, follower.userId, "mirror-order-3");
+  await applyOrderFrame(db, frame(follower, { id: "mirror-order-3", side: "sell", isPublic: false, tokenAddress: first!.tokenAddress, filledQty: 0.01, filledUsd: 1.2 }));
+  const [second] = await createMirrors(db, await sell(1));
+  assert.deepEqual([second!.percent, Number(second!.qty.toFixed(8))], [100, 0.01]);
+});
+
+test("a follower who already exited is skipped", async () => {
+  const { follower, token, sell } = await mirrorSetup(4);
+  await applyOrderFrame(db, frame(follower, { side: "sell", isPublic: false, tokenAddress: token, filledQty: 0.02, filledUsd: 2 }));
+  assert.equal((await createMirrors(db, await sell(1))).length, 0);
+});
+
+test("only the copied part is touched, not tokens bought separately", async () => {
+  const { follower, token, sell } = await mirrorSetup(5);
+  await applyOrderFrame(db, frame(follower, { isPublic: false, tokenAddress: token, filledQty: 5, filledUsd: 500 }));
+  const [m] = await createMirrors(db, await sell(2));
+  assert.deepEqual([m!.percent, m!.qty], [100, 0.02]);
+});
+
+test("a follower who sold some themselves is capped at what they still hold", async () => {
+  const { follower, token, sell } = await mirrorSetup(6);
+  await applyOrderFrame(db, frame(follower, { side: "sell", isPublic: false, tokenAddress: token, filledQty: 0.015, filledUsd: 1.5 }));
+  const [m] = await createMirrors(db, await sell(2));
+  assert.equal(Number(m!.qty.toFixed(8)), 0.005);
+});
+
+test("a sale of tokens the trader never tracked prompts nobody", async () => {
+  const { sell } = await mirrorSetup(7);
+  const order = await sell(1);
+  assert.equal((await createMirrors(db, { ...order, heldBeforeSell: 0 })).length, 0);
+});
+
+test("a prompt can only be acted on once, by its owner, and can be retried if abandoned", async () => {
+  const { follower, sell } = await mirrorSetup(8);
+  const [m] = await createMirrors(db, await sell(1));
+  const other = await wallet("0xF8c");
+  assert.equal(await claimMirror(db, m!.id, other.userId), undefined);
+  const claims = await Promise.all([1, 2, 3].map(() => claimMirror(db, m!.id, follower.userId)));
+  assert.equal(claims.filter(Boolean).length, 1);
+  await releaseMirror(db, m!.id, follower.userId);
+  assert.ok(await claimMirror(db, m!.id, follower.userId));
+  await db.execute(sql`update mirrors set updated_at = now() - interval '1 hour' where id = ${m!.id}`);
+  assert.ok(await claimMirror(db, m!.id, follower.userId));
+  assert.ok(await completeMirror(db, m!.id, follower.userId, "mirror-order-8"));
+  assert.equal(await claimMirror(db, m!.id, follower.userId), undefined);
+});
+
+test("a dismissed prompt disappears", async () => {
+  const { follower, sell } = await mirrorSetup(9);
+  const [m] = await createMirrors(db, await sell(1));
+  assert.equal((await listMirrors(db, follower.userId)).length, 1);
+  await dismissMirror(db, m!.id, follower.userId);
+  assert.equal((await listMirrors(db, follower.userId)).length, 0);
+});
+
+test("a prompt can find the copy orders behind it", async () => {
+  const { follower, token, sell } = await mirrorSetup(10);
+  await createMirrors(db, await sell(1));
+  const [prompt] = await listMirrors(db, follower.userId);
+  assert.equal(prompt!.trader, "mirrored10");
+  assert.equal((await listCopyOrders(db, follower.walletId, token)).length, 1);
 });

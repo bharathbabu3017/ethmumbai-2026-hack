@@ -4,6 +4,7 @@ import { CopyDiagram } from "@/components/copy-diagram";
 import { GettingStarted } from "@/components/getting-started";
 import { MarketStrip } from "@/components/market-strip";
 import { Nav } from "@/components/nav";
+import { SellPrompts } from "@/components/sell-prompts";
 import { TradeRow } from "@/components/trade-row";
 import { TraderCard } from "@/components/trader-card";
 import { db } from "@/lib/db";
@@ -39,7 +40,7 @@ export default async function Home() {
             )}
             {traders.length > 0 && <p className="mut" style={{ margin: "14px 0 0", fontSize: 13 }}>Want your trades here? <Link href="/become-a-trader" style={{ color: "var(--text)" }}>Become a trader</Link></p>}
           </section>
-          <aside className="side"><GettingStarted /></aside>
+          <aside className="side" style={{ gap: 12 }}><SellPrompts /><GettingStarted /></aside>
         </div>
 
         <section>

@@ -5,7 +5,7 @@ import { run } from "@grammyjs/runner";
 import { createBot } from "./bot";
 import { InlineKeyboard } from "grammy";
 import { startJobs } from "./jobs";
-import { startListener } from "./listener";
+import { startListener, type AlertButton } from "./listener";
 
 function required(name: string) {
   const value = process.env[name];
@@ -51,8 +51,11 @@ await bot.api.setMyCommands([
 let sendQueue = Promise.resolve();
 // Telegram only opens Mini Apps from https links.
 const appUrl = process.env.APP_URL?.startsWith("https://") ? process.env.APP_URL.replace(/\/$/, "") : undefined;
-const send = (chatId: number, text: string, copyOrderId?: string) => {
-  const reply_markup = appUrl && copyOrderId ? new InlineKeyboard().webApp("Copy", `${appUrl}/mini?next=/trades/${copyOrderId}`) : undefined;
+const send = (chatId: number, text: string, button?: AlertButton) => {
+  const keyboard = new InlineKeyboard();
+  if (appUrl && button?.opens === "miniApp") keyboard.webApp(button.label, `${appUrl}/mini?next=${button.path}`);
+  if (appUrl && button?.opens === "website") keyboard.url(button.label, `${appUrl}${button.path}`);
+  const reply_markup = appUrl && button ? keyboard : undefined;
   const sent = sendQueue.then(async () => {
     await bot.api.sendMessage(chatId, text, { reply_markup }).catch((e) => console.error("Could not send alert:", e instanceof Error ? e.message : "unknown"));
     await new Promise((r) => setTimeout(r, 40));

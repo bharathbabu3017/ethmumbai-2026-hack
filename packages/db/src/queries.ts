@@ -1,8 +1,8 @@
 import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
-import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
+import { alias, type PgDatabase, type PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
 import { applyFill } from "./position";
-import { copies, follows, linkTokens, orders, pendingActions, positions, traders, users, wallets, walletJobs } from "./schema";
+import { copies, follows, linkTokens, mirrors, orders, pendingActions, positions, traders, users, wallets, walletJobs } from "./schema";
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -117,6 +117,8 @@ export async function linkTelegram(db: Db, token: string, telegramUserId: string
     await tx.update(traders).set({ userId: telegramUserId }).where(eq(traders.userId, from));
     await tx.update(copies).set({ userId: telegramUserId }).where(eq(copies.userId, from));
     await tx.update(walletJobs).set({ userId: telegramUserId }).where(eq(walletJobs.userId, from));
+    await tx.update(mirrors).set({ userId: telegramUserId }).where(eq(mirrors.userId, from));
+    await tx.update(mirrors).set({ traderUserId: telegramUserId }).where(eq(mirrors.traderUserId, from));
     const moved = await tx.select().from(follows).where(eq(follows.followerId, from));
     await tx.delete(follows).where(eq(follows.followerId, from));
     if (moved.length) {
@@ -208,10 +210,12 @@ export async function applyOrderFrame(db: Db, frame: OrderFields) {
     const newUsd = frame.filledUsd - (before?.filledUsd ?? 0);
     let realizedUsd = before?.realizedUsd ?? 0;
     let soldCostUsd = before?.soldCostUsd ?? 0;
+    let heldBeforeSell = before?.heldBeforeSell ?? null;
 
     if (newQty > 0 && frame.usdPriced) {
       const key = and(eq(positions.walletId, frame.walletId), eq(positions.tokenAddress, frame.tokenAddress));
       const [held] = await tx.select().from(positions).where(key);
+      if (frame.side === "sell" && heldBeforeSell === null) heldBeforeSell = held?.qty ?? 0;
       const result = applyFill(held ?? { qty: 0, costUsd: 0 }, frame.side, newQty, newUsd);
       await tx
         .insert(positions)
@@ -233,6 +237,7 @@ export async function applyOrderFrame(db: Db, frame: OrderFields) {
       isPublic: before?.side ? before.isPublic : frame.isPublic,
       realizedUsd,
       soldCostUsd,
+      heldBeforeSell,
     };
     const [order] = await tx.insert(orders).values(values).onConflictDoUpdate({ target: orders.id, set: values }).returning();
     return { order: order!, previousStatus: before?.status ?? undefined, seenBefore: !!before?.side };
@@ -397,3 +402,103 @@ export const finishJob = (db: Db, id: string, outcome: { result: unknown } | { e
     .update(walletJobs)
     .set("error" in outcome ? { status: "failed", error: outcome.error } : { status: "done", result: outcome.result })
     .where(eq(walletJobs.id, id));
+
+const DUST = 1e-9;
+const MIRROR_RESERVATION_MINUTES = 5;
+const copyOrder = alias(orders, "copy_order");
+const sourceOrder = alias(orders, "source_order");
+
+/** What a wallet still holds from copying this trader in this token: never more than it actually holds. */
+async function copiedHoldings(db: Db, traderUserId: string, tokenAddress: string) {
+  const rows = await db
+    .select({ walletId: copies.walletId, userId: copies.userId, filled: sql<number>`sum(${copyOrder.filledQty})::float` })
+    .from(copies)
+    .innerJoin(sourceOrder, eq(copies.sourceOrderId, sourceOrder.id))
+    .innerJoin(copyOrder, eq(copies.orderId, copyOrder.id))
+    .where(and(eq(copies.status, "placed"), eq(sourceOrder.userId, traderUserId), eq(sourceOrder.tokenAddress, tokenAddress)))
+    .groupBy(copies.walletId, copies.userId);
+
+  const holdings = [];
+  for (const row of rows) {
+    const [sold] = await db
+      .select({ qty: sql<number>`coalesce(sum(${mirrors.qty}), 0)::float` })
+      .from(mirrors)
+      .where(and(eq(mirrors.walletId, row.walletId), eq(mirrors.tokenAddress, tokenAddress), eq(mirrors.traderUserId, traderUserId), eq(mirrors.status, "placed")));
+    const held = (await getPosition(db, row.walletId, tokenAddress))?.qty ?? 0;
+    holdings.push({ ...row, qty: Math.min(row.filled - (sold?.qty ?? 0), held) });
+  }
+  return holdings.filter((h) => h.qty > DUST);
+}
+
+/** Creates one prompt per follower for a finished trader sale. Running it twice creates nothing new. */
+export async function createMirrors(db: Db, sell: typeof orders.$inferSelect) {
+  if (!sell.tokenAddress || !sell.tokenSymbol || !sell.heldBeforeSell || sell.filledQty <= 0) return [];
+  const share = Math.min(1, sell.filledQty / sell.heldBeforeSell);
+  const created = [];
+  for (const h of await copiedHoldings(db, sell.userId, sell.tokenAddress)) {
+    const [row] = await db
+      .insert(mirrors)
+      .values({
+        sellOrderId: sell.id, traderUserId: sell.userId, userId: h.userId, walletId: h.walletId,
+        tokenAddress: sell.tokenAddress, tokenSymbol: sell.tokenSymbol, percent: share * 100, qty: h.qty * share,
+      })
+      .onConflictDoNothing()
+      .returning();
+    if (row) created.push(row);
+  }
+  return created;
+}
+
+export const listMirrors = (db: Db, userId: string) =>
+  db
+    .select({ mirror: mirrors, trader: traders.displayName, walletAddress: wallets.address, walletType: wallets.type })
+    .from(mirrors)
+    .innerJoin(traders, eq(mirrors.traderUserId, traders.userId))
+    .innerJoin(wallets, eq(mirrors.walletId, wallets.id))
+    .where(and(eq(mirrors.userId, userId), eq(mirrors.status, "pending")))
+    .orderBy(desc(mirrors.createdAt));
+
+/** Orders from this wallet's copies of a token that hold a stop and target pair. */
+export const listCopyOrders = (db: Db, walletId: string, tokenAddress: string) =>
+  db
+    .select({ order: copyOrder })
+    .from(copies)
+    .innerJoin(sourceOrder, eq(copies.sourceOrderId, sourceOrder.id))
+    .innerJoin(copyOrder, eq(copies.orderId, copyOrder.id))
+    .where(and(eq(copies.walletId, walletId), eq(sourceOrder.tokenAddress, tokenAddress), eq(copies.status, "placed")));
+
+/** Reserves a prompt while the sale runs, so it can't be acted on twice. An abandoned attempt can be retried later. */
+export async function claimMirror(db: Db, id: string, userId: string) {
+  const [row] = await db
+    .update(mirrors)
+    .set({ status: "executing", updatedAt: sql`now()` })
+    .where(
+      and(
+        eq(mirrors.id, id),
+        eq(mirrors.userId, userId),
+        sql`(${mirrors.status} = 'pending' or (${mirrors.status} = 'executing' and ${mirrors.updatedAt} < now() - make_interval(mins => ${MIRROR_RESERVATION_MINUTES})))`,
+      ),
+    )
+    .returning();
+  return row;
+}
+
+export async function completeMirror(db: Db, id: string, userId: string, orderId: string) {
+  const [row] = await db
+    .update(mirrors)
+    .set({ status: "placed", orderId })
+    .where(and(eq(mirrors.id, id), eq(mirrors.userId, userId), eq(mirrors.status, "executing")))
+    .returning();
+  return row;
+}
+
+export const releaseMirror = (db: Db, id: string, userId: string) =>
+  db.update(mirrors).set({ status: "pending" }).where(and(eq(mirrors.id, id), eq(mirrors.userId, userId), eq(mirrors.status, "executing")));
+
+export const dismissMirror = (db: Db, id: string, userId: string) =>
+  db.update(mirrors).set({ status: "dismissed" }).where(and(eq(mirrors.id, id), eq(mirrors.userId, userId), eq(mirrors.status, "pending")));
+
+export const getMirror = async (db: Db, id: string, userId: string) => {
+  const [row] = await db.select().from(mirrors).where(and(eq(mirrors.id, id), eq(mirrors.userId, userId)));
+  return row;
+};

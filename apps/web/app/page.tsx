@@ -13,7 +13,7 @@ const steps = [
 const features = [
   ["Verified track records", "Every order a trader places on Flashmob counts, so win rate and returns come from real fills, and losing trades can't be hidden."],
   ["Telegram alerts", "Get a message when a trader places, fills, cancels or closes a trade."],
-  ["Copy any buy", "Copy market, limit, stop, TWAP and trailing orders. You choose how much to spend."],
+  ["Copy buys and exits", "Copy market, limit, stop, TWAP and trailing buys. When a trader sells, you get a prompt to sell the same share."],
   ["Auto-copy (coming soon)", "Trades placed for you, with an amount per trade, a daily limit, and a pause button."],
   ["Advanced orders", "Market, limit, stop loss, take profit, bracket, TWAP and trailing stop orders."],
   ["Trade on the web or in Telegram", "Place and cancel orders from your wallet on the website, or with simple commands in the bot."],

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Nav } from "@/components/nav";
 import { OpenOrders } from "@/components/open-orders";
+import { SellPrompts } from "@/components/sell-prompts";
 import { Avatar } from "@/components/avatar";
 import { fetchMe, type Me } from "@/lib/account";
 import { flash } from "@/lib/flash";
@@ -35,6 +36,7 @@ export default function Portfolio() {
               <div className="m" style={{ fontSize: 36, marginTop: 4 }}>${total.toFixed(2)}</div>
             </div>
             {error && <p role="alert" className="dn" style={{ margin: 0 }}>{error}</p>}
+            <SellPrompts />
             <section>
               {balances.map((b) => (
                 <div key={b.chain + b.address + b.isNative} className="between" style={{ padding: "12px 0", borderTop: "1px solid var(--line)" }}>

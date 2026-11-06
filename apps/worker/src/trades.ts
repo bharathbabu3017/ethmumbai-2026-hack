@@ -1,7 +1,7 @@
 import type { OrderFields } from "@flashmob/db";
-import { USDC_BASE } from "@flashmob/flash";
+import { OPEN_STATUSES as OPEN_ORDER_STATUSES, USDC_BASE } from "@flashmob/flash";
 
-export const OPEN_STATUSES = new Set(["ORDER_STATUS_PENDING", "ORDER_STATUS_ACCEPTED", "ORDER_STATUS_PARTIALLY_FILLED"]);
+export const OPEN_STATUSES = new Set(OPEN_ORDER_STATUSES);
 
 interface Asset {
   ticker: string;
@@ -119,6 +119,10 @@ export function tradeAlert(trader: string, t: TradeRow, change: { isNew: boolean
     return `${trader} placed a ${t.orderType} ${t.side} of ${token}: ${size}${at}${exits ? `, ${exits}` : ""}.`;
   }
   return null;
+}
+
+export function mirrorAlert(trader: string, m: { percent: number; qty: number; tokenSymbol: string }) {
+  return `${trader} sold ${m.percent.toFixed(0)}% of their ${m.tokenSymbol}. Sell the same share of your copy (${Number(m.qty.toPrecision(4))} ${m.tokenSymbol})?`;
 }
 
 const REASONS: Record<string, string> = {

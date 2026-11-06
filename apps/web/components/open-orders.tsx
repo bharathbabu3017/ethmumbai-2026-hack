@@ -1,8 +1,7 @@
 "use client";
 
-import { editableFields, type FlashOrder } from "@flashmob/flash";
+import { editableFields, OPEN_STATUSES, type FlashOrder } from "@flashmob/flash";
 import { useCallback, useEffect, useState } from "react";
-import { OPEN_STATUSES } from "@/lib/copy";
 import { flash } from "@/lib/flash";
 import { useWallet } from "@/lib/wallet";
 

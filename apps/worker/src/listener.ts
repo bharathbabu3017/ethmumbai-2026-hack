@@ -1,11 +1,18 @@
-import { alertRecipients, applyOrderFrame, findWallet, getOrder, getTraderByUser, getUser, type Db } from "@flashmob/db";
+import { alertRecipients, applyOrderFrame, createMirrors, findWallet, findWalletById, getOrder, getTraderByUser, getUser, type Db } from "@flashmob/db";
 import type { FlashClient } from "@flashmob/flash";
-import { OPEN_STATUSES, orderFields, ownOrderAlert, tradeAlert, type Levels, type OrderFrame } from "./trades";
+import { mirrorAlert, OPEN_STATUSES, orderFields, ownOrderAlert, tradeAlert, type Levels, type OrderFrame } from "./trades";
 
 const WS_URL = "wss://flash.definitive.fi/v1/ws";
 const HEARTBEAT_TIMEOUT_MS = 10_000;
 
-export type Send = (chatId: number, text: string, copyOrderId?: string) => Promise<void>;
+export interface AlertButton {
+  label: string;
+  path: string;
+  /** Telegram wallets act in the Mini App. Web wallets have to sign on the website. */
+  opens: "miniApp" | "website";
+}
+
+export type Send = (chatId: number, text: string, button?: AlertButton) => Promise<void>;
 
 // The stream leaves out an attached pair's prices, so they are read once from the order itself.
 async function attachedLevels(flash: FlashClient, o: OrderFrame): Promise<Levels | undefined> {
@@ -34,9 +41,25 @@ export async function handleOrder(db: Db, flash: FlashClient, send: Send, o: Ord
   }
   if (!trader || !order.isPublic) return;
   const text = tradeAlert(trader.displayName, order, { isNew: !seenBefore, statusChanged });
-  if (!text) return;
-  const copyable = order.side === "buy" && OPEN_OR_FILLED(o.status);
-  for (const chatId of await alertRecipients(db, trader.id)) await send(chatId, text, copyable ? order.id : undefined);
+  if (text) {
+    const copyable = order.side === "buy" && OPEN_OR_FILLED(o.status);
+    const button: AlertButton | undefined = copyable ? { label: "Copy", path: `/trades/${order.id}`, opens: "miniApp" } : undefined;
+    for (const chatId of await alertRecipients(db, trader.id)) await send(chatId, text, button);
+  }
+
+  // Once a sale is finished, followers who copied this trader get the chance to sell the same share.
+  if (order.side === "sell" && statusChanged && !OPEN_STATUSES.has(o.status)) {
+    for (const mirror of await createMirrors(db, order)) {
+      const follower = await getUser(db, mirror.userId);
+      if (!follower?.telegramId) continue;
+      const wallet = await findWalletById(db, mirror.walletId);
+      await send(follower.telegramId, mirrorAlert(trader.displayName, mirror), {
+        label: "Review sale",
+        path: "/portfolio",
+        opens: wallet?.type === "bot" ? "miniApp" : "website",
+      });
+    }
+  }
 }
 
 export function startListener(db: Db, flash: FlashClient, send: Send, apiKey: string) {

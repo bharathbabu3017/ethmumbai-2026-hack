@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import { createTrader, getOrCreateTelegramUser, getOrCreateWalletUser, getOrder, getPosition, findWallet, setFollow, schema, type Db } from "@flashmob/db";
+import { confirmCopy, createTrader, reserveCopy, getOrCreateTelegramUser, getOrCreateWalletUser, getOrder, getPosition, findWallet, setFollow, schema, type Db } from "@flashmob/db";
 import { migrationsFolder } from "@flashmob/db/migrations";
 import { USDC_BASE, type FlashClient } from "@flashmob/flash";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { handleOrder } from "./listener";
+import { handleOrder, type AlertButton } from "./listener";
 import type { OrderFrame } from "./trades";
 
 let db: Db;
-let sent: { chatId: number; text: string }[];
+let sent: { chatId: number; text: string; button?: AlertButton }[];
 let legReads: number;
-const send = async (chatId: number, text: string) => void sent.push({ chatId, text });
+const send = async (chatId: number, text: string, button?: AlertButton) => void sent.push({ chatId, text, button });
 const flash = {
   getOrder: async () => {
     legReads++;
@@ -82,4 +82,31 @@ test("orders from non-traders stay private and silent", async () => {
 test("orders from unknown wallets are ignored", async () => {
   await handleOrder(db, flash, send, frame({ orderId: "u1", funderAddress: "0xnobody" }), true);
   assert.equal(await getOrder(db, "u1"), undefined);
+});
+
+test("when a trader sells, a copier gets a prompt that opens the right place", async () => {
+  const bought = { status: "ORDER_STATUS_FILLED", orderType: "market", filled: { targetAmount: "2", contraAmount: "4000" } };
+  await handleOrder(db, flash, send, frame(bought), true);
+
+  const { user, wallet } = await getOrCreateTelegramUser(db, { id: FOLLOWER_CHAT }, () => ({ address: "0xbot", encryptedKey: "x" }));
+  await handleOrder(db, flash, send, frame({ orderId: "c1", funderAddress: "0xbot", status: "ORDER_STATUS_FILLED", orderType: "market", filled: { targetAmount: "0.02", contraAmount: "40" } }), true);
+  const copy = (await reserveCopy(db, { sourceOrderId: "o1", userId: user.id, walletId: wallet.id, amountUsd: 40 }))!;
+  await confirmCopy(db, copy.id, user.id, "c1");
+
+  const sold = frame({ orderId: "s1", orderType: "market", side: "sell", status: "ORDER_STATUS_FILLED", qty: "1", filled: { targetAmount: "1", contraAmount: "2400" } });
+  await handleOrder(db, flash, send, sold, true);
+  await handleOrder(db, flash, send, sold, true);
+
+  const prompts = sent.filter((m) => m.button?.label === "Review sale");
+  assert.equal(prompts.length, 1);
+  assert.equal(prompts[0]!.text, "Ana sold 50% of their WETH. Sell the same share of your copy (0.01 WETH)?");
+  assert.equal(prompts[0]!.button!.opens, "miniApp");
+});
+
+test("buy alerts carry a Copy button, and sells don't", async () => {
+  await handleOrder(db, flash, send, frame({ status: "ORDER_STATUS_FILLED", orderType: "market", filled: { targetAmount: "1", contraAmount: "2000" } }), true);
+  await handleOrder(db, flash, send, frame({ orderId: "o2", orderType: "market", side: "sell", status: "ORDER_STATUS_FILLED", filled: { targetAmount: "1", contraAmount: "2100" } }), true);
+  const [buy, sell] = sent.filter((m) => m.chatId === FOLLOWER_CHAT);
+  assert.deepEqual(buy!.button, { label: "Copy", path: "/trades/o1", opens: "miniApp" });
+  assert.equal(sell!.button, undefined);
 });

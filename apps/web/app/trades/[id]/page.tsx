@@ -1,10 +1,11 @@
 import { countCopies, findWalletById, getPosition, getTrade, getUserCopy } from "@flashmob/db";
+import { OPEN_STATUSES } from "@flashmob/flash";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CopyPanel } from "@/components/copy-panel";
 import { Nav } from "@/components/nav";
 import { PriceChart } from "@/components/price-chart";
-import { COPYABLE_TYPES, entryPrice, OPEN_STATUSES } from "@/lib/copy";
+import { COPYABLE_TYPES, entryPrice } from "@/lib/copy";
 import { db } from "@/lib/db";
 import { pct, tradeStatus, usd } from "@/lib/format";
 import { serverFlash } from "@/lib/orders";
