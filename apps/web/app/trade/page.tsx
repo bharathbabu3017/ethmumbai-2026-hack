@@ -24,6 +24,7 @@ import { useWallet } from "@/lib/wallet";
 const QUOTE_REFRESH_MS = 15_000;
 const STATS_REFRESH_MS = 30_000;
 const MIN_PAY_USD = 0.5;
+const SLIPPAGE_CHOICES = ["", "1", "3", "5"];
 const compactUsd = (n: number) => `$${Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n)}`;
 
 interface TokenTrader {
@@ -68,6 +69,7 @@ function Trade() {
   const [token, setToken] = useState<PickedToken>(linkedToken(linked, params.get("symbol")));
   const [payChain, setPayChain] = useState<PayChain>("base");
   const [other, setOther] = useState<{ address: string; symbol: string }>();
+  const [slippage, setSlippage] = useState("");
   const [direction, setDirection] = useState<"upper" | "lower">("upper");
   const [f, setF] = useState<Fields>(EMPTY);
   const [advanced, setAdvanced] = useState(false);
@@ -141,10 +143,10 @@ function Trade() {
 
   const fetchQuote = useCallback(async () => {
     if (!address) throw new Error("Connect a wallet first");
-    const built = buildOrder({ ...f, side, type, tokenAddress: token.address, funder: address, payChain, otherToken: other?.address, triggerDirection: direction });
+    const built = buildOrder({ ...f, side, type, tokenAddress: token.address, funder: address, payChain, otherToken: other?.address, maxSlippagePercent: type === "market" && payChain === "base" ? slippage : undefined, triggerDirection: direction });
     if ("error" in built) throw new Error(built.error);
     return { request: built.request, quote: await prepareOrder(flash, address, built.request) };
-  }, [address, f, side, type, token, payChain, other, direction]);
+  }, [address, f, side, type, token, payChain, other, slippage, direction]);
 
   const run = (fn: () => Promise<void>) => async () => {
     setBusy(true);
@@ -203,7 +205,7 @@ function Trade() {
   const actionLabel = type === "market" ? `${side === "buy" ? "Buy" : "Sell"} ${token.symbol}` : `Place ${ORDER_TYPES[type].label.toLowerCase()} order`;
 
   const cost = preview ? orderCost(preview.quote) : null;
-  const slippage = preview?.quote.recommendedSlippage;
+  const autoSlippage = preview?.quote.recommendedSlippage;
   const impact = preview?.quote.estimatedPriceImpact;
   const received = side === "buy" ? token.symbol : other?.symbol ?? "USDC";
 
@@ -328,6 +330,19 @@ function Trade() {
             </div>
           )}
 
+          {type === "market" && payChain === "base" && (
+            <div>
+              <span className="lab">Max slippage</span>
+              <div className="row" style={{ gap: 6 }}>
+                {SLIPPAGE_CHOICES.map((p) => (
+                  <button key={p} className={`asset ${slippage === p ? "sel" : ""}`} aria-pressed={slippage === p} onClick={() => { setSlippage(p); change(); }}>
+                    {p ? `${p}%` : autoSlippage ? `Auto (${(Number(autoSlippage) * 100).toFixed(0)}%)` : "Auto"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {(canExpire || canLimitImpact) && (
             <button className="mut" style={{ all: "unset", cursor: "pointer", fontSize: 13, color: "var(--mut)" }} onClick={() => setAdvanced(!advanced)}>{advanced ? "Hide" : "Show"} advanced</button>
           )}
@@ -353,7 +368,7 @@ function Trade() {
               {cost ? <div className="between"><span className="mut">Total cost</span><span className={`m ${cost.percent >= HIGH_COST_PERCENT ? "dn" : ""}`}>${cost.usd.toFixed(2)} ({cost.percent.toFixed(1)}%)</span></div> : null}
               {cost && cost.percent >= HIGH_COST_PERCENT && <p role="alert" className="dn" style={{ margin: "6px 0 0", fontSize: 13 }}>This order loses about {cost.percent.toFixed(0)}% to trading costs. Costs are mostly fixed per order, so a larger amount loses a smaller share.</p>}
               {impact && <div className="between"><span className="mut">Price impact</span><span className="m">{(Number(impact) * 100).toFixed(2)}%</span></div>}
-              {slippage && <div className="between"><span className="mut">Max slippage</span><span className="m">{(Number(slippage) * 100).toFixed(1)}%</span></div>}
+              {(slippage || autoSlippage) && <div className="between"><span className="mut">Max slippage</span><span className="m">{slippage ? `${slippage}%` : `${(Number(autoSlippage) * 100).toFixed(1)}% (Auto)`}</span></div>}
               {payChain !== "base" && <p className="mut" style={{ margin: "6px 0 0", fontSize: 13 }}>{side === "buy" ? `Your wallet will switch to ${CHAIN_NAMES[payChain]}.` : `Your USDC arrives on ${CHAIN_NAMES[payChain]}.`} A cross-chain order can&apos;t be cancelled once its funds are moving.</p>}
               <p className="mut" style={{ margin: "6px 0 0", fontSize: 13 }}>This spends real funds.</p>
             </div>
