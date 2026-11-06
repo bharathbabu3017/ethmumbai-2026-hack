@@ -23,19 +23,21 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
   const { show } = await searchParams;
   const [board, feed, session, agentRows, cookieStore] = await Promise.all([leaderboard(db()), listTrades(db(), 300), getSession(), listAgentTraders(db()), cookies()]);
   const agentIds = new Set(agentRows.map((a) => a.traderId));
+  const removedIds = new Set(agentRows.filter((a) => a.removedAt).map((a) => a.traderId));
+  const stoppedIds = new Set(agentRows.filter((a) => a.status === "stopped").map((a) => a.traderId));
   const [settings, user, copied] = session
     ? await Promise.all([listUserCopySettings(db(), session.userId), getUser(db(), session.userId), listUserCopies(db(), session.userId)])
     : [[], undefined, []];
   const copying = new Set(settings.filter((s) => s.enabled).map((s) => s.traderId));
   const isTrader = board.some((t) => t.userId === session?.userId);
 
-  const everyone: DiscoverTrader[] = board.map((t) => {
+  const everyone: DiscoverTrader[] = board.filter((t) => !removedIds.has(t.id)).map((t) => {
     const theirs = feed.filter((r) => r.trader.id === t.id).map((r) => r.order);
     const filled = theirs.filter((o) => o.filledQty > 0);
     const curve = filled.filter((o) => o.soldCostUsd > 0).reverse().reduce<number[]>((sum, o) => [...sum, (sum.at(-1) ?? 0) + o.realizedUsd], []);
     const recent = filled.slice(0, 2).map((o) => ({ id: o.id, text: `${o.side === "sell" ? "Sold" : "Bought"} ${o.tokenSymbol} ${tradeSize(o)}`, at: o.placedAt, symbol: o.tokenSymbol ?? "", address: o.tokenAddress }));
     const viewer = t.userId === session?.userId ? "you" as const : copying.has(t.id) ? "copying" as const : null;
-    return { ...t, curve, recent, viewer, agent: agentIds.has(t.id) };
+    return { ...t, curve, recent, viewer, agent: agentIds.has(t.id), stopped: stoppedIds.has(t.id) };
   });
   const traders = everyone.filter((t) => (show === "agents" ? t.agent : show === "traders" ? !t.agent : true));
 

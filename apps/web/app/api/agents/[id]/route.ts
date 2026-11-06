@@ -1,5 +1,5 @@
-import { enqueueJob, getJob, getOwnedAgent, setAgentStatus, withdrawalPending } from "@flashmob/db";
-import { withdrawalError } from "@flashmob/flash";
+import { enqueueJob, getJob, getOwnedAgent, getTradingWallet, removeAgent, setAgentStatus, withdrawalPending } from "@flashmob/db";
+import { createFlashClient, OPEN_STATUSES, removalError, withdrawalError } from "@flashmob/flash";
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { rateLimited } from "@/lib/rate-limit";
@@ -42,6 +42,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (await withdrawalPending(db(), agent.walletId)) return fail("A withdrawal is already on its way.", 409);
     const jobId = await enqueueJob(db(), { userId: agent.userId, walletId: agent.walletId, kind: "agent-withdraw", payload: { destination: session.address, token, amount } });
     return NextResponse.json({ jobId });
+  }
+  if (action === "remove") {
+    const wallet = await getTradingWallet(db(), agent.userId);
+    if (!wallet) return fail("Agent not found", 404);
+    if (await withdrawalPending(db(), agent.walletId)) return fail("A withdrawal is still on its way.", 409);
+    const flash = createFlashClient({ apiKey: process.env.FLASH_API_KEY ?? "" });
+    // If we can't see the wallet, we can't say it's empty, so nothing is removed.
+    const seen = await Promise.all([flash.balances(wallet.address), flash.listOrders({ funderAddress: wallet.address, statuses: OPEN_STATUSES })]).catch(() => undefined);
+    if (!seen) return fail("Couldn't check its wallet. Try again.", 502);
+    const problem = removalError(agent.status, seen[0].balances.reduce((sum, b) => sum + Number(b.notional), 0), seen[1].orders.length);
+    if (problem) return fail(problem, 409);
+    await removeAgent(db(), id);
+    return NextResponse.json({ ok: true });
   }
   if (action === "pause" && agent.status === "running") await setAgentStatus(db(), id, "paused");
   else if (action === "resume" && agent.status === "paused") await setAgentStatus(db(), id, "running");

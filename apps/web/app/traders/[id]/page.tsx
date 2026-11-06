@@ -151,7 +151,7 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
           </section>
         </div>
         <aside className="side" style={{ gap: 12 }}>
-          {!mine && <div className="panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}><AutoCopyCard traderId={id} name={trader.displayName} /></div>}
+          {!mine && agent?.status !== "stopped" && <div className="panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}><AutoCopyCard traderId={id} name={trader.displayName} /></div>}
           {rules && (
             <div className="panel" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <h2 style={{ fontSize: 16 }}>How it trades</h2>

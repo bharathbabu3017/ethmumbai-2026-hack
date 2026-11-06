@@ -24,7 +24,7 @@ interface Agent {
   usdc: number;
 }
 
-const COLUMNS = "minmax(190px,1.3fr) 120px 100px 90px minmax(130px,1fr) 390px";
+const COLUMNS = "minmax(190px,1.3fr) 120px 100px 90px minmax(130px,1fr) 400px";
 const LABELS = { funding: "Needs funds", running: "Running", paused: "Paused", stopped: "Stopped" };
 const TONES = { funding: "var(--orange)", running: "var(--up)", paused: "var(--mut)", stopped: "var(--mut)" };
 
@@ -42,6 +42,7 @@ export default function Agents() {
   const [funding, setFunding] = useState<Agent>();
   const [withdrawing, setWithdrawing] = useState<Agent>();
   const [stopping, setStopping] = useState<Agent>();
+  const [removing, setRemoving] = useState<Agent>();
   const [sell, setSell] = useState(true);
   const [busy, setBusy] = useState<string>();
   const [error, setError] = useState("");
@@ -53,6 +54,7 @@ export default function Agents() {
       await ensureSession(getSigner);
       await postJson(`/api/agents/${id}`, body);
       setStopping(undefined);
+      setRemoving(undefined);
       refresh();
     } catch (e) {
       setError(plainError(e));
@@ -60,6 +62,31 @@ export default function Agents() {
       setBusy(undefined);
     }
   };
+
+  const active = agents?.filter((a) => a.status !== "stopped") ?? [];
+  const stopped = agents?.filter((a) => a.status === "stopped") ?? [];
+  const table = (rows: Agent[]) => (
+    <section className="table">
+      <div className="tr head" style={{ gridTemplateColumns: COLUMNS, minWidth: 1130 }}><span>Agent</span><span>Status</span><span>Wallet</span><span>Budget</span><span>Strategy</span><span /></div>
+      {rows.map((a) => (
+        <div key={a.id} className="tr" style={{ gridTemplateColumns: COLUMNS, minWidth: 1130, borderTop: "1px solid var(--line)" }}>
+          <Link href={`/traders/${a.traderId}`} className={`row ${a.status === "stopped" ? "mut" : ""}`} style={{ gap: 10, fontWeight: 500, flexWrap: "nowrap" }}><Avatar name={a.displayName} size={32} /> {a.displayName}</Link>
+          <span style={{ fontSize: 13, fontWeight: 500, color: TONES[a.status] }}>{LABELS[a.status]}</span>
+          <span className="m">${a.usdc.toFixed(2)}</span>
+          <span className="m">${a.settings.budgetUsd}</span>
+          <span className="mut">{AGENT_STRATEGIES[a.settings.strategy].label}</span>
+          <span className="row" style={{ gap: 8, justifyContent: "flex-end", flexWrap: "nowrap" }}>
+            {a.status === "running" && <button className="btn" disabled={busy === a.id} onClick={() => act(a.id, { action: "pause" })}>Pause</button>}
+            {a.status === "paused" && <button className="btn pri" disabled={busy === a.id} onClick={() => act(a.id, { action: "resume" })}>Resume</button>}
+            {a.status !== "stopped" && <button className="btn" onClick={() => setFunding(a)}>Add funds</button>}
+            {a.status !== "stopped" && <button className="btn" onClick={() => setWithdrawing(a)}>Withdraw</button>}
+            {a.status === "stopped" ? <button className="btn" onClick={() => setStopping(a)}>Withdraw</button> : <button className="btn warn" onClick={() => setStopping(a)}>Stop</button>}
+            {(a.status === "stopped" || a.status === "funding") && <button className="btn warn" onClick={() => { setError(""); setRemoving(a); }}>Remove</button>}
+          </span>
+        </div>
+      ))}
+    </section>
+  );
 
   return (
     <>
@@ -77,31 +104,27 @@ export default function Agents() {
           <p className="mut" style={{ margin: 0 }}>You haven&apos;t built an agent yet. Pick a strategy, set limits, and see what it would do before you fund it.</p>
         ) : (
           <>
-            <section className="table">
-              <div className="tr head" style={{ gridTemplateColumns: COLUMNS, minWidth: 1130 }}><span>Agent</span><span>Status</span><span>Wallet</span><span>Budget</span><span>Strategy</span><span /></div>
-              {agents.map((a) => (
-                <div key={a.id} className="tr" style={{ gridTemplateColumns: COLUMNS, minWidth: 1130, borderTop: "1px solid var(--line)" }}>
-                  <Link href={`/traders/${a.traderId}`} className="row" style={{ gap: 10, fontWeight: 500, flexWrap: "nowrap" }}><Avatar name={a.displayName} size={32} /> {a.displayName}</Link>
-                  <span style={{ fontSize: 13, fontWeight: 500, color: TONES[a.status] }}>{LABELS[a.status]}</span>
-                  <span className="m">${a.usdc.toFixed(2)}</span>
-                  <span className="m">${a.settings.budgetUsd}</span>
-                  <span className="mut">{AGENT_STRATEGIES[a.settings.strategy].label}</span>
-                  <span className="row" style={{ gap: 8, justifyContent: "flex-end", flexWrap: "nowrap" }}>
-                    {a.status === "running" && <button className="btn" disabled={busy === a.id} onClick={() => act(a.id, { action: "pause" })}>Pause</button>}
-                    {a.status === "paused" && <button className="btn pri" disabled={busy === a.id} onClick={() => act(a.id, { action: "resume" })}>Resume</button>}
-                    {a.status !== "stopped" && <button className="btn" onClick={() => setFunding(a)}>Add funds</button>}
-                    {a.status !== "stopped" && <button className="btn" onClick={() => setWithdrawing(a)}>Withdraw</button>}
-                    <button className="btn warn" onClick={() => setStopping(a)}>{a.status === "stopped" ? "Withdraw" : "Stop"}</button>
-                  </span>
-                </div>
-              ))}
-            </section>
+            {active.length > 0 && table(active)}
+            {stopped.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <h2 style={{ fontSize: 16 }}>Stopped</h2>
+                {table(stopped)}
+              </div>
+            )}
           </>
         )}
         {error && <p role="alert" className="dn" style={{ margin: 0 }}>{error}</p>}
       </main>
       {funding && <FundAgent name={funding.displayName} agentAddress={funding.address} onClose={() => setFunding(undefined)} onSent={refresh} />}
       {withdrawing && <WithdrawAgent id={withdrawing.id} name={withdrawing.displayName} agentAddress={withdrawing.address} onClose={() => setWithdrawing(undefined)} onSent={refresh} />}
+      {removing && (
+        <Drawer title={`Remove ${removing.displayName}`} onClose={() => setRemoving(undefined)}>
+          <p style={{ margin: 0 }}>It disappears from your agents and from Discover. This can't be undone.</p>
+          <p className="mut" style={{ margin: 0, fontSize: 13 }}>Its trades and decisions stay at its public link. Its wallet must be empty first, so no funds are ever hidden.</p>
+          {error && <p role="alert" className="dn" style={{ margin: 0 }}>{error}</p>}
+          <button className="btn warn" disabled={busy === removing.id} onClick={() => act(removing.id, { action: "remove" })}>{busy === removing.id ? <><span className="spin" />Checking its wallet</> : "Remove agent"}</button>
+        </Drawer>
+      )}
       {stopping && (
         <Drawer title={stopping.status === "stopped" ? `Withdraw from ${stopping.displayName}` : `Stop ${stopping.displayName}`} onClose={() => setStopping(undefined)}>
           <div>

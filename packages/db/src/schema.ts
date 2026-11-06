@@ -148,6 +148,7 @@ export const agents = pgTable(
     settings: jsonb("settings").notNull(),
     status: agentStatus("status").notNull().default("funding"),
     lastCheckAt: timestamp("last_check_at", { withTimezone: true }),
+    removedAt: timestamp("removed_at", { withTimezone: true }), // hidden from lists, while its record stays at its link
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("agents_owner").on(t.ownerId)],

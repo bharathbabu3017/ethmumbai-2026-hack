@@ -3,11 +3,7 @@ import { before, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import {
-  alertRecipients, applyOrderFrame, getOrCreateTelegramAccount, getTradingWallet, getUserByTelegram, syncPrivyUser, claimJobs, claimMirror, completeMirror, createMirrors, dismissMirror, listCopyOrders, listMirrors, releaseMirror, enqueueJob, finishJob, getJob, recordOrder, claimAction, confirmCopy, countCopies, createAction, createLinkToken, createTrader, findWallet,
-  getOrCreateWalletUser, getPosition, getTrade, getTraderByUser, leaderboard, linkTelegram, listTrades, releaseCopy, reserveCopy,
-  countAgents, createAgent, getTraderByName, listAgents, setFollow, type Db, type OrderFields,
-} from "./queries";
+import { alertRecipients, applyOrderFrame, getOrCreateTelegramAccount, getTradingWallet, getUserByTelegram, syncPrivyUser, claimJobs, claimMirror, completeMirror, createMirrors, dismissMirror, listCopyOrders, listMirrors, releaseMirror, enqueueJob, finishJob, getJob, recordOrder, claimAction, confirmCopy, countCopies, createAction, createLinkToken, createTrader, findWallet, getOrCreateWalletUser, getPosition, getTrade, getTraderByUser, leaderboard, linkTelegram, listTrades, releaseCopy, reserveCopy, countAgents, createAgent, getTraderByName, listAgents, setFollow, type Db, type OrderFields, removeAgent, getAgentByTrader, listAgentTraders, activeAgents } from "./queries";
 import { sql } from "drizzle-orm";
 import * as schema from "./schema";
 
@@ -378,4 +374,14 @@ test("an agent gets its own wallet and public profile, kept apart from its owner
   assert.equal((await getTraderByName(db, "dip hunter"))?.id, agent.traderId);
   assert.equal((await listAgents(db, ownerId))[0]?.status, "funding");
   assert.equal(await countAgents(db, ownerId), 1);
+});
+
+test("a removed agent leaves the owner's list but keeps its public record", async () => {
+  const ownerId = await getOrCreateWalletUser(db, "0xRemovedOwner");
+  const agent = await createAgent(db, { ownerId, name: "Old Bot", settings: { strategy: "dip" }, address: "0xOld", privyWalletId: "old" });
+  await removeAgent(db, agent.id);
+  assert.deepEqual(await listAgents(db, ownerId), []);
+  assert.equal((await getAgentByTrader(db, agent.traderId))?.status, "stopped");
+  assert.ok((await listAgentTraders(db)).find((a) => a.traderId === agent.traderId)?.removedAt);
+  assert.ok(!(await activeAgents(db)).some((a) => a.id === agent.id));
 });

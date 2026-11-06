@@ -37,6 +37,17 @@ const MIN_TRADE_USD = 1;
 const MAX_STYLE = 800;
 const MAX_TOKENS = 10;
 
+/** Dust is fine to leave behind: stopping keeps a little ETH back to pay for the transfer. */
+const MAX_LEFT_ON_REMOVE_USD = 0.25;
+
+/** Why an agent can't be removed yet. Removing hides it, so it must never hide money. */
+export function removalError(status: string, walletUsd: number, openOrders: number) {
+  if (status !== "stopped" && status !== "funding") return "Stop it first.";
+  if (openOrders > 0) return "It still has open orders. Stop it first.";
+  if (walletUsd > MAX_LEFT_ON_REMOVE_USD) return `Its wallet still holds $${walletUsd.toFixed(2)}. Withdraw that first.`;
+  return null;
+}
+
 /** A plain-English reason these settings can't be used, or null if they can. */
 export function agentSettingsError(s: AgentSettings) {
   if (!(s.strategy in AGENT_STRATEGIES)) return "Pick a strategy.";
