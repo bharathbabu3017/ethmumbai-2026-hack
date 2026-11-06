@@ -1,5 +1,5 @@
 import { claimAction, createAction, getOrCreateTelegramUser, linkTelegram, recordOrder, setCopyPaused, type Db } from "@flashmob/db";
-import { batchCancelMessage, buildOrder, cancelMessage, FlashError, OPEN_STATUSES, prepareOrder, resolveBaseToken, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
+import { batchCancelMessage, buildOrder, cancelMessage, feeFields, FlashError, OPEN_STATUSES, prepareOrder, resolveBaseToken, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
 import { createBotSigner, decryptKey, generateBotWallet } from "@flashmob/signer";
 import { sequentialize } from "@grammyjs/runner";
 import { Bot, InlineKeyboard, type BotConfig, type Context } from "grammy";
@@ -124,7 +124,7 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
     if (!asset) return void (await ctx.reply(`Couldn't find ${token} on Base.`));
     const built = buildOrder({ ...form, tokenAddress: asset.address, funder: wallet.address });
     if ("error" in built) return void (await ctx.reply(built.error));
-    const request: OrderRequest = { ...built.request, flashIntegratorFeeBps: feeBps, ...SAFE_APPROVALS };
+    const request: OrderRequest = { ...built.request, ...feeFields(feeBps), ...SAFE_APPROVALS };
     try {
       const quote = await prepareOrder(flash, wallet.address, request);
       const market = form.type === "market";

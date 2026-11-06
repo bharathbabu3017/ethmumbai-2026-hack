@@ -1,3 +1,5 @@
+import { feeFields } from "@flashmob/flash";
+
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
 const ROUTES: Record<string, RegExp[]> = {
@@ -16,9 +18,9 @@ export function isAllowed(method: string, path: string, query: URLSearchParams) 
 
 /** The platform fee and builder code are set here, so the browser can't change them. */
 export function withServerFields(path: string, body: Record<string, unknown>, { feeBps, builderCode }: { feeBps: string; builderCode?: string }) {
-  if (path === "quote") return { ...body, flashIntegratorFeeBps: feeBps };
-  if (path === "order") return { ...body, flashIntegratorFeeBps: feeBps, ...(builderCode ? { erc8021AttributionCode: builderCode } : {}) };
-  return body;
+  if (path !== "quote" && path !== "order") return body;
+  const { flashIntegratorFeeBps: _ignored, erc8021AttributionCode: _alsoIgnored, ...clean } = body;
+  return { ...clean, ...feeFields(feeBps), ...(path === "order" && builderCode ? { erc8021AttributionCode: builderCode } : {}) };
 }
 
 /**

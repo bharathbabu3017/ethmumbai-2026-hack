@@ -6,6 +6,9 @@ export interface OrderSigner {
   sendTransaction(tx: { to: string; data: string }): Promise<string>;
 }
 
+/** The platform fee for an order. With no fee, the field is left out entirely. */
+export const feeFields = (feeBps: string) => (Number(feeBps) > 0 ? { flashIntegratorFeeBps: feeBps } : {});
+
 export type OrderRequest = Omit<QuoteRequest, "funderAddress">;
 
 // These only apply when quoting and are not part of the submit body.

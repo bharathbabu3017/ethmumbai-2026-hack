@@ -1,5 +1,5 @@
 import { claimJobs, claimMirror, completeMirror, confirmCopy, finishJob, getBotWallet, getPosition, getUser, mirrorExits, recordOrder, releaseCopy, releaseMirror, type Db } from "@flashmob/db";
-import { batchCancelMessage, buildOrder, buildUpdate, cancelMessage, FlashError, mirrorPlan, OPEN_STATUSES, prepareOrder, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
+import { batchCancelMessage, buildOrder, buildUpdate, cancelMessage, feeFields, FlashError, mirrorPlan, OPEN_STATUSES, prepareOrder, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
 import { createBotSigner } from "@flashmob/signer";
 import { base } from "viem/chains";
 
@@ -42,7 +42,8 @@ async function run(deps: JobDeps, job: Job) {
       throw new Error(problem);
     }
     // These are always ours to set, whatever the request says.
-    const request: OrderRequest = { ...asked, recipientAddress: undefined, flashIntegratorFeeBps: feeBps, forceMinimalAllowance: true, evmUsePermit2: true };
+    const { flashIntegratorFeeBps: _ignored, ...cleaned } = asked;
+    const request: OrderRequest = { ...cleaned, recipientAddress: undefined, ...feeFields(feeBps), forceMinimalAllowance: true, evmUsePermit2: true };
     let quote;
     try {
       quote = await prepareOrder(flash, wallet.address, request);
@@ -71,7 +72,7 @@ async function run(deps: JobDeps, job: Job) {
     const place = async (form: Omit<TradeForm, "tokenAddress" | "funder">) => {
       const built = buildOrder({ ...form, tokenAddress: mirror.tokenAddress, funder: wallet.address });
       if ("error" in built) throw new Error(built.error);
-      const request: OrderRequest = { ...built.request, flashIntegratorFeeBps: feeBps, forceMinimalAllowance: true, evmUsePermit2: true };
+      const request: OrderRequest = { ...built.request, ...feeFields(feeBps), forceMinimalAllowance: true, evmUsePermit2: true };
       const { orderId } = await submitPrepared(flash, signer, request, await prepareOrder(flash, wallet.address, request));
       await recordOrder(db, { id: orderId, userId: job.userId, walletId: wallet.id, request });
       return orderId;

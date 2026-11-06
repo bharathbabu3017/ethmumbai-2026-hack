@@ -96,7 +96,7 @@ export default function Landing() {
         <section>
           <h2 className="big" style={{ marginBottom: 12 }}>Fees and chains</h2>
           <p className="mut" style={{ margin: 0, fontSize: 16, maxWidth: 640 }}>
-            Flashmob charges 0.10% per trade. Definitive also charges a fee on advanced orders, and every quote shows the full cost before you confirm. Trading is on Base, using USDC, with more chains planned.
+            Flashmob has no platform fee right now. Definitive charges a fee on advanced orders, and every quote shows the full cost before you confirm. Trading is on Base, using USDC, with more chains planned.
           </p>
         </section>
       </Reveal>

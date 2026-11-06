@@ -20,7 +20,7 @@ const flash = createFlashClient({ apiKey });
 const searchFlash = createFlashClient({ apiKey: process.env.FLASH_SEARCH_KEY || PUBLIC_DEV_KEY });
 
 const masterKey = parseMasterKey(process.env.WALLET_MASTER_KEY);
-const feeBps = process.env.PLATFORM_FEE_BPS ?? "10";
+const feeBps = process.env.PLATFORM_FEE_BPS ?? "0";
 
 const bot = createBot({
   token: required("BOT_TOKEN"),

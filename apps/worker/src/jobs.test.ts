@@ -51,6 +51,15 @@ test("an order job places the order with our fee and safe approvals", async () =
   assert.equal(submits[0].funderAddress, owner.address);
 });
 
+test("with no platform fee, none is sent, even if a request asks for one", async () => {
+  const id = await enqueueJob(db, { userId: owner.userId, walletId: owner.walletId, kind: "order", payload: { request: { ...request, flashIntegratorFeeBps: "500" } } });
+  const [job] = await claimJobs(db);
+  await runJob({ ...deps(), feeBps: "0" }, job!);
+  assert.equal((await getJob(db, id, owner.userId))!.status, "done");
+  assert.equal(quotes[0].flashIntegratorFeeBps, undefined);
+  assert.equal(submits[0].flashIntegratorFeeBps, undefined);
+});
+
 test("funds can't be sent to another address or another chain", async () => {
   const stolen = await runOne("order", { request: { ...request, recipientAddress: "0xattacker" } });
   assert.deepEqual([stolen.status, stolen.error], ["failed", "Funds can only go to your own wallet."]);

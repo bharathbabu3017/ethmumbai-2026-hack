@@ -16,7 +16,7 @@ async function forward(req: NextRequest, { params }: Params) {
   const apiKey = process.env.FLASH_API_KEY;
   if (!apiKey) return NextResponse.json({ error: { code: "NOT_CONFIGURED", message: "Flash key missing" } }, { status: 503 });
 
-  const body = req.method === "GET" ? undefined : withServerFields(path, await req.json(), { feeBps: process.env.PLATFORM_FEE_BPS ?? "10", builderCode: process.env.BUILDER_CODE });
+  const body = req.method === "GET" ? undefined : withServerFields(path, await req.json(), { feeBps: process.env.PLATFORM_FEE_BPS ?? "0", builderCode: process.env.BUILDER_CODE });
   const res = await fetch(`${FLASH_BASE_URL}/${path}${req.nextUrl.search}`, {
     method: req.method,
     headers: { "content-type": "application/json", "x-definitive-api-key": keyFor(path, apiKey, process.env.FLASH_SEARCH_KEY || PUBLIC_DEV_KEY) },
