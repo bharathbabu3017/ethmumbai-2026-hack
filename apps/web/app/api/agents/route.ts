@@ -30,8 +30,9 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const name = String(body.name ?? "").trim();
   const settings: AgentSettings = {
-    strategy: body.strategy, style: String(body.style ?? "").trim(), tokens: Array.isArray(body.tokens) ? body.tokens.map(String) : [],
+    strategy: "custom", style: String(body.style ?? "").trim(), tokens: Array.isArray(body.tokens) ? body.tokens.map(String) : [],
     budgetUsd: Number(body.budgetUsd), maxTradeUsd: Number(body.maxTradeUsd), everyMinutes: Number(body.everyMinutes),
+    plan: body.plan, hideStrategy: body.hideStrategy === true,
   };
   if (name.length < 2 || name.length > 32) return fail("Give it a name between 2 and 32 characters.", 400);
   const problem = agentSettingsError(settings);

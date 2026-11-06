@@ -144,3 +144,9 @@ select.inp{font-family:var(--font-inter),sans-serif;appearance:auto}
 .land-num{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--lime);color:var(--on-lime);font-weight:700}
 .land-three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 @media (max-width:640px){.land-tiles,.land-steps,.land-three{grid-template-columns:1fr}}
+.plan-head{margin:0 0 4px;font-size:12px;font-weight:500;color:var(--mut)}
+.plan-row{align-items:center;padding:9px 0;border-top:1px solid var(--line)}
+.decision>summary{list-style:none;cursor:pointer}
+.decision>summary::-webkit-details-marker{display:none}
+.decision-more{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;padding:4px 16px 16px 162px}
+@media (max-width:640px){.decision-more{padding-left:16px}}
