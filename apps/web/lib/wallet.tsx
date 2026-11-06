@@ -5,6 +5,7 @@ import { batchCancelMessage, buildUpdate, cancelMessage, submitPrepared, type Ed
 import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { createPublicClient, createWalletClient, custom, http, type Hex } from "viem";
 import { postJson } from "./account";
+import { pickWallet } from "./pick-wallet";
 import { flash } from "./flash";
 import { arbitrum, base, mainnet, optimism, polygon, type Chain } from "viem/chains";
 
@@ -79,13 +80,13 @@ export const TELEGRAM_LOGIN = process.env.NEXT_PUBLIC_PRIVY_TELEGRAM === "true";
 const SIGNER_ID = process.env.NEXT_PUBLIC_PRIVY_SIGNER_ID;
 
 function PrivyBridge({ children }: { children: ReactNode }) {
-  const { ready, authenticated, login, logout, getAccessToken } = usePrivy();
+  const { ready, authenticated, user, login, logout, getAccessToken } = usePrivy();
   const { wallets } = useWallets();
   const { addSigners } = useSigners();
   const { createWallet } = useCreateWallet();
-  // Someone who connected their own wallet trades from it. Everyone else uses their embedded wallet.
   const embedded = wallets.find((w) => w.walletClientType === "privy");
-  const wallet = authenticated ? wallets.find((w) => w.walletClientType !== "privy") ?? embedded : undefined;
+  const linked = (user?.linkedAccounts ?? []).flatMap((a) => (a.type === "wallet" ? [a.address] : []));
+  const wallet = authenticated ? pickWallet(wallets, linked) : undefined;
 
   // Tells our server who this is, using Privy's verified token.
   const sync = useCallback(async () => {
