@@ -25,6 +25,7 @@ let submits: any[];
 let cancels: string[];
 let usdc: string;
 let costly = false;
+let updates: any[] = [];
 let trader: { id: string };
 let follower: { userId: string; walletId: string; address: string };
 
@@ -32,8 +33,9 @@ const flash = {
   quote: async () => ({ quoteId: "q", from: { amount: "10", notional: "10" }, to: { amount: "0.005", notional: costly ? "8" : "10" }, fees: {}, evm: { approveTx: null, permitTypedData: "", orderTypedData: typedData } }),
   balances: async () => ({ balances: [{ chain: "base", address: USDC_BASE, balance: usdc, isNative: false, symbol: "USDC" }] }),
   submitOrder: async (b: any) => (submits.push(b), { orderId: `placed-${submits.length}` }),
-  getOrder: async () => ({ order: { attachedBracket: undefined, expiresAt: new Date(Date.now() + 3600_000).toISOString() } }),
+  getOrder: async () => ({ order: { attachedBracket: undefined, orderType: "limit", status: "ORDER_STATUS_ACCEPTED", limitNotionalPrice: "1990", expiresAt: new Date(Date.now() + 3600_000).toISOString() } }),
   cancelOrder: async (id: string) => (cancels.push(id), { ok: true }),
+  updateOrder: async (id: string, body: any) => (updates.push({ id, ...body }), { ok: true }),
 } as unknown as FlashClient;
 const send = async (_chat: number, text: string) => void sent.push(text);
 const on = { enabled: true, searchFlash: flash };
@@ -52,7 +54,7 @@ beforeEach(async () => {
   const pg = drizzle(new PGlite(), { schema });
   await migrate(pg, { migrationsFolder });
   db = pg as unknown as Db;
-  sent = []; submits = []; cancels = []; usdc = "500"; costly = false;
+  sent = []; submits = []; cancels = []; updates = []; usdc = "500"; costly = false;
   const userId = await getOrCreateWalletUser(db, "0xTrader");
   trader = (await createTrader(db, { userId, displayName: "Ana" }))!;
   const f = await approvedUser(db, CHAT);
@@ -107,6 +109,38 @@ test("a copy with unusually high costs is skipped, and nothing is placed", async
   assert.ok(sent.some((t) => /Trading costs were 20\.0% on this copy/.test(t)));
   const [row] = await copyHistory(db, follower.userId);
   assert.equal(row?.kind, "skip");
+});
+
+const resting = (over = {}) => frame({ orderType: "limit", status: "ORDER_STATUS_ACCEPTED", filled: null, limitNotionalPrice: "1990", ...over });
+async function copyOfLimit() {
+  await save();
+  await handleOrder(db, flash, send, resting(), true, on);
+  await drain();
+  assert.equal(submits.length, 1);
+  await handleOrder(db, flash, send, resting({ orderId: "placed-1", funderAddress: follower.address }), true, on);
+}
+
+test("when the trader cancels, an open auto-copy is cancelled too", async () => {
+  await copyOfLimit();
+  await handleOrder(db, flash, send, resting({ status: "ORDER_STATUS_CANCELLED" }), true, on);
+  await drain();
+  assert.deepEqual(cancels, ["placed-1"]);
+});
+
+test("when the trader moves their price, an open auto-copy moves with it", async () => {
+  await copyOfLimit();
+  await handleOrder(db, flash, send, resting({ limitNotionalPrice: "1950" }), true, on);
+  await drain();
+  assert.deepEqual([updates.length, updates[0].id, updates[0].limitNotionalPrice], [1, "placed-1", "1950"]);
+  assert.ok(sent.some((t) => /moved their order/.test(t)));
+});
+
+test("a copy that already filled is left alone when the trader cancels", async () => {
+  await copyOfLimit();
+  await handleOrder(db, flash, send, resting({ orderId: "placed-1", funderAddress: follower.address, status: "ORDER_STATUS_FILLED", filled: { targetAmount: "0.01", contraAmount: "20" } }), true, on);
+  await handleOrder(db, flash, send, resting({ status: "ORDER_STATUS_CANCELLED" }), true, on);
+  await drain();
+  assert.deepEqual(cancels, []);
 });
 
 test("a skip tells the follower why", async () => {

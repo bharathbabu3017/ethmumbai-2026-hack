@@ -446,6 +446,14 @@ export async function claimAlert(db: Db, chatId: number, key: string) {
 
 export const pruneAlerts = (db: Db) => db.delete(sentAlerts).where(sql`${sentAlerts.createdAt} < now() - interval '30 days'`);
 
+/** Auto-copies of a trade, with the state of each copy's own order. */
+export const autoCopiesOf = (db: Db, sourceOrderId: string) =>
+  db
+    .select({ userId: copies.userId, walletId: copies.walletId, orderId: copies.orderId, status: ownOrder.status })
+    .from(copies)
+    .innerJoin(ownOrder, eq(copies.orderId, ownOrder.id))
+    .where(and(eq(copies.sourceOrderId, sourceOrderId), eq(copies.auto, true), eq(copies.status, "placed")));
+
 /** Whose trade an order was copied from, if it's a copy or a mirrored sale. */
 export async function copyContext(db: Db, orderId: string) {
   const [copy] = await db

@@ -1,5 +1,5 @@
 import { claimAlert, claimJobs, claimMirror, completeMirror, confirmCopy, finishJob, getPosition, getTradingWallet, getUser, mirrorExits, recordOrder, releaseCopy, releaseMirror, type Db } from "@flashmob/db";
-import { buildOrder, cancelMessage, feeFields, FlashError, HIGH_COST_PERCENT, mirrorPlan, OPEN_STATUSES, orderCost, prepareOrder, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
+import { buildOrder, buildUpdate, cancelMessage, feeFields, FlashError, HIGH_COST_PERCENT, mirrorPlan, OPEN_STATUSES, orderCost, prepareOrder, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
 import { signerFor, type PrivyAccess } from "./signers";
 import { card } from "./trades";
 
@@ -103,6 +103,28 @@ async function run(deps: JobDeps, job: Job) {
     return { orderId, summary: `Sold ${plan.sellQty} ${mirror.tokenSymbol}, ${mirror.percent.toFixed(0)}% of your copy.` };
   }
 
+  if (job.kind === "copy-cancel") {
+    const { orderId } = payload as unknown as { orderId: string };
+    const message = cancelMessage(orderId);
+    try {
+      await flash.cancelOrder(orderId, { cancelMessage: message, userSignature: await signer.signMessage(message) });
+    } catch (e) {
+      // 422 means it already filled or closed, so there's nothing left to cancel.
+      if (e instanceof FlashError && e.status === 422) return { skipped: true };
+      throw e;
+    }
+    return { orderId };
+  }
+
+  if (job.kind === "copy-move") {
+    const { orderId, limit } = payload as unknown as { orderId: string; limit: string };
+    const { order } = await flash.getOrder(orderId, wallet.address);
+    if (!OPEN_STATUSES.includes(order.status)) return { skipped: true };
+    const { message, body } = buildUpdate(orderId, order, { limit }, new Date().toISOString());
+    await flash.updateOrder(orderId, { ...body, updateMessage: message, userSignature: await signer.signMessage(message) });
+    return { orderId, limit };
+  }
+
   throw new Error("Unknown request.");
 }
 
@@ -115,13 +137,17 @@ async function tell(deps: JobDeps, job: Job, text: string) {
 }
 
 export async function runJob(deps: JobDeps, job: Job) {
-  const automatic = job.kind === "mirror" || !!label(job);
+  const automatic = job.kind === "mirror" || job.kind.startsWith("copy-") || !!label(job);
   try {
     const result = await run(deps, job);
     await finishJob(deps.db, job.id, { result });
     // A market order's fill alert says it all. One that rests needs its own note, or it would look like nothing happened.
     const request = (job.payload as { request?: OrderRequest }).request;
     if (automatic && request && request.orderType !== "market" && !("skipped" in result)) await tell(deps, job, card("🕓", `Auto-copy placed: ${label(job)}`, [], "Your order is open. You'll hear when it fills."));
+    if (job.kind === "copy-move" && !("skipped" in result)) {
+      const { trader, limit } = job.payload as { trader: string; limit: string };
+      await tell(deps, job, card("🔁", `${trader} moved their order, so yours moved too`, [["New price", `$${Number(limit).toLocaleString("en-US")}`]]));
+    }
   } catch (e) {
     const known = e instanceof FlashError || (e instanceof Error && !/key|decrypt|auth/i.test(e.message));
     const error = known ? (e as Error).message : "Something went wrong. Check your orders before trying again.";

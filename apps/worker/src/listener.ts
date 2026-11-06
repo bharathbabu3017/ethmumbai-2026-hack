@@ -1,4 +1,4 @@
-import { alertRecipients, applyOrderFrame, claimAlert, copyContext, createMirrors, enqueueJob, findWallet, findWalletById, getCopySettings, getOrder, getOrders, getTraderByUser, getUser, type Db } from "@flashmob/db";
+import { alertRecipients, applyOrderFrame, autoCopiesOf, claimAlert, copyContext, createMirrors, enqueueJob, findWallet, findWalletById, getCopySettings, getOrder, getOrders, getTraderByUser, getUser, type Db } from "@flashmob/db";
 import { FLASH_WS_URL, type CopySettings, type FlashClient } from "@flashmob/flash";
 import { autoCopy, type AutoCopy } from "./autocopy";
 import { mirrorAlert, OPEN_STATUSES, orderFields, ownOrderAlert, tradeAlert, type Levels, type OrderFrame } from "./trades";
@@ -49,6 +49,19 @@ export async function handleOrder(db: Db, flash: FlashClient, send: Send, frame:
   const once = async (chatId: number, key: string, text: string, button?: AlertButton) => {
     if (await claimAlert(db, chatId, key)) await send(chatId, text, button);
   };
+
+  // An auto-copy follows the trader's order: cancelled with it, and moved when its price moves.
+  if (trader && order.isPublic && order.side === "buy") {
+    const cancelled = statusChanged && closed && o.status !== "ORDER_STATUS_FILLED";
+    const moved = !closed && known?.limitPrice != null && order.limitPrice !== null && known.limitPrice !== order.limitPrice;
+    if (cancelled || moved) {
+      for (const copy of await autoCopiesOf(db, order.id)) {
+        if (!OPEN_STATUSES.has(copy.status ?? "")) continue;
+        const payload = cancelled ? { orderId: copy.orderId, trader: trader.displayName } : { orderId: copy.orderId, trader: trader.displayName, limit: String(order.limitPrice) };
+        await enqueueJob(db, { userId: copy.userId, walletId: copy.walletId, kind: cancelled ? "copy-cancel" : "copy-move", payload });
+      }
+    }
+  }
 
   // Copies go first: their price depends on speed, and a message can wait a moment.
   if (auto && trader && order.isPublic && !seenBefore && order.side === "buy") {

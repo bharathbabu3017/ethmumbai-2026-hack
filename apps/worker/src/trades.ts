@@ -179,6 +179,7 @@ export function ownOrderAlert(o: OrderFrame, t?: TradeRow, copiedFrom?: string) 
       ["Result", sold && t ? resultOf(t) : null],
     ]);
   }
+  if (copiedFrom && o.closeReason === "REASON_USER_REQUESTED") return card("🔁", `${copiedFrom} cancelled, so your copy of ${token} was cancelled too`);
   const why = o.closeReason ? REASONS[o.closeReason] ?? o.closeReason : undefined;
   return card("⚠️", `Your ${o.orderType} ${o.side} of ${token} didn't fill`, [], why && `Reason: ${why}`);
 }
