@@ -13,10 +13,12 @@ function required(name: string) {
 const db = createDb(required("DATABASE_URL"));
 const apiKey = required("FLASH_API_KEY");
 
+const flash = createFlashClient({ apiKey });
+
 const bot = createBot({
   token: required("BOT_TOKEN"),
   db,
-  flash: createFlashClient({ apiKey }),
+  flash,
   masterKey: parseMasterKey(process.env.WALLET_MASTER_KEY),
   feeBps: process.env.PLATFORM_FEE_BPS ?? "10",
   rpcUrl: process.env.BASE_RPC_URL,
@@ -40,7 +42,7 @@ const send = (chatId: number, text: string) => {
   sendQueue = sent;
   return sent;
 };
-startListener(db, send, apiKey);
+startListener(db, flash, send, apiKey);
 
 console.log("Bot running");
 await bot.start();

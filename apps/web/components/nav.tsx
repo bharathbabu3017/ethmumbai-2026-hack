@@ -8,7 +8,6 @@ import { useWallet } from "@/lib/wallet";
 const LINKS = [
   ["/home", "Home"],
   ["/trade", "Trade"],
-  ["/publish", "Publish"],
   ["/portfolio", "Portfolio"],
 ] as const;
 

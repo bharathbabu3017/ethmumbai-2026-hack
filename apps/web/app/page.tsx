@@ -6,13 +6,13 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 const steps = [
   ["1. Pick a trader", "Compare traders by win rate, returns and past trades."],
-  ["2. Follow them", "Link Telegram and get a message every time they publish a trade."],
+  ["2. Follow them", "Link Telegram and get a message every time they trade."],
   ["3. Copy the trade", "Tap Copy, or turn on auto-copy so trades are placed for you."],
 ];
 
 const features = [
-  ["Verified track records", "Win rate and returns are calculated from orders that actually executed onchain, not from what a trader claims."],
-  ["Telegram alerts", "Get a message when a trader publishes, fills, changes, cancels or closes a trade."],
+  ["Verified track records", "Every order a trader places on Flashmob counts, so win rate and returns come from real fills, and losing trades can't be hidden."],
+  ["Telegram alerts", "Get a message when a trader places, fills, cancels or closes a trade."],
   ["One-tap copy", "Copy a trade from the alert or the website. You choose how much to spend."],
   ["Auto-copy", "Trades are placed for you. Set an amount per trade and a daily limit, and pause any time."],
   ["Advanced orders", "Market, limit, stop loss, take profit, bracket, TWAP and trailing stop orders."],
@@ -41,7 +41,7 @@ export default function Landing() {
         <div className="rise" style={{ flex: "999 1 480px", minWidth: 0 }}>
           <h1 className="hero">Copy crypto traders in one tap</h1>
           <p className="mut" style={{ margin: "22px 0 30px", fontSize: 18, maxWidth: 540 }}>
-            Follow traders with verified onchain records. Get a Telegram alert when they trade, then copy it yourself or automatically, with their stop loss and take profit included.
+            Follow traders with verified onchain records. Get a Telegram alert when they trade, then copy it yourself or automatically, with a stop loss and take profit.
           </p>
           <div className="row">
             <Link href="/home" className="btn pri">Browse traders</Link>
@@ -65,9 +65,9 @@ export default function Landing() {
       <Reveal className="sec">
         <section className="cols" style={{ alignItems: "center", gap: 48 }}>
           <div style={{ flex: "1 1 360px", minWidth: 0 }}>
-            <h2 className="big">Every copied trade comes with a stop loss and take profit</h2>
+            <h2 className="big">Copy with a stop loss and take profit</h2>
             <p className="mut" style={{ margin: "14px 0 0", fontSize: 16 }}>
-              When you copy a trade, the trader&apos;s exit levels come with it, and you can change them. The order sells automatically at whichever level is reached first, even when you&apos;re offline.
+              If a trader sets exit levels, they come with the copy, and you can change them or add your own. Your position sells automatically at whichever level is reached first, even when you&apos;re offline.
             </p>
           </div>
           <div style={{ flex: "1 1 400px", minWidth: 0 }}><ProtectDiagram /></div>

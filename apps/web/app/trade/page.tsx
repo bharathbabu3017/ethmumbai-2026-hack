@@ -16,6 +16,8 @@ export default function Trade() {
   const [token, setToken] = useState("WETH");
   const [qty, setQty] = useState("10");
   const [price, setPrice] = useState("");
+  const [stop, setStop] = useState("");
+  const [target, setTarget] = useState("");
   const [preview, setPreview] = useState<Preview>();
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
@@ -38,10 +40,14 @@ export default function Trade() {
     if (type === "limit" && !(Number(price) > 0)) throw new Error("Enter a limit price");
     const asset = await resolveBaseToken(flash, token);
     if (!asset) throw new Error(`${token} isn't on our list. Paste its Base contract address instead.`);
+    const protect = side === "buy" && !!(stop || target);
+    if (protect && !(Number(stop) > 0 && Number(target) > Number(stop))) throw new Error("Set both a stop and a target above it, or leave both empty");
     const request: OrderRequest = {
       targetChain: CHAIN, contraChain: CHAIN, targetAsset: asset.address, contraAsset: USDC_BASE,
       side, qty, orderType: type,
-      ...(type === "limit" ? { limitNotionalPrice: price } : {}),
+      // Flash rejects limitNotionalPrice on a limit entry with a bracket. Against USDC the pair rate is the USD price.
+      ...(type === "limit" ? (protect ? { limitCrossPrice: price } : { limitNotionalPrice: price }) : {}),
+      ...(protect ? { attachedBracket: { takeProfit: { notionalPrice: target }, stopLoss: { notionalPrice: stop } } } : {}),
     };
     setPreview({ request, quote: await prepareOrder(flash, address, request), symbol: asset.symbol, unverified: asset.riskFlagged });
   });
@@ -73,6 +79,13 @@ export default function Trade() {
           <div><label className="lab" htmlFor="token">Token symbol or Base address</label><input id="token" className="inp" value={token} onChange={(e) => { setToken(e.target.value); setPreview(undefined); }} /></div>
           <div><label className="lab" htmlFor="qty">{side === "buy" ? "Spend (USDC)" : `Sell (${token})`}</label><input id="qty" className="inp" inputMode="decimal" value={qty} onChange={(e) => { setQty(e.target.value); setPreview(undefined); }} /></div>
           {type === "limit" && <div><label className="lab" htmlFor="price">Limit price (USD)</label><input id="price" className="inp" inputMode="decimal" value={price} onChange={(e) => { setPrice(e.target.value); setPreview(undefined); }} /></div>}
+
+          {side === "buy" && (
+            <div className="row" style={{ flexWrap: "nowrap" }}>
+              <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="stop">Stop loss, optional (USD)</label><input id="stop" className="inp" inputMode="decimal" value={stop} onChange={(e) => { setStop(e.target.value); setPreview(undefined); }} /></div>
+              <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="target">Take profit, optional (USD)</label><input id="target" className="inp" inputMode="decimal" value={target} onChange={(e) => { setTarget(e.target.value); setPreview(undefined); }} /></div>
+            </div>
+          )}
 
           {preview && (
             <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "12px 0", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>

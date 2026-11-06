@@ -4,8 +4,9 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import {
-  alertRecipients, claimAction, confirmCopy, countCopies, findWallet as walletOf, releaseCopy, reserveCopy, claimUnannouncedCalls, createAction, createCall, createLinkToken, createTrader, findWallet, getBotWallet,
-  getOrCreateTelegramUser, getOrCreateWalletUser, getTraderByUser, leaderboard, linkTelegram, moveCall, setFollow, type Db,
+  alertRecipients, applyOrderFrame, recordOrder, claimAction, confirmCopy, countCopies, createAction, createLinkToken, createTrader, findWallet, getBotWallet,
+  getOrCreateTelegramUser, getOrCreateWalletUser, getPosition, getTrade, getTraderByUser, leaderboard, linkTelegram, listTrades, releaseCopy, reserveCopy,
+  setFollow, type Db, type OrderFields,
 } from "./queries";
 import { sql } from "drizzle-orm";
 import * as schema from "./schema";
@@ -48,9 +49,6 @@ test("an expired action cannot be claimed", async () => {
   assert.equal(await claimAction(db, id, user.id), undefined);
 });
 
-const callValues = (traderId: string, orderId: string) => ({
-  traderId, orderId, funderAddress: "0xf", chain: "base", tokenSymbol: "WETH", tokenAddress: "0xw", entryType: "market", stopPrice: 90, targetPrice: 120,
-});
 
 test("linking moves the web wallet and trader onto the Telegram user, and the token works once", async () => {
   const webId = await getOrCreateWalletUser(db, "0xAbC1");
@@ -72,17 +70,6 @@ test("an expired link token does nothing", async () => {
   assert.equal((await findWallet(db, "0xabc2"))!.userId, webId);
 });
 
-test("a call is only announced once and a repeated status change is ignored", async () => {
-  const u = await getOrCreateWalletUser(db, "0xAbC3");
-  const t = (await createTrader(db, { userId: u, displayName: "caller" }))!;
-  const call = (await createCall(db, callValues(t.id, "o1")))!;
-  assert.equal(await createCall(db, callValues(t.id, "o1")), undefined);
-  assert.equal((await claimUnannouncedCalls(db)).filter((c) => c.id === call.id).length, 1);
-  assert.equal((await claimUnannouncedCalls(db)).filter((c) => c.id === call.id).length, 0);
-  assert.ok(await moveCall(db, call.id, { status: "live" }));
-  assert.equal(await moveCall(db, call.id, { status: "live" }), undefined);
-});
-
 test("alerts only go to followers with Telegram linked", async () => {
   const u = await getOrCreateWalletUser(db, "0xAbC4");
   const t = (await createTrader(db, { userId: u, displayName: "alerter" }))!;
@@ -95,42 +82,104 @@ test("alerts only go to followers with Telegram linked", async () => {
   assert.deepEqual(await alertRecipients(db, t.id), []);
 });
 
-test("the leaderboard counts only closed calls", async () => {
-  const u = await getOrCreateWalletUser(db, "0xAbC6");
-  const t = (await createTrader(db, { userId: u, displayName: "ranked" }))!;
-  const a = (await createCall(db, callValues(t.id, "r1")))!;
-  const b = (await createCall(db, callValues(t.id, "r2")))!;
-  await createCall(db, callValues(t.id, "r3"));
-  await moveCall(db, a.id, { status: "target_hit", resultPct: 20 });
-  await moveCall(db, b.id, { status: "stopped_out", resultPct: -5 });
+let orderN = 0;
+async function wallet(address: string) {
+  const userId = await getOrCreateWalletUser(db, address);
+  return { userId, walletId: (await findWallet(db, address))!.id };
+}
+const frame = (w: { userId: string; walletId: string }, over: Partial<OrderFields> = {}): OrderFields => ({
+  id: `order-${++orderN}`, ...w, isPublic: true, status: "ORDER_STATUS_FILLED", raw: {}, side: "buy", orderType: "market", chain: "base",
+  tokenSymbol: "WETH", tokenAddress: "0xweth", qty: "100", limitPrice: null, stopPrice: null, targetPrice: null, entryOrderId: null,
+  filledQty: 1, filledUsd: 100, usdPriced: true, placedAt: new Date(), ...over,
+});
+
+test("a replayed frame does not double count a fill", async () => {
+  const w = await wallet("0xD1");
+  const f = frame(w);
+  await applyOrderFrame(db, f);
+  await applyOrderFrame(db, f);
+  const held = await getPosition(db, w.walletId, "0xweth");
+  assert.deepEqual([held!.qty, held!.costUsd], [1, 100]);
+});
+
+test("partial fills only add what is new", async () => {
+  const w = await wallet("0xD2");
+  const f = frame(w, { status: "ORDER_STATUS_PARTIALLY_FILLED", filledQty: 0.5, filledUsd: 50 });
+  await applyOrderFrame(db, f);
+  await applyOrderFrame(db, { ...f, status: "ORDER_STATUS_FILLED", filledQty: 1, filledUsd: 110 });
+  const held = await getPosition(db, w.walletId, "0xweth");
+  assert.deepEqual([held!.qty, held!.costUsd], [1, 110]);
+});
+
+test("a sale records profit against average cost", async () => {
+  const w = await wallet("0xD3");
+  await applyOrderFrame(db, frame(w, { filledQty: 2, filledUsd: 200 }));
+  const { order } = await applyOrderFrame(db, frame(w, { side: "sell", filledQty: 1, filledUsd: 150 }));
+  assert.deepEqual([order.realizedUsd, order.soldCostUsd], [50, 100]);
+  const held = await getPosition(db, w.walletId, "0xweth");
+  assert.deepEqual([held!.qty, held!.costUsd], [1, 100]);
+});
+
+test("selling more than we tracked only counts the tracked part", async () => {
+  const w = await wallet("0xD4");
+  await applyOrderFrame(db, frame(w, { filledQty: 1, filledUsd: 100 }));
+  const { order } = await applyOrderFrame(db, frame(w, { side: "sell", filledQty: 2, filledUsd: 300 }));
+  assert.deepEqual([order.realizedUsd, order.soldCostUsd], [50, 100]);
+  assert.equal((await getPosition(db, w.walletId, "0xweth"))!.qty, 0);
+});
+
+test("a pair not priced in USDC doesn't touch positions", async () => {
+  const w = await wallet("0xD5");
+  await applyOrderFrame(db, frame(w, { usdPriced: false }));
+  assert.equal(await getPosition(db, w.walletId, "0xweth"), undefined);
+});
+
+test("an order saved by the bot first still becomes public", async () => {
+  const w = await wallet("0xD7");
+  const f = frame(w);
+  await recordOrder(db, { id: f.id, userId: w.userId, walletId: w.walletId, request: {} });
+  const { order, seenBefore } = await applyOrderFrame(db, f);
+  assert.equal(order.isPublic, true);
+  assert.equal(seenBefore, false);
+});
+
+test("the leaderboard uses realized results and private orders never show", async () => {
+  const w = await wallet("0xD6");
+  const t = (await createTrader(db, { userId: w.userId, displayName: "ranked" }))!;
+  await applyOrderFrame(db, frame(w, { filledQty: 2, filledUsd: 200 }));
+  await applyOrderFrame(db, frame(w, { side: "sell", filledQty: 1, filledUsd: 120 }));
+  await applyOrderFrame(db, frame(w, { side: "sell", filledQty: 1, filledUsd: 90 }));
+  const hidden = frame(w, { isPublic: false, filledQty: 5, filledUsd: 500 });
+  await applyOrderFrame(db, hidden);
   const [row] = await leaderboard(db, [t.id]);
-  assert.deepEqual([row!.totalCalls, row!.closedCalls, row!.wins, row!.totalReturn], [3, 2, 1, 15]);
+  assert.deepEqual([row!.trades, row!.closed, row!.wins, row!.realizedUsd, row!.soldCostUsd], [3, 2, 1, 10, 200]);
+  assert.equal(await getTrade(db, hidden.id), undefined);
+  assert.ok(!(await listTrades(db, 100)).some((r) => r.order.id === hidden.id));
 });
 
 async function copySetup(n: number) {
-  const trader = await getOrCreateWalletUser(db, `0xCa${n}`);
-  const t = (await createTrader(db, { userId: trader, displayName: `copied${n}` }))!;
-  const call = (await createCall(db, callValues(t.id, `c${n}`)))!;
-  const userId = await getOrCreateWalletUser(db, `0xCb${n}`);
-  const wallet = (await walletOf(db, `0xCb${n}`))!;
-  return { call, userId, values: { callId: call.id, userId, walletId: wallet.id, amountUsd: 10, stopPrice: 90, targetPrice: 120 } };
+  const trader = await wallet(`0xCa${n}`);
+  await createTrader(db, { userId: trader.userId, displayName: `copied${n}` });
+  const { order } = await applyOrderFrame(db, frame(trader));
+  const follower = await wallet(`0xCb${n}`);
+  return { order, userId: follower.userId, values: { sourceOrderId: order.id, ...follower, amountUsd: 10, stopPrice: 90, targetPrice: 120 } };
 }
 
-test("one wallet can only hold one reservation for a call", async () => {
+test("one wallet can only hold one reservation for a trade", async () => {
   const { values } = await copySetup(1);
   const results = await Promise.all([1, 2, 3].map(() => reserveCopy(db, values)));
   assert.equal(results.filter(Boolean).length, 1);
 });
 
 test("a placed copy can never be reserved again, and it counts once", async () => {
-  const { call, userId, values } = await copySetup(2);
+  const { order, userId, values } = await copySetup(2);
   const copy = (await reserveCopy(db, values))!;
   assert.ok(await confirmCopy(db, copy.id, userId, "order-c2"));
   assert.equal(await confirmCopy(db, copy.id, userId, "order-c2b"), undefined);
   assert.equal(await reserveCopy(db, values), undefined);
   await db.execute(sql`update copies set created_at = now() - interval '1 hour' where id = ${copy.id}`);
   assert.equal(await reserveCopy(db, values), undefined);
-  assert.equal(await countCopies(db, call.id), 1);
+  assert.equal(await countCopies(db, order.id), 1);
 });
 
 test("a released or abandoned reservation can be tried again", async () => {

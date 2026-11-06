@@ -1,7 +1,8 @@
-import { and, desc, eq, gt, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
-import { calls, copies, follows, linkTokens, orders, pendingActions, traders, users, wallets } from "./schema";
+import { applyFill } from "./position";
+import { copies, follows, linkTokens, orders, pendingActions, positions, traders, users, wallets } from "./schema";
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -142,45 +143,6 @@ export async function createTrader(db: Db, values: typeof traders.$inferInsert) 
   return trader; // undefined means the name is taken or the user is already a trader
 }
 
-export async function createCall(db: Db, values: typeof calls.$inferInsert) {
-  const [call] = await db.insert(calls).values(values).onConflictDoNothing().returning();
-  return call;
-}
-
-export const listCalls = (db: Db, limit = 30) =>
-  db
-    .select({ call: calls, trader: { id: traders.id, displayName: traders.displayName } })
-    .from(calls)
-    .innerJoin(traders, eq(calls.traderId, traders.id))
-    .orderBy(desc(calls.createdAt))
-    .limit(limit);
-
-export const listTraderCalls = (db: Db, traderId: string) =>
-  db.select().from(calls).where(eq(calls.traderId, traderId)).orderBy(desc(calls.createdAt)).limit(50);
-
-export const getCallByOrder = async (db: Db, orderId: string) => {
-  const [call] = await db.select().from(calls).where(eq(calls.orderId, orderId));
-  return call;
-};
-
-export const getCallByBracket = async (db: Db, bracketOrderId: string) => {
-  const [call] = await db.select().from(calls).where(eq(calls.bracketOrderId, bracketOrderId));
-  return call;
-};
-
-/** Applies a change only if the status differs, so a replayed stream frame never alerts twice. */
-export async function moveCall(db: Db, id: string, change: Partial<typeof calls.$inferInsert> & { status: (typeof calls.$inferInsert)["status"] }) {
-  const [call] = await db.update(calls).set(change).where(and(eq(calls.id, id), ne(calls.status, change.status!))).returning();
-  return call;
-}
-
-export const updateCallFields = (db: Db, id: string, change: Partial<typeof calls.$inferInsert>) =>
-  db.update(calls).set(change).where(eq(calls.id, id));
-
-/** Claims calls that have not been announced yet. Each is returned once. */
-export const claimUnannouncedCalls = (db: Db) =>
-  db.update(calls).set({ alertedAt: sql`now()` }).where(isNull(calls.alertedAt)).returning();
-
 export async function setFollow(db: Db, followerId: string, traderId: string, on: boolean) {
   if (on) await db.insert(follows).values({ followerId, traderId }).onConflictDoNothing();
   else await db.delete(follows).where(and(eq(follows.followerId, followerId), eq(follows.traderId, traderId)));
@@ -201,35 +163,9 @@ export async function alertRecipients(db: Db, traderId: string) {
   return rows.map((r) => r.telegramId!);
 }
 
-export async function upsertStreamOrder(db: Db, order: { id: string; userId: string; walletId: string; status: string; raw: unknown }) {
-  await db.insert(orders).values(order).onConflictDoUpdate({ target: orders.id, set: { status: order.status, raw: order.raw } });
-}
-
-const ranked = sql`${calls.status} in ('target_hit', 'stopped_out', 'closed')`;
-
-/** Every number here comes from calls closed by real fills. */
-export const leaderboard = (db: Db, traderIds?: string[]) =>
-  db
-    .select({
-      id: traders.id,
-      displayName: traders.displayName,
-      bio: traders.bio,
-      xHandle: traders.xHandle,
-      totalCalls: sql<number>`count(${calls.id})::int`,
-      closedCalls: sql<number>`(count(${calls.id}) filter (where ${ranked}))::int`,
-      wins: sql<number>`(count(${calls.id}) filter (where ${ranked} and ${calls.resultPct} > 0))::int`,
-      totalReturn: sql<number>`coalesce(sum(${calls.resultPct}) filter (where ${ranked}), 0)::float`,
-      followers: sql<number>`(select count(*) from ${follows} where ${follows.traderId} = ${traders.id})::int`,
-    })
-    .from(traders)
-    .leftJoin(calls, eq(calls.traderId, traders.id))
-    .where(traderIds ? inArray(traders.id, traderIds) : undefined)
-    .groupBy(traders.id)
-    .orderBy(sql`coalesce(sum(${calls.resultPct}) filter (where ${ranked}), 0) desc`);
-
-export const getOrderStatus = async (db: Db, id: string) => {
-  const [row] = await db.select({ status: orders.status }).from(orders).where(eq(orders.id, id));
-  return row?.status ?? undefined;
+export const getOrder = async (db: Db, id: string) => {
+  const [row] = await db.select().from(orders).where(eq(orders.id, id));
+  return row;
 };
 
 export const getUser = async (db: Db, id: string) => {
@@ -237,37 +173,136 @@ export const getUser = async (db: Db, id: string) => {
   return user;
 };
 
-export const getCall = async (db: Db, id: string) => {
-  const [row] = await db
-    .select({ call: calls, trader: { id: traders.id, displayName: traders.displayName, userId: traders.userId } })
-    .from(calls)
-    .innerJoin(traders, eq(calls.traderId, traders.id))
-    .where(eq(calls.id, id));
+export interface OrderFields {
+  id: string;
+  userId: string;
+  walletId: string;
+  isPublic: boolean;
+  status: string;
+  raw: unknown;
+  side: string;
+  orderType: string;
+  chain: string;
+  tokenSymbol: string;
+  tokenAddress: string;
+  qty: string;
+  limitPrice: number | null;
+  stopPrice: number | null;
+  targetPrice: number | null;
+  entryOrderId: string | null;
+  filledQty: number;
+  filledUsd: number;
+  usdPriced: boolean; // false when the other side isn't USDC, so a fill has no reliable USD value
+  placedAt: Date | null;
+}
+
+/**
+ * Records a stream frame and applies any new fill to the wallet's position, once.
+ * Replaying a frame changes nothing, because only the amount above what was already applied counts.
+ */
+export async function applyOrderFrame(db: Db, frame: OrderFields) {
+  return db.transaction(async (tx) => {
+    const [before] = await tx.select().from(orders).where(eq(orders.id, frame.id));
+    const newQty = frame.filledQty - (before?.filledQty ?? 0);
+    const newUsd = frame.filledUsd - (before?.filledUsd ?? 0);
+    let realizedUsd = before?.realizedUsd ?? 0;
+    let soldCostUsd = before?.soldCostUsd ?? 0;
+
+    if (newQty > 0 && frame.usdPriced) {
+      const key = and(eq(positions.walletId, frame.walletId), eq(positions.tokenAddress, frame.tokenAddress));
+      const [held] = await tx.select().from(positions).where(key);
+      const result = applyFill(held ?? { qty: 0, costUsd: 0 }, frame.side, newQty, newUsd);
+      await tx
+        .insert(positions)
+        .values({ walletId: frame.walletId, tokenAddress: frame.tokenAddress, tokenSymbol: frame.tokenSymbol, ...result.position })
+        .onConflictDoUpdate({ target: [positions.walletId, positions.tokenAddress], set: result.position });
+      realizedUsd += result.realizedUsd;
+      soldCostUsd += result.soldCostUsd;
+    }
+
+    const { usdPriced: _usdPriced, ...row } = frame;
+    const values = {
+      ...row,
+      // A frame can't remove a level or fill we already know about.
+      stopPrice: frame.stopPrice ?? before?.stopPrice ?? null,
+      targetPrice: frame.targetPrice ?? before?.targetPrice ?? null,
+      filledQty: Math.max(frame.filledQty, before?.filledQty ?? 0),
+      filledUsd: Math.max(frame.filledUsd, before?.filledUsd ?? 0),
+      // The bot saves a bare row first, so visibility is only fixed once a frame has been applied.
+      isPublic: before?.side ? before.isPublic : frame.isPublic,
+      realizedUsd,
+      soldCostUsd,
+    };
+    const [order] = await tx.insert(orders).values(values).onConflictDoUpdate({ target: orders.id, set: values }).returning();
+    return { order: order!, previousStatus: before?.status ?? undefined, seenBefore: !!before?.side };
+  });
+}
+
+const trade = {
+  order: orders,
+  trader: { id: traders.id, displayName: traders.displayName, userId: traders.userId },
+};
+
+export const listTrades = (db: Db, limit = 30) =>
+  db.select(trade).from(orders).innerJoin(traders, eq(orders.userId, traders.userId)).where(eq(orders.isPublic, true)).orderBy(desc(orders.placedAt)).limit(limit);
+
+export const listTraderTrades = (db: Db, userId: string) =>
+  db.select().from(orders).where(and(eq(orders.userId, userId), eq(orders.isPublic, true))).orderBy(desc(orders.placedAt)).limit(50);
+
+export const getTrade = async (db: Db, orderId: string) => {
+  const [row] = await db.select(trade).from(orders).innerJoin(traders, eq(orders.userId, traders.userId)).where(and(eq(orders.id, orderId), eq(orders.isPublic, true)));
   return row;
 };
 
-export const countCopies = async (db: Db, callId: string) => {
+export const getPosition = async (db: Db, walletId: string, tokenAddress: string) => {
+  const [row] = await db.select().from(positions).where(and(eq(positions.walletId, walletId), eq(positions.tokenAddress, tokenAddress)));
+  return row;
+};
+
+/** Every number here comes from fills. Return is profit on what was sold, divided by what it cost. */
+export const leaderboard = (db: Db, traderIds?: string[]) =>
+  db
+    .select({
+      id: traders.id,
+      userId: traders.userId,
+      displayName: traders.displayName,
+      bio: traders.bio,
+      xHandle: traders.xHandle,
+      trades: sql<number>`(count(${orders.id}) filter (where ${orders.filledQty} > 0))::int`,
+      closed: sql<number>`(count(${orders.id}) filter (where ${orders.soldCostUsd} > 0))::int`,
+      wins: sql<number>`(count(${orders.id}) filter (where ${orders.realizedUsd} > 0))::int`,
+      realizedUsd: sql<number>`coalesce(sum(${orders.realizedUsd}), 0)::float`,
+      soldCostUsd: sql<number>`coalesce(sum(${orders.soldCostUsd}), 0)::float`,
+      followers: sql<number>`(select count(*) from ${follows} where ${follows.traderId} = ${traders.id})::int`,
+    })
+    .from(traders)
+    .leftJoin(orders, and(eq(orders.userId, traders.userId), eq(orders.isPublic, true)))
+    .where(traderIds ? inArray(traders.id, traderIds) : undefined)
+    .groupBy(traders.id)
+    .orderBy(sql`coalesce(sum(${orders.realizedUsd}) / nullif(sum(${orders.soldCostUsd}), 0), 0) desc`);
+
+export const countCopies = async (db: Db, sourceOrderId: string) => {
   const [row] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(copies)
-    .where(and(eq(copies.callId, callId), eq(copies.status, "placed")));
+    .where(and(eq(copies.sourceOrderId, sourceOrderId), eq(copies.status, "placed")));
   return row?.n ?? 0;
 };
 
-export const getUserCopy = async (db: Db, callId: string, userId: string) => {
-  const [row] = await db.select().from(copies).where(and(eq(copies.callId, callId), eq(copies.userId, userId), eq(copies.status, "placed")));
+export const getUserCopy = async (db: Db, sourceOrderId: string, userId: string) => {
+  const [row] = await db.select().from(copies).where(and(eq(copies.sourceOrderId, sourceOrderId), eq(copies.userId, userId), eq(copies.status, "placed")));
   return row;
 };
 
 const RESERVATION_MINUTES = 5;
 
-/** Reserves a copy. Returns nothing if this wallet already copied the call or has a recent reservation. */
+/** Reserves a copy. Returns nothing if this wallet already copied the trade or has a recent reservation. */
 export async function reserveCopy(db: Db, values: typeof copies.$inferInsert) {
   const [row] = await db
     .insert(copies)
     .values(values)
     .onConflictDoUpdate({
-      target: [copies.callId, copies.walletId],
+      target: [copies.sourceOrderId, copies.walletId],
       set: { amountUsd: values.amountUsd, stopPrice: values.stopPrice, targetPrice: values.targetPrice, createdAt: sql`now()` },
       setWhere: sql`${copies.status} = 'pending' and ${copies.createdAt} < now() - make_interval(mins => ${RESERVATION_MINUTES})`,
     })

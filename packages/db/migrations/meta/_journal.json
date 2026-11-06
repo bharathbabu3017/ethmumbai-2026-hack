@@ -22,6 +22,20 @@
       "when": 1793950538000,
       "tag": "0002_powerful_mister_sinister",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793951034129,
+      "tag": "0003_little_elektra",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793951034681,
+      "tag": "0004_superb_sleepwalker",
+      "breakpoints": true
     }
   ]
 }

@@ -4,7 +4,7 @@ import { prepareOrder, submitPrepared, USDC_BASE, type OrderRequest, type QuoteR
 import Link from "next/link";
 import { useState } from "react";
 import { ensureSession, postJson } from "@/lib/account";
-import { callBlock, copyInputError, copyMode, type CopyableCall } from "@/lib/copy";
+import { copyInputError, copyMode, entryPrice, tradeBlock, type CopyableTrade } from "@/lib/copy";
 import { flash } from "@/lib/flash";
 import { usd } from "@/lib/format";
 import { useWallet } from "@/lib/wallet";
@@ -12,16 +12,18 @@ import { useWallet } from "@/lib/wallet";
 const PRESETS = ["25", "50", "100", "250"];
 type Preview = { request: OrderRequest; quote: QuoteResponse; price: number };
 
-export function CopyPanel({ call }: { call: CopyableCall & { id: string; tokenSymbol: string; tokenAddress: string } }) {
+export function CopyPanel({ trade }: { trade: CopyableTrade & { id: string; tokenSymbol: string; tokenAddress: string } }) {
   const { address, login, getSigner } = useWallet();
   const [amount, setAmount] = useState("25");
-  const [stop, setStop] = useState(String(call.stopPrice));
-  const [target, setTarget] = useState(String(call.targetPrice));
+  const [stop, setStop] = useState(trade.stopPrice === null ? "" : String(trade.stopPrice));
+  const [target, setTarget] = useState(trade.targetPrice === null ? "" : String(trade.targetPrice));
   const [preview, setPreview] = useState<Preview>();
   const [placed, setPlaced] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const mode = copyMode(call);
+  const mode = copyMode(trade);
+  const entry = entryPrice(trade);
+  const levels = { stopPrice: stop === "" ? null : Number(stop), targetPrice: target === "" ? null : Number(target) };
 
   const edit = (set: (v: string) => void) => (e: { target: { value: string } }) => {
     set(e.target.value);
@@ -42,17 +44,18 @@ export function CopyPanel({ call }: { call: CopyableCall & { id: string; tokenSy
 
   const review = run(async () => {
     if (!address) throw new Error("Connect a wallet first");
-    const pair = { targetChain: "base", contraChain: "base", targetAsset: call.tokenAddress, contraAsset: USDC_BASE, side: "buy", qty: amount } as const;
+    const pair = { targetChain: "base", contraChain: "base", targetAsset: trade.tokenAddress, contraAsset: USDC_BASE, side: "buy", qty: amount } as const;
     const probe = await flash.quote({ ...pair, orderType: "market" });
     const price = Number(probe.from.notional) / Number(probe.to.amount);
-    const problem = callBlock(call, price) ?? copyInputError(call, price, { amountUsd: Number(amount), stopPrice: Number(stop), targetPrice: Number(target) });
+    // The server rechecks this, including whether the trader still holds the position.
+    const problem = tradeBlock(trade, price, true) ?? copyInputError(trade, price, { amountUsd: Number(amount), ...levels });
     if (problem) throw new Error(problem);
     const request: OrderRequest = {
       ...pair,
       orderType: mode,
       // Flash rejects limitNotionalPrice on a limit entry with a bracket. Against USDC the pair rate is the USD price.
-      ...(mode === "limit" ? { limitCrossPrice: String(call.entryPrice) } : {}),
-      attachedBracket: { takeProfit: { notionalPrice: target }, stopLoss: { notionalPrice: stop } },
+      ...(mode === "limit" ? (stop ? { limitCrossPrice: String(trade.limitPrice) } : { limitNotionalPrice: String(trade.limitPrice) }) : {}),
+      ...(stop ? { attachedBracket: { takeProfit: { notionalPrice: target }, stopLoss: { notionalPrice: stop } } } : {}),
     };
     setPreview({ request, quote: await prepareOrder(flash, address, request), price });
   });
@@ -60,7 +63,7 @@ export function CopyPanel({ call }: { call: CopyableCall & { id: string; tokenSy
   const confirm = run(async () => {
     if (!preview) return;
     await ensureSession(getSigner);
-    const { copyId } = await postJson<{ copyId: string }>(`/api/calls/${call.id}/copies`, { amountUsd: amount, stopPrice: stop, targetPrice: target });
+    const { copyId } = await postJson<{ copyId: string }>(`/api/trades/${trade.id}/copies`, { amountUsd: amount, ...levels });
     let orderId: string;
     try {
       ({ orderId } = await submitPrepared(flash, await getSigner(), preview.request, preview.quote));
@@ -80,7 +83,7 @@ export function CopyPanel({ call }: { call: CopyableCall & { id: string; tokenSy
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <h2 style={{ fontSize: 18 }}>Copy placed</h2>
-        <p className="mut" style={{ margin: 0 }}>Your order is live with your stop and target attached. Keep the tokens in your wallet so they can execute.</p>
+        <p className="mut" style={{ margin: 0 }}>Your order is live. Keep the tokens in your wallet so any stop and target can execute.</p>
         <Link href="/portfolio" className="btn">View my orders</Link>
       </div>
     );
@@ -88,8 +91,8 @@ export function CopyPanel({ call }: { call: CopyableCall & { id: string; tokenSy
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <h2 style={{ fontSize: 18 }}>Copy this call</h2>
-      <p className="mut" style={{ margin: 0 }}>{mode === "limit" ? `Limit order at ${usd(call.entryPrice)}. It fills if the price gets there.` : "Market order at the current price."}</p>
+      <h2 style={{ fontSize: 18 }}>Copy this trade</h2>
+      <p className="mut" style={{ margin: 0 }}>{mode === "limit" ? `Limit order at ${usd(trade.limitPrice)}. It fills if the price gets there.` : "Market order at the current price."}</p>
       <div>
         <label className="lab" htmlFor="amount">Amount (USDC)</label>
         <input id="amount" className="inp" inputMode="decimal" value={amount} onChange={edit(setAmount)} />
@@ -100,18 +103,20 @@ export function CopyPanel({ call }: { call: CopyableCall & { id: string; tokenSy
         </div>
       </div>
       <div className="row" style={{ flexWrap: "nowrap" }}>
-        <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="stop">Your stop (USD)</label><input id="stop" className="inp" inputMode="decimal" value={stop} onChange={edit(setStop)} /></div>
-        <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="target">Your target (USD)</label><input id="target" className="inp" inputMode="decimal" value={target} onChange={edit(setTarget)} /></div>
+        <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="stop">Stop loss (USD)</label><input id="stop" className="inp" inputMode="decimal" value={stop} onChange={edit(setStop)} /></div>
+        <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="target">Take profit (USD)</label><input id="target" className="inp" inputMode="decimal" value={target} onChange={edit(setTarget)} /></div>
       </div>
+
+      {!stop && !target && <p className="dn" style={{ margin: 0, fontSize: 13 }}>No stop or target set. You&apos;ll have to exit this position yourself.</p>}
 
       {preview && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "12px 0", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
           <div className="between"><span className="mut">Price now</span><span className="m">{usd(preview.price)}</span></div>
-          {call.entryPrice !== null && <div className="between"><span className="mut">Trader&apos;s entry</span><span className="m">{usd(call.entryPrice)}</span></div>}
-          <div className="between"><span className="mut">You get about</span><span className="m">{Number(preview.quote.to.amount).toFixed(6)} {call.tokenSymbol}</span></div>
+          {entry !== null && <div className="between"><span className="mut">Trader&apos;s entry</span><span className="m">{usd(entry)}</span></div>}
+          <div className="between"><span className="mut">You get about</span><span className="m">{Number(preview.quote.to.amount).toFixed(6)} {trade.tokenSymbol}</span></div>
           <div className="between"><span className="mut">Estimated fees</span><span className="m">${preview.quote.fees.estimatedFeeNotional}</span></div>
           {preview.quote.recommendedSlippage && <div className="between"><span className="mut">Max slippage</span><span className="m">{(Number(preview.quote.recommendedSlippage) * 100).toFixed(1)}%</span></div>}
-          <p className="mut" style={{ margin: "6px 0 0", fontSize: 13 }}>This spends real funds. Your wallet may ask you to approve tokens, then sign twice. Keep the tokens in your wallet so your stop and target can execute.</p>
+          <p className="mut" style={{ margin: "6px 0 0", fontSize: 13 }}>This spends real funds. Your wallet may ask you to approve tokens and sign more than once. Keep the tokens in your wallet so any stop and target can execute.</p>
         </div>
       )}
 

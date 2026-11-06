@@ -1,4 +1,4 @@
-import { confirmCopy, getCall, getCopy } from "@flashmob/db";
+import { confirmCopy, getCopy, getOrder } from "@flashmob/db";
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { readOrder } from "@/lib/orders";
@@ -15,14 +15,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!/^[0-9a-f-]{36}$/.test(id) || typeof orderId !== "string" || !/^[0-9a-f-]{36}$/.test(orderId)) return fail("Invalid request", 400);
 
   const copy = await getCopy(db(), id, session.userId);
-  const row = copy && (await getCall(db(), copy.callId));
-  if (!copy || !row) return fail("Copy not found", 404);
+  const source = copy && (await getOrder(db(), copy.sourceOrderId));
+  if (!copy || !source?.tokenAddress) return fail("Copy not found", 404);
 
   const order = await readOrder(orderId, session.address);
   const matches =
     order?.funderAddress.toLowerCase() === session.address.toLowerCase() &&
     order.side === "buy" &&
-    order.targetAsset.address.toLowerCase() === row.call.tokenAddress.toLowerCase();
+    order.targetAsset.address.toLowerCase() === source.tokenAddress.toLowerCase();
   if (!matches) return fail("That order doesn't match this copy", 404);
 
   const confirmed = await confirmCopy(db(), id, session.userId, orderId).catch(() => undefined);

@@ -1,56 +1,42 @@
-import {
-  alertRecipients, claimUnannouncedCalls, findWallet, getCallByBracket, getCallByOrder, getOrderStatus, getTrader, getUser, moveCall,
-  updateCallFields, upsertStreamOrder, type Db,
-} from "@flashmob/db";
-import { bracketChange, changeAlert, entryChange, OPEN_STATUSES, ownOrderAlert, publishedAlert, type OrderFrame } from "./calls";
+import { alertRecipients, applyOrderFrame, findWallet, getOrder, getTraderByUser, getUser, type Db } from "@flashmob/db";
+import type { FlashClient } from "@flashmob/flash";
+import { OPEN_STATUSES, orderFields, ownOrderAlert, tradeAlert, type Levels, type OrderFrame } from "./trades";
 
 const WS_URL = "wss://flash.definitive.fi/v1/ws";
 const HEARTBEAT_TIMEOUT_MS = 10_000;
-const ANNOUNCE_EVERY_MS = 2_000;
 
 export type Send = (chatId: number, text: string) => Promise<void>;
 
-export async function handleOrder(db: Db, send: Send, o: OrderFrame, live: boolean) {
+// The stream leaves out an attached pair's prices, so they are read once from the order itself.
+async function attachedLevels(flash: FlashClient, o: OrderFrame): Promise<Levels | undefined> {
+  const pair = await flash.getOrder(o.orderId, o.funderAddress).then((r) => r.order.attachedBracket).catch(() => undefined);
+  if (!pair) return undefined;
+  const value = (leg?: { notionalPrice?: string; crossPrice?: string } | null) => Number(leg?.notionalPrice ?? leg?.crossPrice) || null;
+  return { stop: value(pair.stopLoss), target: value(pair.takeProfit) };
+}
+
+export async function handleOrder(db: Db, flash: FlashClient, send: Send, o: OrderFrame, live: boolean) {
   const wallet = await findWallet(db, o.funderAddress);
   if (!wallet) return;
-  const previous = await getOrderStatus(db, o.orderId);
-  await upsertStreamOrder(db, { id: o.orderId, userId: wallet.userId, walletId: wallet.id, status: o.status, raw: o });
+  const trader = await getTraderByUser(db, wallet.userId);
+  const known = await getOrder(db, o.orderId);
+  const levels = o.attachedBracket && known?.stopPrice == null ? await attachedLevels(flash, o) : undefined;
 
-  if (live && previous !== o.status && !OPEN_STATUSES.has(o.status)) {
+  const { order, previousStatus, seenBefore } = await applyOrderFrame(db, orderFields(o, { userId: wallet.userId, walletId: wallet.id }, !!trader, levels));
+  if (!live) return; // a snapshot only seeds state, so reconnecting never re-alerts
+  const statusChanged = previousStatus !== o.status;
+
+  if (statusChanged && !OPEN_STATUSES.has(o.status)) {
     const owner = await getUser(db, wallet.userId);
     if (owner?.telegramId) await send(owner.telegramId, ownOrderAlert(o));
   }
-
-  const entry = await getCallByOrder(db, o.orderId);
-  const bracketId = o.attachedBracket?.bracketOrderId;
-  if (entry && bracketId && entry.bracketOrderId !== bracketId) await updateCallFields(db, entry.id, { bracketOrderId: bracketId });
-
-  const pair = entry ? undefined : o.sourceEntryOrderId ? await getCallByOrder(db, o.sourceEntryOrderId) : await getCallByBracket(db, o.orderId);
-  const call = entry ?? pair;
-  if (!call) return;
-
-  const change = entry ? entryChange(call, o) : bracketChange(call, o);
-  if (!change) return;
-  const closing = change.status !== "live";
-  const moved = await moveCall(db, call.id, { ...change, ...(closing ? { closedAt: new Date() } : {}) });
-  if (!moved) return;
-
-  const trader = await getTrader(db, call.traderId);
-  if (!trader) return;
-  const text = changeAlert(trader.displayName, call.tokenSymbol, change);
-  for (const chatId of await alertRecipients(db, call.traderId)) await send(chatId, text);
+  if (!trader || !order.isPublic) return;
+  const text = tradeAlert(trader.displayName, order, { isNew: !seenBefore, statusChanged });
+  if (!text) return;
+  for (const chatId of await alertRecipients(db, trader.id)) await send(chatId, text);
 }
 
-export async function announceCalls(db: Db, send: Send) {
-  for (const call of await claimUnannouncedCalls(db)) {
-    const trader = await getTrader(db, call.traderId);
-    if (!trader) continue;
-    const text = publishedAlert(trader.displayName, call);
-    for (const chatId of await alertRecipients(db, call.traderId)) await send(chatId, text);
-  }
-}
-
-export function startListener(db: Db, send: Send, apiKey: string) {
+export function startListener(db: Db, flash: FlashClient, send: Send, apiKey: string) {
   let attempts = 0;
   // Frames are handled one at a time so a status change can't overtake the one before it.
   let queue = Promise.resolve();
@@ -86,7 +72,7 @@ export function startListener(db: Db, send: Send, apiKey: string) {
       if (frame.channel !== "orders" || !Array.isArray(frame.orders)) return;
       for (const order of frame.orders as OrderFrame[]) {
         queue = queue
-          .then(() => handleOrder(db, send, order, frame.type === "update"))
+          .then(() => handleOrder(db, flash, send, order, frame.type === "update"))
           .catch((err) => console.error("Could not handle order:", err instanceof Error ? err.message : "unknown"));
       }
     };
@@ -100,7 +86,4 @@ export function startListener(db: Db, send: Send, apiKey: string) {
   };
 
   connect();
-  setInterval(() => {
-    announceCalls(db, send).catch((err) => console.error("Could not announce calls:", err instanceof Error ? err.message : "unknown"));
-  }, ANNOUNCE_EVERY_MS);
 }

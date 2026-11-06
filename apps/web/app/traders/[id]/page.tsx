@@ -1,8 +1,8 @@
-import { isFollowing, leaderboard, listTraderCalls } from "@flashmob/db";
+import { isFollowing, leaderboard, listTraderTrades } from "@flashmob/db";
 import { notFound } from "next/navigation";
-import { CallCard } from "@/components/call-card";
 import { FollowButton } from "@/components/follow-button";
 import { Nav } from "@/components/nav";
+import { TradeRow } from "@/components/trade-row";
 import { db } from "@/lib/db";
 import { pct } from "@/lib/format";
 import { getSession } from "@/lib/session";
@@ -14,14 +14,14 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
   if (!/^[0-9a-f-]{36}$/.test(id)) notFound();
   const [trader] = await leaderboard(db(), [id]);
   if (!trader) notFound();
-  const [calls, session] = await Promise.all([listTraderCalls(db(), id), getSession()]);
+  const [trades, session] = await Promise.all([listTraderTrades(db(), trader.userId), getSession()]);
   const following = session ? await isFollowing(db(), session.userId, id) : false;
 
+  const ret = trader.soldCostUsd > 0 ? (trader.realizedUsd / trader.soldCostUsd) * 100 : null;
   const stats = [
-    ["Total return", trader.closedCalls ? pct(trader.totalReturn) : "-"],
-    ["Win rate", trader.closedCalls ? `${Math.round((trader.wins / trader.closedCalls) * 100)}%` : "-"],
-    ["Closed calls", String(trader.closedCalls)],
-    ["All calls", String(trader.totalCalls)],
+    ["Return on sold positions", ret === null ? "-" : pct(ret)],
+    ["Win rate", trader.closed ? `${Math.round((trader.wins / trader.closed) * 100)}%` : "-"],
+    ["Filled trades", String(trader.trades)],
     ["Followers", String(trader.followers)],
   ];
   return (
@@ -45,9 +45,9 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
           ))}
         </section>
         <section>
-          <h2 style={{ fontSize: 18, marginBottom: 14 }}>Calls</h2>
-          {calls.length === 0 && <p className="mut" style={{ margin: 0 }}>No calls yet.</p>}
-          {calls.map((call) => <CallCard key={call.id} call={call} />)}
+          <h2 style={{ fontSize: 18, marginBottom: 14 }}>Trades</h2>
+          {trades.length === 0 && <p className="mut" style={{ margin: 0 }}>No trades yet.</p>}
+          {trades.map((order) => <TradeRow key={order.id} order={order} />)}
         </section>
       </main>
     </>
