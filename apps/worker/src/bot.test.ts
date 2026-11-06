@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { beforeEach, test } from "node:test";
-import { migrationsFolder, schema, type Db } from "@flashmob/db";
+import { schema, type Db } from "@flashmob/db";
+import { migrationsFolder } from "@flashmob/db/migrations";
 import { FlashError, type FlashClient } from "@flashmob/flash";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
