@@ -225,3 +225,13 @@ export const leaderboard = (db: Db, traderIds?: string[]) =>
     .where(traderIds ? inArray(traders.id, traderIds) : undefined)
     .groupBy(traders.id)
     .orderBy(sql`coalesce(sum(${calls.resultPct}) filter (where ${ranked}), 0) desc`);
+
+export const getOrderStatus = async (db: Db, id: string) => {
+  const [row] = await db.select({ status: orders.status }).from(orders).where(eq(orders.id, id));
+  return row?.status ?? undefined;
+};
+
+export const getUser = async (db: Db, id: string) => {
+  const [user] = await db.select().from(users).where(eq(users.id, id));
+  return user;
+};

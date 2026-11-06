@@ -1,4 +1,4 @@
-import { claimAction, createAction, getOrCreateTelegramUser, recordOrder, type Db } from "@flashmob/db";
+import { claimAction, createAction, getOrCreateTelegramUser, linkTelegram, recordOrder, type Db } from "@flashmob/db";
 import { cancelMessage, FlashError, prepareOrder, resolveBaseToken, submitPrepared, USDC_BASE as USDC, type FlashClient, type OrderRequest } from "@flashmob/flash";
 import { createBotSigner, decryptKey, generateBotWallet } from "@flashmob/signer";
 import { Bot, InlineKeyboard, type BotConfig, type Context } from "grammy";
@@ -52,7 +52,16 @@ export function createBot({ token, db, flash, masterKey, feeBps, rpcUrl, botInfo
   const friendly = (e: unknown) => (e instanceof FlashError ? e.message : "Something went wrong");
 
   pm.command("start", async (ctx) => {
-    const { wallet, created } = await load(ctx.from);
+    const { user, wallet, created } = await load(ctx.from);
+    if (ctx.match) {
+      const result = await linkTelegram(db, ctx.match, user.id);
+      const replies = {
+        linked: "Your Flashmob account is linked. You'll get alerts here for traders you follow.",
+        invalid: "That link has expired or was already used. Create a new one on the website.",
+        conflict: "Both accounts are already traders, so they can't be linked.",
+      };
+      return void (await ctx.reply(replies[result]));
+    }
     await ctx.reply(
       `${created ? "Your trading wallet is ready." : "Welcome back."}\n\n${wallet.address}\n\n` +
         `Send USDC on Base to this address, plus a little ETH for gas. We hold this wallet's key so it can trade for you, so only keep what you want to trade with.\n\n${HELP}`,
