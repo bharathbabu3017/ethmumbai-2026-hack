@@ -1,0 +1,25 @@
+import { FLASH_BASE_URL } from "@flashmob/flash";
+import { NextResponse, type NextRequest } from "next/server";
+import { isAllowed, withPlatformFee } from "@/lib/proxy";
+
+type Params = { params: Promise<{ path: string[] }> };
+
+async function forward(req: NextRequest, { params }: Params) {
+  const path = (await params).path.join("/");
+  const query = req.nextUrl.searchParams;
+  if (!isAllowed(req.method, path, query)) {
+    return NextResponse.json({ error: { code: "NOT_FOUND", message: "Not found" } }, { status: 404 });
+  }
+  const apiKey = process.env.FLASH_API_KEY;
+  if (!apiKey) return NextResponse.json({ error: { code: "NOT_CONFIGURED", message: "Flash key missing" } }, { status: 503 });
+
+  const body = req.method === "GET" ? undefined : withPlatformFee(path, await req.json(), process.env.PLATFORM_FEE_BPS ?? "10");
+  const res = await fetch(`${FLASH_BASE_URL}/${path}${req.nextUrl.search}`, {
+    method: req.method,
+    headers: { "content-type": "application/json", "x-definitive-api-key": apiKey },
+    body: body && JSON.stringify(body),
+  });
+  return new NextResponse(await res.text(), { status: res.status, headers: { "content-type": "application/json" } });
+}
+
+export { forward as GET, forward as POST, forward as PATCH };

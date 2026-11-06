@@ -1,0 +1,13 @@
+import type { NextConfig } from "next";
+
+// Secrets live in the repo's root .env locally. Hosted deploys set them directly.
+try {
+  process.loadEnvFile("../../.env");
+} catch {}
+
+const config: NextConfig = {
+  transpilePackages: ["@flashmob/flash"],
+  env: { NEXT_PUBLIC_PRIVY_APP_ID: process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "" },
+};
+
+export default config;
