@@ -120,3 +120,7 @@ select.inp{font-family:var(--font-inter),sans-serif;appearance:auto}
 .search-bar:hover{border-color:var(--line2)}
 .search-bar:focus-visible{outline:2px solid var(--line2);outline-offset:2px}
 .search-bar kbd{margin-left:auto;padding:0 6px;border:1px solid var(--line2);border-radius:4px;font:12px var(--font-mono),monospace}
+.pickcard{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:4px;padding:12px;border:1px solid var(--line);border-radius:8px}
+.pickcard:hover{border-color:var(--line2)}
+.pickcard.sel{border-color:var(--lime);background:var(--soft)}
+.pickcard:focus-visible{outline:2px solid var(--line2);outline-offset:2px}

@@ -1,3 +1,4 @@
+export * from "./agent-decision";
 export * from "./agents";
 export * from "./build";
 export * from "./client";
