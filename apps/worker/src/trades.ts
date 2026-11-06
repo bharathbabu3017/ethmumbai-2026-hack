@@ -97,32 +97,38 @@ interface TradeRow {
   soldCostUsd: number;
 }
 
+const signedPct = (t: TradeRow) => {
+  if (t.soldCostUsd <= 0) return "";
+  const pct = (t.realizedUsd / t.soldCostUsd) * 100;
+  return ` · ${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
+};
+
+const fillLine = (t: TradeRow) => (t.filledQty > 0 && t.filledUsd > 0 ? `${usd(t.filledUsd)} at ${usd(t.filledUsd / t.filledQty)}` : "");
+
 /** What followers should hear about this frame, if anything. */
 export function tradeAlert(trader: string, t: TradeRow, change: { isNew: boolean; statusChanged: boolean }) {
   const token = t.tokenSymbol;
   const exitPair = t.orderType === "bracket" && t.entryOrderId;
   if (t.status === "ORDER_STATUS_FILLED" && change.statusChanged) {
-    const at = t.filledQty > 0 && t.filledUsd > 0 ? ` at ${usd(t.filledUsd / t.filledQty)}` : "";
-    if (t.side === "buy") return `${trader} bought ${token}${at}.`;
-    const result = t.soldCostUsd > 0 ? ` (${t.realizedUsd >= 0 ? "+" : ""}${((t.realizedUsd / t.soldCostUsd) * 100).toFixed(1)}%)` : "";
-    return `${trader} sold ${token}${at}${result}.`;
+    if (t.side === "buy") return `🟢 ${trader} bought ${token}\n${fillLine(t)}`.trim();
+    return `🔴 ${trader} sold ${token}\n${fillLine(t)}${signedPct(t)}`.trim();
   }
   if (!OPEN_STATUSES.has(t.status ?? "") && change.statusChanged) {
     if (exitPair) return null;
-    return t.filledQty > 0 ? `${trader} cancelled the rest of their ${t.orderType} ${t.side} of ${token}.` : `${trader} cancelled their ${t.orderType} ${t.side} of ${token}.`;
+    return t.filledQty > 0 ? `⚪ ${trader} cancelled the rest of their ${t.orderType} ${t.side} of ${token}` : `⚪ ${trader} cancelled their ${t.orderType} ${t.side} of ${token}`;
   }
   // A market order fills in moments, so its fill is the alert.
   if (change.isNew && t.orderType !== "market" && !exitPair) {
     const size = t.side === "buy" ? `$${t.qty}` : `${t.qty} ${token}`;
     const at = t.limitPrice ? ` at ${usd(t.limitPrice)}` : "";
-    const exits = [t.stopPrice && `stop ${usd(t.stopPrice)}`, t.targetPrice && `target ${usd(t.targetPrice)}`].filter(Boolean).join(", ");
-    return `${trader} placed a ${t.orderType} ${t.side} of ${token}: ${size}${at}${exits ? `, ${exits}` : ""}.`;
+    const exits = [t.stopPrice && `Stop ${usd(t.stopPrice)}`, t.targetPrice && `Target ${usd(t.targetPrice)}`].filter(Boolean).join(" · ");
+    return `🕓 ${trader} placed a ${t.orderType} ${t.side} of ${token}\n${size}${at}${exits ? `\n${exits}` : ""}`;
   }
   return null;
 }
 
 export function mirrorAlert(trader: string, m: { percent: number; qty: number; tokenSymbol: string }) {
-  return `${trader} sold ${m.percent.toFixed(0)}% of their ${m.tokenSymbol}. Sell the same share of your copy (${Number(m.qty.toPrecision(4))} ${m.tokenSymbol})?`;
+  return `🔔 ${trader} sold ${m.percent.toFixed(0)}% of their ${m.tokenSymbol}\nSell the same share of your copy? That's ${Number(m.qty.toPrecision(4))} ${m.tokenSymbol}.\nOpen Flashmob to sell or keep it.`;
 }
 
 const REASONS: Record<string, string> = {
@@ -136,9 +142,14 @@ const REASONS: Record<string, string> = {
   REASON_ORDER_EXPIRED: "it expired",
 };
 
-export function ownOrderAlert(o: OrderFrame) {
-  const name = `${o.orderType} ${o.side} ${o.targetAsset.ticker}`;
-  if (o.status === "ORDER_STATUS_FILLED") return `Your ${name} order filled.`;
+/** Tells someone what happened to their own order, with the numbers that matter. */
+export function ownOrderAlert(o: OrderFrame, t?: TradeRow) {
+  const token = o.targetAsset.ticker;
+  if (o.status === "ORDER_STATUS_FILLED") {
+    const qty = t && t.filledQty > 0 ? `${Number(t.filledQty.toPrecision(4))} ${token}` : token;
+    const detail = t ? `\n${qty} for ${fillLine(t)}${o.side === "sell" ? signedPct(t) : ""}` : "";
+    return `✅ Your ${token} ${o.side} filled${detail}`;
+  }
   const why = o.closeReason ? REASONS[o.closeReason] ?? o.closeReason : undefined;
-  return `Your ${name} order closed without filling${why ? `: ${why}` : ""}.`;
+  return `⚠️ Your ${o.orderType} ${o.side} of ${token} closed without filling${why ? `\nReason: ${why}` : ""}`;
 }

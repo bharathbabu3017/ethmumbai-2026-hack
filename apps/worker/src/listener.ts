@@ -38,7 +38,7 @@ export async function handleOrder(db: Db, flash: FlashClient, send: Send, o: Ord
 
   if (statusChanged && !OPEN_STATUSES.has(o.status)) {
     const owner = await getUser(db, wallet.userId);
-    if (owner?.telegramId) await send(owner.telegramId, ownOrderAlert(o));
+    if (owner?.telegramId) await send(owner.telegramId, ownOrderAlert(o, order));
   }
   if (!trader || !order.isPublic) return;
   const text = tradeAlert(trader.displayName, order, { isNew: !seenBefore, statusChanged });

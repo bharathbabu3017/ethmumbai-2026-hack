@@ -47,13 +47,13 @@ test("followers hear a trade placed, filled and sold, each once", async () => {
   await handleOrder(db, flash, send, filled, true);
   await handleOrder(db, flash, send, filled, true);
   await handleOrder(db, flash, send, frame({ orderId: "o2", orderType: "market", side: "sell", status: "ORDER_STATUS_FILLED", qty: "0.0125", filled: { targetAmount: "0.0125", contraAmount: "30" } }), true);
-  assert.deepEqual(toFollower(), ["Ana placed a limit buy of WETH: $25 at $2,000.", "Ana bought WETH at $2,000.", "Ana sold WETH at $2,400 (+20.0%)."]);
+  assert.deepEqual(toFollower(), ["🕓 Ana placed a limit buy of WETH\n$25 at $2,000", "🟢 Ana bought WETH\n$25 at $2,000", "🔴 Ana sold WETH\n$30 at $2,400 · +20.0%"]);
 });
 
 test("a trader's cancel reaches followers", async () => {
   await handleOrder(db, flash, send, frame(), true);
   await handleOrder(db, flash, send, frame({ status: "ORDER_STATUS_CANCELLED" }), true);
-  assert.equal(toFollower().at(-1), "Ana cancelled their limit buy of WETH.");
+  assert.equal(toFollower().at(-1), "⚪ Ana cancelled their limit buy of WETH");
 });
 
 test("a reconnect snapshot updates state but sends nothing", async () => {
@@ -69,7 +69,7 @@ test("an attached stop and target are read once and kept", async () => {
   await handleOrder(db, flash, send, frame({ ...attached, status: "ORDER_STATUS_PARTIALLY_FILLED" }), true);
   const order = (await getOrder(db, "o1"))!;
   assert.deepEqual([order.stopPrice, order.targetPrice, legReads], [1900, 2500, 1]);
-  assert.match(toFollower()[0]!, /stop \$1,900, target \$2,500/);
+  assert.match(toFollower()[0]!, /Stop \$1,900 · Target \$2,500/);
 });
 
 test("orders from non-traders stay private and silent", async () => {
@@ -99,7 +99,7 @@ test("when a trader sells, a copier gets a prompt that opens the right place", a
 
   const prompts = sent.filter((m) => m.button?.label === "Review sale");
   assert.equal(prompts.length, 1);
-  assert.equal(prompts[0]!.text, "Ana sold 50% of their WETH. Sell the same share of your copy (0.01 WETH)?");
+  assert.match(prompts[0]!.text, /Ana sold 50% of their WETH\nSell the same share of your copy\? That's 0\.01 WETH/);
   assert.equal(prompts[0]!.button!.opens, "miniApp");
 });
 
@@ -122,7 +122,7 @@ test("sync catches a fill the stream missed, and followers hear about it", async
   await syncOrders(db, syncFlash([rest()]), send);
   const wallet = (await findWallet(db, TRADER))!;
   assert.equal((await getPosition(db, wallet.id, "0xweth"))!.qty, 0.5);
-  assert.deepEqual(toFollower(), ["Ana bought WETH at $2,000."]);
+  assert.deepEqual(toFollower(), ["🟢 Ana bought WETH\n$1,000 at $2,000"]);
 });
 
 test("syncing the same order again changes nothing and stays quiet", async () => {
