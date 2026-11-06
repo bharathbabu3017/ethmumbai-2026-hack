@@ -7,14 +7,20 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
+const THEME_SCRIPT = `try{var t=localStorage.getItem("theme");if(t!=="light"&&t!=="dark")t=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.dataset.theme=t}catch(e){}`;
+
 export const metadata: Metadata = {
-  title: "Flashmob",
-  description: "Copy traders with records backed by real fills, on the web and in Telegram.",
+  title: "Flashmob: copy crypto traders on the web and in Telegram",
+  description: "Follow crypto traders with verified onchain records, get Telegram alerts, and copy their trades in one tap or automatically.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${mono.variable}`}>
+    <html lang="en" className={`${inter.variable} ${mono.variable}`} suppressHydrationWarning>
+      <head>
+        {/* Runs before paint so the page never flashes the wrong theme. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body>
         <WalletProvider>{children}</WalletProvider>
       </body>

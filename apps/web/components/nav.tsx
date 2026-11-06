@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { useWallet } from "@/lib/wallet";
 
 const LINKS = [
@@ -25,13 +26,16 @@ export function Nav() {
             ))}
           </nav>
         </div>
-        {address ? (
-          <button className="btn m" onClick={logout} title="Disconnect">{address.slice(0, 6)}…{address.slice(-4)}</button>
-        ) : (
-          <button className="btn" onClick={login} disabled={!configured || !ready}>
-            {configured ? "Connect" : "Wallet login not set up"}
-          </button>
-        )}
+        <div className="row" style={{ gap: 8 }}>
+          <ThemeToggle />
+          {address ? (
+            <button className="btn m" onClick={logout} title="Disconnect">{address.slice(0, 6)}…{address.slice(-4)}</button>
+          ) : (
+            <button className="btn" onClick={login} disabled={!configured || !ready}>
+              {configured ? "Connect" : "Wallet login not set up"}
+            </button>
+          )}
+        </div>
       </div>
     </header>
   );

@@ -1,4 +1,5 @@
-:root{--bg:#0B0C0E;--line:#1F2227;--soft:#16181C;--lime:#C4F250;--orange:#FF9470;--blue:#8FB2FF;--text:#EDEEF0;--mut:#8B919A}
+:root{color-scheme:dark;--bg:#0B0C0E;--line:#1F2227;--line2:#4A5059;--soft:#16181C;--lime:#C4F250;--on-lime:#0B0C0E;--up:#C4F250;--orange:#FF9470;--blue:#8FB2FF;--text:#EDEEF0;--mut:#8B919A}
+:root[data-theme=light]{color-scheme:light;--bg:#FBFBFA;--line:#E5E5E1;--line2:#A9ACB1;--soft:#F0F0EC;--up:#4D7C0F;--orange:#C2410C;--blue:#2563EB;--text:#111214;--mut:#5F636A}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-inter),system-ui,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}a:hover{color:var(--mut)}
@@ -10,13 +11,13 @@ h1,h2,h3{margin:0;font-weight:600;letter-spacing:-.02em;line-height:1.15}
 .btn:hover{border-color:var(--mut);color:var(--text)}
 .btn:disabled{color:var(--mut);cursor:not-allowed}
 .btn:disabled:hover{border-color:var(--line)}
-.on{background:var(--soft);border-color:#4A5059}
-.pri{background:var(--lime);border-color:var(--lime);color:var(--bg)}
-.pri:hover{background:#D6FA73;border-color:#D6FA73;color:var(--bg)}
-.pri:disabled{background:var(--soft);border-color:var(--line)}
+.on{background:var(--soft);border-color:var(--line2)}
+.pri{background:var(--lime);border-color:var(--lime);color:var(--on-lime)}
+.pri:hover{background:#D6FA73;border-color:#D6FA73;color:var(--on-lime)}
+.pri:disabled{background:var(--soft);border-color:var(--line);color:var(--mut)}
 .warn{color:var(--orange)}
 .warn:hover{border-color:var(--orange);color:var(--orange)}
-.up{color:var(--lime)}.dn{color:var(--orange)}.mut{color:var(--mut)}
+.up{color:var(--up)}.dn{color:var(--orange)}.mut{color:var(--mut)}
 .tag{font-size:12px;color:var(--mut)}
 .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
 .topbar{border-bottom:1px solid var(--line)}
@@ -30,6 +31,28 @@ h1,h2,h3{margin:0;font-weight:600;letter-spacing:-.02em;line-height:1.15}
 .lab{display:block;font-size:12px;color:var(--mut);margin-bottom:6px}
 .inp{width:100%;min-height:44px;background:transparent;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:0 12px;font:400 14px var(--font-mono),monospace;outline:none}
 .inp:focus{border-color:var(--mut)}
-.hero{font-size:clamp(44px,7vw,80px);line-height:1.02;letter-spacing:-.035em}
+.hero{font-size:clamp(40px,6vw,68px);line-height:1.04;letter-spacing:-.035em}
 .big{font-size:clamp(26px,3.4vw,36px)}
 @media (max-width:640px){.nav-left{display:contents}.nav-links{order:3;width:100%}}
+.icon{width:44px;padding:0}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:36px 40px}
+.item{border-top:1px solid var(--line);padding-top:16px}
+.item h3{font-size:16px;margin-bottom:6px}
+.item p{margin:0;color:var(--mut);font-size:15px}
+.sec{padding-bottom:clamp(72px,11vh,120px)}
+.kicker{font-size:13px;color:var(--mut);margin:0 0 10px}
+.reveal{opacity:0;transform:translateY(14px);transition:opacity .6s ease,transform .6s ease}
+.reveal.in{opacity:1;transform:none}
+.rise{animation:rise .7s ease both}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}}
+.packet{stroke-dasharray:10 100;stroke-dashoffset:10;animation:packet 4s cubic-bezier(.5,0,.3,1) infinite}
+@keyframes packet{0%{stroke-dashoffset:10}45%,100%{stroke-dashoffset:-100}}
+.node{fill:var(--soft);stroke:var(--line2);animation:node 4s ease infinite}
+@keyframes node{0%,40%{fill:var(--soft);stroke:var(--line2)}48%,80%{fill:var(--lime);stroke:var(--lime)}100%{fill:var(--soft);stroke:var(--line2)}}
+.ping{transform-box:fill-box;transform-origin:center;fill:none;stroke:var(--up);animation:ping 4s ease-out infinite}
+@keyframes ping{0%{transform:scale(.7);opacity:.8}30%,100%{transform:scale(2.4);opacity:0}}
+.draw{stroke-dasharray:100;stroke-dashoffset:100;animation:draw 6s ease-in-out infinite}
+@keyframes draw{0%{stroke-dashoffset:100}55%,90%{stroke-dashoffset:0}100%{stroke-dashoffset:0;opacity:0}}
+.hitmark{animation:hitmark 6s ease infinite}
+@keyframes hitmark{0%,50%{opacity:0}56%,90%{opacity:1}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}.rise,.packet,.node,.ping,.draw,.hitmark{animation:none}.packet,.ping{display:none}.draw{stroke-dashoffset:0}}
