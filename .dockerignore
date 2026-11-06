@@ -1,0 +1,11 @@
+# Secrets are set on the host. They must never end up in an image.
+.env
+.env.*
+!.env.example
+.git
+.vercel
+.next
+node_modules
+**/node_modules
+**/.next
+docs
