@@ -140,6 +140,17 @@ test("an order the stream already handled isn't repeated by sync", async () => {
   assert.equal(toFollower().length, 1);
 });
 
+test("a stale read can't take a filled order back, so its owner hears about the fill once", async () => {
+  const owner = await approvedUser(db, 700);
+  const funderAddress = owner.wallet.address;
+  const filled = frame({ funderAddress, orderType: "market", status: "ORDER_STATUS_FILLED", filled: { targetAmount: "0.5", contraAmount: "1000" } });
+  await handleOrder(db, flash, send, filled, true);
+  await syncOrders(db, syncFlash([frame({ funderAddress, orderType: "market" })]), send);
+  await syncOrders(db, syncFlash([filled]), send);
+  assert.equal(sent.filter((m) => m.chatId === 700).length, 1);
+  assert.equal((await getOrder(db, "o1"))?.status, "ORDER_STATUS_FILLED");
+});
+
 test("old orders found after a restart are recorded but never alert", async () => {
   const old = new Date(Date.now() - 3600_000).toISOString();
   await syncOrders(db, syncFlash([rest({ placedAt: old, closedAt: old })]), send);

@@ -84,6 +84,8 @@ export async function syncOrders(db: Db, flash: FlashClient, send: Send, auto?: 
   const { orders } = await flash.listOrders({ pageSize: 50 });
   for (const order of [...orders].reverse()) {
     const known = await getOrder(db, order.orderId);
+    // Flash's reads can trail the stream, and a closed order never reopens.
+    if (known?.status && !OPEN_STATUSES.has(known.status) && OPEN_STATUSES.has(order.status)) continue;
     const filled = Number(order.filled?.targetAmount ?? 0);
     if (known?.side && known.status === order.status && known.filledQty === filled) continue;
     const recent = now - Date.parse(order.closedAt ?? order.placedAt) < ALERT_WINDOW_MS;
