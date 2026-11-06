@@ -25,6 +25,16 @@ export interface Holding {
 
 const DUST_USD = 0.01;
 
+/** What an order really costs: what goes in against what comes out. Flash's fee field leaves execution costs out. */
+export function orderCost(quote: { from: { notional?: string | null }; to: { notional?: string | null } }) {
+  const paid = Number(quote.from.notional);
+  const received = Number(quote.to.notional);
+  if (!paid || !received) return null;
+  return { usd: Math.max(paid - received, 0), percent: Math.max((paid - received) / paid, 0) * 100 };
+}
+
+export const HIGH_COST_PERCENT = 5;
+
 export const signedUsd = (n: number) => `${n < 0 ? "-" : "+"}$${Math.abs(n).toFixed(2)}`;
 
 /** Joins what the wallet holds now with what it paid. Tokens that arrived some other way count as value, not as profit. */

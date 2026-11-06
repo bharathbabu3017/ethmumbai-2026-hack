@@ -1,6 +1,6 @@
 "use client";
 
-import { buildOrder, prepareOrder, USDC_BASE, type OrderRequest, type QuoteResponse, type TradeForm } from "@flashmob/flash";
+import { buildOrder, HIGH_COST_PERCENT, orderCost, prepareOrder, USDC_BASE, type OrderRequest, type QuoteResponse, type TradeForm } from "@flashmob/flash";
 import Link from "next/link";
 import { useState } from "react";
 import { LevelInput } from "@/components/level-input";
@@ -22,6 +22,7 @@ export function CopyPanel({ trade, inDrawer }: { trade: CopyableTrade & { id: st
   const [placed, setPlaced] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const cost = preview ? orderCost(preview.quote) : null;
   const attachable = canAttach(trade);
   const entry = entryPrice(trade);
   const levels = { stopPrice: !attachable || stop === "" ? null : Number(stop), targetPrice: !attachable || target === "" ? null : Number(target) };
@@ -110,7 +111,8 @@ export function CopyPanel({ trade, inDrawer }: { trade: CopyableTrade & { id: st
           <div className="between"><span className="mut">Price now</span><span className="m">{usd(preview.price)}</span></div>
           {entry !== null && <div className="between"><span className="mut">Trader&apos;s entry</span><span className="m">{usd(entry)}</span></div>}
           <div className="between"><span className="mut">You get about</span><span className="m">{Number(preview.quote.to.amount).toFixed(6)} {trade.tokenSymbol}</span></div>
-          <div className="between"><span className="mut">Estimated fees</span><span className="m">${preview.quote.fees.estimatedFeeNotional}</span></div>
+          {cost ? <div className="between"><span className="mut">Total cost</span><span className={`m ${cost.percent >= HIGH_COST_PERCENT ? "dn" : ""}`}>${cost.usd.toFixed(2)} ({cost.percent.toFixed(1)}%)</span></div> : null}
+          {cost && cost.percent >= HIGH_COST_PERCENT && <p role="alert" className="dn" style={{ margin: "6px 0 0", fontSize: 13 }}>This order loses about {cost.percent.toFixed(0)}% to trading costs. Costs are mostly fixed per order, so a larger amount loses a smaller share.</p>}
           {preview.quote.recommendedSlippage && <div className="between"><span className="mut">Max slippage</span><span className="m">{(Number(preview.quote.recommendedSlippage) * 100).toFixed(1)}%</span></div>}
           <p className="mut" style={{ margin: "6px 0 0", fontSize: 13 }}>This spends real funds. Your wallet may ask you to approve tokens and sign more than once. Keep the tokens in your wallet so any stop and target can execute.</p>
         </div>

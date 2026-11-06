@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { holdings, signedUsd } from "./holdings";
+import { holdings, orderCost, signedUsd } from "./holdings";
 
 const balance = (symbol: string, address: string, amount: string, notional: string, isNative = false) =>
   ({ chain: "base", symbol, address, balance: amount, notional, isNative }) as never;
@@ -31,4 +31,9 @@ test("cash and native gas have no profit, dust is hidden, and the biggest comes 
 
 test("signed amounts read clearly", () => {
   assert.deepEqual([signedUsd(1.5), signedUsd(-0.1)], ["+$1.50", "-$0.10"]);
+});
+
+test("an order's cost is what goes in against what comes out, whatever the fee field says", () => {
+  assert.deepEqual(orderCost({ from: { notional: "1.5" }, to: { notional: "1.2" } }), { usd: 0.30000000000000004, percent: 20.000000000000004 });
+  assert.equal(orderCost({ from: { notional: "1.5" }, to: { notional: null } }), null);
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  BASE_TOKENS, buildOrder, ORDER_TYPES, prepareOrder, USDC_BY_CHAIN,
+  BASE_TOKENS, buildOrder, HIGH_COST_PERCENT, ORDER_TYPES, orderCost, prepareOrder, USDC_BY_CHAIN,
   type FlashBalancesResponse, type Holding, type OrderRequest, type OrderStep, type OrderTypeName, type PayChain, type QuoteResponse, type Side,
 } from "@flashmob/flash";
 import Link from "next/link";
@@ -179,6 +179,7 @@ function Trade() {
   const stepLabel = step === "approving" ? `Approve ${spendSymbol} in your wallet` : step === "signing" ? "Sign in your wallet" : step === "submitting" ? "Placing your order" : "Check your wallet";
   const actionLabel = type === "market" ? `${side === "buy" ? "Buy" : "Sell"} ${token.symbol}` : `Place ${ORDER_TYPES[type].label.toLowerCase()} order`;
 
+  const cost = preview ? orderCost(preview.quote) : null;
   const slippage = preview?.quote.recommendedSlippage;
   const impact = preview?.quote.estimatedPriceImpact;
   const received = side === "buy" ? token.symbol : "USDC";
@@ -329,7 +330,8 @@ function Trade() {
             <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "12px 0", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
               <div className="between"><span className="mut">You pay</span><span className="m">{preview.quote.from.amount} {spendSymbol}</span></div>
               <div className="between"><span className="mut">{type === "market" ? "You get about" : "At today's price"}</span><span className="m">{Number(preview.quote.to.amount).toFixed(6)} {received}</span></div>
-              <div className="between"><span className="mut">Estimated fees</span><span className="m">${preview.quote.fees.estimatedFeeNotional}</span></div>
+              {cost ? <div className="between"><span className="mut">Total cost</span><span className={`m ${cost.percent >= HIGH_COST_PERCENT ? "dn" : ""}`}>${cost.usd.toFixed(2)} ({cost.percent.toFixed(1)}%)</span></div> : null}
+              {cost && cost.percent >= HIGH_COST_PERCENT && <p role="alert" className="dn" style={{ margin: "6px 0 0", fontSize: 13 }}>This order loses about {cost.percent.toFixed(0)}% to trading costs. Costs are mostly fixed per order, so a larger amount loses a smaller share.</p>}
               {impact && <div className="between"><span className="mut">Price impact</span><span className="m">{(Number(impact) * 100).toFixed(2)}%</span></div>}
               {slippage && <div className="between"><span className="mut">Max slippage</span><span className="m">{(Number(slippage) * 100).toFixed(1)}%</span></div>}
               {payChain !== "base" && <p className="mut" style={{ margin: "6px 0 0", fontSize: 13 }}>{side === "buy" ? `Your wallet will switch to ${CHAIN_NAMES[payChain]}.` : `Your USDC arrives on ${CHAIN_NAMES[payChain]}.`} A cross-chain order can&apos;t be cancelled once its funds are moving.</p>}
