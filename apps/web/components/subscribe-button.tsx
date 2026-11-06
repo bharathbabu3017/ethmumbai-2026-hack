@@ -5,16 +5,24 @@ import { ensureSession, fetchMe, postJson } from "@/lib/account";
 import { plainError } from "@/lib/format";
 import { useWallet } from "@/lib/wallet";
 
-export function SubscribeButton({ traderId, initial, onChange }: { traderId: string; initial: boolean; onChange?(on: boolean): void }) {
+const Bell = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8" /><path d="M10 20a2 2 0 0 0 4 0" />
+  </svg>
+);
+
+/** The alerts bell. With `compact` it's icon-only, for rows in a list. */
+export function SubscribeButton({ traderId, initial, compact, onChange }: { traderId: string; initial: boolean; compact?: boolean; onChange?(on: boolean): void }) {
   const { address, login, getSigner } = useWallet();
   const [subscribed, setSubscribed] = useState(initial);
   const [linked, setLinked] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => setSubscribed(initial), [initial]);
   useEffect(() => {
-    if (address) fetchMe().then((me) => setLinked(!!me.telegramLinked)).catch(() => {});
-  }, [address]);
+    if (address && !compact) fetchMe().then((me) => setLinked(!!me.telegramLinked)).catch(() => {});
+  }, [address, compact]);
 
   const toggle = async () => {
     setError("");
@@ -38,11 +46,14 @@ export function SubscribeButton({ traderId, initial, onChange }: { traderId: str
     window.open(url, "_blank");
   };
 
+  const label = subscribed ? "Telegram alerts are on. Tap to turn off." : "Turn on Telegram alerts";
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <button className={`btn ${subscribed ? "" : "pri"}`} disabled={busy} onClick={toggle}>{subscribed ? "Unsubscribe" : "Subscribe"}</button>
-      {subscribed && !linked && <button className="btn" onClick={linkTelegram}>Link Telegram to receive alerts</button>}
+    <span className="row" style={{ gap: 8 }}>
+      <button className={`btn ${compact ? "icon" : ""}`} style={{ gap: 8, color: subscribed ? "var(--up)" : undefined }} disabled={busy} aria-label={label} title={label} onClick={toggle}>
+        <Bell />{!compact && (subscribed ? "Alerts on" : "Get alerts")}
+      </button>
+      {!compact && subscribed && !linked && <button className="btn" onClick={linkTelegram}>Link Telegram</button>}
       {error && <span role="alert" className="dn" style={{ fontSize: 13 }}>{error}</span>}
-    </div>
+    </span>
   );
 }

@@ -1,7 +1,7 @@
 import { isFollowing, leaderboard, listTraderTrades } from "@flashmob/db";
 import { notFound } from "next/navigation";
 import { Avatar } from "@/components/avatar";
-import { CopySettingsPanel } from "@/components/copy-settings";
+import { AutoCopyCard } from "@/components/auto-copy";
 import { Nav } from "@/components/nav";
 import { ResultsCurve } from "@/components/results-curve";
 import { SubscribeButton } from "@/components/subscribe-button";
@@ -63,7 +63,7 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
           </section>
         </div>
         <aside className="side" style={{ gap: 12 }}>
-          {session?.userId !== trader.userId && <div className="panel"><CopySettingsPanel traderId={id} name={trader.displayName} /></div>}
+          {session?.userId !== trader.userId && <div className="panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}><AutoCopyCard traderId={id} name={trader.displayName} /></div>}
           <div className="panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <h2 style={{ fontSize: 16 }}>Telegram alerts</h2>
             <p className="mut" style={{ margin: 0 }}>Get a message every time {trader.displayName} trades. Nothing is bought for you.</p>

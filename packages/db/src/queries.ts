@@ -572,7 +572,7 @@ export const listAutoCopiers = (db: Db, traderId: string) =>
 
 export const listUserCopySettings = (db: Db, userId: string) =>
   db
-    .select({ traderId: traders.id, displayName: traders.displayName, settings: copySettings.settings, enabled: copySettings.enabled })
+    .select({ traderId: traders.id, traderUserId: traders.userId, displayName: traders.displayName, settings: copySettings.settings, enabled: copySettings.enabled })
     .from(copySettings)
     .innerJoin(traders, eq(copySettings.traderId, traders.id))
     .where(eq(copySettings.userId, userId));
