@@ -10,6 +10,9 @@ export interface PriceLevel {
   tone: "entry" | "stop" | "target";
 }
 
+const RETRY_MS = 6_000;
+const MAX_RETRIES = 8;
+
 const cssVar = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 const theme = () => ({
@@ -34,7 +37,7 @@ export function PriceChart({ token, levels = [], height = 340 }: { token: string
   const lines = useRef<{ line: IPriceLine; tone: PriceLevel["tone"] }[]>([]);
   const prices = useRef<number[]>([]);
   const [timeframe, setTimeframe] = useState<Timeframe>("1h");
-  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     if (!box.current) return;
@@ -68,28 +71,38 @@ export function PriceChart({ token, levels = [], height = 340 }: { token: string
 
   useEffect(() => {
     let stale = false;
-    setError("");
-    fetch(`/api/chart?token=${token}&timeframe=${timeframe}`)
-      .then(async (r) => {
-        const json = await r.json();
-        if (!r.ok) throw new Error(json.error);
-        return json.candles as Candle[];
-      })
-      .then((candles) => {
-        if (stale || !series.current) return;
-        if (!candles.length) throw new Error("No market data for this token");
-        const precision = pricePrecision(candles.at(-1)!.close);
-        series.current.applyOptions({ priceFormat: { type: "price", precision, minMove: 10 ** -precision } });
-        series.current.setData(candles.map((c) => ({ ...c, time: c.time as never })));
-        chart.current?.timeScale().fitContent();
-      })
-      .catch((e) => {
-        if (stale) return;
-        series.current?.setData([]);
-        setError(e instanceof Error && e.message ? e.message : "Market data is unavailable right now");
-      });
+    let retry: ReturnType<typeof setTimeout>;
+    let attempts = 0;
+
+    const load = async () => {
+      const res = await fetch(`/api/chart?token=${token}&timeframe=${timeframe}`).catch(() => undefined);
+      if (stale) return;
+      if (!res || res.status === 503) {
+        // The free data source is rate limited, so wait for it instead of giving up.
+        if (++attempts > MAX_RETRIES) return setMessage("Chart data is busy right now. Try again shortly.");
+        setMessage("Loading chart…");
+        retry = setTimeout(load, RETRY_MS);
+        return;
+      }
+      const json = await res.json();
+      if (stale || !series.current) return;
+      if (!res.ok) {
+        series.current.setData([]);
+        return setMessage(json.error);
+      }
+      const candles = json.candles as Candle[];
+      const precision = pricePrecision(candles.at(-1)!.close);
+      series.current.applyOptions({ priceFormat: { type: "price", precision, minMove: 10 ** -precision } });
+      series.current.setData(candles.map((c) => ({ ...c, time: c.time as never })));
+      chart.current?.timeScale().fitContent();
+      setMessage("");
+    };
+
+    setMessage("Loading chart…");
+    void load();
     return () => {
       stale = true;
+      clearTimeout(retry);
     };
   }, [token, timeframe]);
 
@@ -118,9 +131,9 @@ export function PriceChart({ token, levels = [], height = 340 }: { token: string
       </div>
       <div style={{ position: "relative", height }}>
         <div ref={box} style={{ position: "absolute", inset: 0 }} />
-        {error && <p className="mut" style={{ position: "absolute", inset: 0, margin: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>{error}</p>}
+        {message && <p className="mut" style={{ position: "absolute", inset: 0, margin: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>{message}</p>}
       </div>
-      <p className="mut" style={{ margin: "6px 0 0", fontSize: 11 }}>Market data from GeckoTerminal</p>
+      <p className="mut" style={{ margin: "6px 0 0", fontSize: 11 }}>Market data from GeckoTerminal and DEX Screener</p>
     </div>
   );
 }
