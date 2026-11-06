@@ -7,6 +7,7 @@ try {
 
 const config: NextConfig = {
   transpilePackages: ["@flashmob/flash"],
+  agentRules: false,
   env: { NEXT_PUBLIC_PRIVY_APP_ID: process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "" },
 };
 

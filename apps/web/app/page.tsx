@@ -1,6 +1,10 @@
 import Link from "next/link";
 
-const followers = [["Follower 1", "Copied $50", 0, 0.3], ["Follower 2", "Auto-copied $25", 18, 0.7], ["Follower 3", "Copied $100", 36, 1.1], ["Follower 4", "Auto-copied $50", 18, 1.5], ["Follower 5", "Copied $250", 0, 1.9]] as const;
+const flow = [
+  ["Trader publishes", "Entry, stop and target, as one real order"],
+  ["Followers get the alert", "Straight to Telegram"],
+  ["Everyone copies", "One tap, or automatically within your limits"],
+];
 const steps = [
   ["01", "A trader calls it", "Entry, stop and target go live as one real order. No vague signals."],
   ["02", "Your phone lights up", "The call lands in Telegram, with updates when it fills, moves, cancels or closes."],
@@ -37,18 +41,10 @@ export default function Landing() {
           </div>
         </div>
         <div style={{ flex: "1 1 400px", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-          <div className="card" style={{ padding: 18, borderColor: "var(--lime)" }}>
-            <div className="between" style={{ alignItems: "center" }}><strong>Slow Tide published a call</strong><span className="tag">Sample</span></div>
-            <div className="h" style={{ fontSize: 26, fontWeight: 700, margin: "8px 0" }}>Long WETH on Base</div>
-            <div className="m row" style={{ fontSize: 13 }}>
-              <span className="mut">Entry <span style={{ color: "var(--text)" }}>$3,420</span></span>
-              <span className="mut">Stop <span className="dn">$3,280</span></span>
-              <span className="mut">Target <span className="up">$3,760</span></span>
-            </div>
-          </div>
-          {followers.map(([name, action, indent, delay]) => (
-            <div key={name} className="card hit between" style={{ padding: "11px 16px", fontSize: 14, marginLeft: indent, animationDelay: `${delay}s` }}>
-              <span>{name}</span><span className="m up">{action}</span>
+          {flow.map(([title, text], i) => (
+            <div key={title} className="card hit" style={{ padding: 18, marginLeft: i * 18, animationDelay: `${0.3 + i * 0.5}s` }}>
+              <div className="h" style={{ fontSize: 22, fontWeight: 700 }}>{title}</div>
+              <div className="mut" style={{ marginTop: 4, fontSize: 14 }}>{text}</div>
             </div>
           ))}
         </div>
