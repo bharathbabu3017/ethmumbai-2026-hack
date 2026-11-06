@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CopyPanel } from "@/components/copy-panel";
@@ -9,6 +10,14 @@ import { pct, tradeSize, tradeStatus, usd } from "@/lib/format";
 import { getSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const found = await loadCopyTrade(id).catch(() => undefined);
+  if (!found) return {};
+  const title = `${found.trader.displayName} ${found.order.side === "sell" ? "sold" : "bought"} ${found.order.tokenSymbol} on Flashmob`;
+  return { title, description: "A real trade with a verified record. Copy it with your own limits.", twitter: { card: "summary_large_image", title } };
+}
 
 export default async function TradePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

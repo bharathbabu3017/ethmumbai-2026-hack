@@ -1,5 +1,6 @@
 import { COPYABLE_TYPES } from "@flashmob/flash";
 import { CopyButton } from "@/components/copy-button";
+import { ShareButton } from "@/components/share-button";
 import { TokenIcon } from "@/components/token-icon";
 import { When } from "@/components/when";
 import { pct, tradeSize, tradeStatus, usd } from "@/lib/format";
@@ -13,12 +14,15 @@ interface Props {
   };
   /** Shows a Copy button on trades that can be copied. */
   canCopy?: boolean;
+  /** Shows a Share button, on a trader's own filled trades. */
+  canShare?: boolean;
 }
 
-export function TradeRow({ order: o, canCopy }: Props) {
+export function TradeRow({ order: o, canCopy, canShare }: Props) {
   const status = tradeStatus(o.status, o.filledQty);
   const price = o.filledQty > 0 ? o.filledUsd / o.filledQty : o.limitPrice;
   const result = o.soldCostUsd > 0 ? (o.realizedUsd / o.soldCostUsd) * 100 : null;
+  const shareText = result !== null ? `Sold ${o.tokenSymbol} for ${pct(result)} on Flashmob.` : `${o.side === "sell" ? "Sold" : "Bought"} ${o.tokenSymbol}${price ? ` at ${usd(price)}` : ""} on Flashmob. Copy my trade:`;
   return (
     <div className="tr" style={{ gridTemplateColumns: TRADE_COLUMNS, minWidth: 720 }}>
       <span className={`badge ${o.side === "sell" ? "sell" : "buy"}`} style={{ justifyContent: "center" }}>{o.side}</span>
@@ -30,6 +34,7 @@ export function TradeRow({ order: o, canCopy }: Props) {
       <span className="mut" style={{ fontSize: 13 }}>{o.placedAt ? <When at={o.placedAt} /> : ""}</span>
       <span style={{ display: "flex", justifyContent: "flex-end" }}>
         {canCopy && o.side === "buy" && COPYABLE_TYPES.includes(o.orderType ?? "") && status.label !== "Cancelled" && <CopyButton orderId={o.id} />}
+        {canShare && o.filledQty > 0 && <ShareButton orderId={o.id} text={shareText} />}
       </span>
     </div>
   );

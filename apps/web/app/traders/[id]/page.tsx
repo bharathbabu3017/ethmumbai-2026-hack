@@ -68,7 +68,7 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
             {trades.length === 0 ? <p className="mut" style={{ margin: 0, padding: 16, borderTop: "1px solid var(--line)" }}>No trades yet. Everything this trader places on Flashmob appears here.</p> : (
               <>
                 <div className="tr head" style={{ gridTemplateColumns: TRADE_COLUMNS, minWidth: 720, borderTop: "1px solid var(--line)" }}><span>Side</span><span>Token</span><span>Type</span><span>Size</span><span>Price</span><span>Result</span><span>When</span><span /></div>
-                {trades.map((order) => <TradeRow key={order.id} order={order} canCopy={!mine} />)}
+                {trades.map((order) => <TradeRow key={order.id} order={order} canCopy={!mine} canShare={mine} />)}
               </>
             )}
           </section>
