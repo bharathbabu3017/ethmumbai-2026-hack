@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import { confirmCopy, createTrader, reserveCopy, getOrCreateWalletUser, getOrder, getPosition, findWallet, setFollow, schema, type Db } from "@flashmob/db";
+import { confirmCopy, getOrCreateTelegramAccount, getTraderByUser, setAlertLimits, createTrader, reserveCopy, getOrCreateWalletUser, getOrder, getPosition, findWallet, setFollow, schema, type Db } from "@flashmob/db";
 import { migrationsFolder } from "@flashmob/db/migrations";
 import { USDC_BASE, type FlashClient } from "@flashmob/flash";
 import { PGlite } from "@electric-sql/pglite";
@@ -183,6 +183,18 @@ test("a swap out of a token still reaches copiers, valued from the order itself"
   assert.equal((await getOrder(db, "s1"))!.filledUsd, 2400);
   assert.equal(sent.filter((m) => m.chatId === 900 && m.button?.label === "Review sale").length, 1);
   assert.ok(toFollower().some((t) => t.includes("swapped WETH for cbBTC")));
+});
+
+test("a subscriber's size limits decide which trades alert them", async () => {
+  const trader = (await getTraderByUser(db, (await findWallet(db, TRADER))!.userId))!;
+  const follower = await getOrCreateTelegramAccount(db, { id: FOLLOWER_CHAT });
+  await setAlertLimits(db, follower.id, trader.id, { minUsd: 50, maxUsd: 500 });
+  const trade = (orderId: string, usd: string) => frame({ orderId, orderType: "market", status: "ORDER_STATUS_FILLED", filled: { targetAmount: "1", contraAmount: usd } });
+  await handleOrder(db, flash, send, trade("small", "10"), true);
+  await handleOrder(db, flash, send, trade("fits", "100"), true);
+  await handleOrder(db, flash, send, trade("large", "900"), true);
+  assert.equal(toFollower().length, 1);
+  assert.match(toFollower()[0]!, /\$100/);
 });
 
 test("old orders found after a restart are recorded but never alert", async () => {

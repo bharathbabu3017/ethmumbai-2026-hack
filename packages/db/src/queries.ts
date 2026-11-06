@@ -149,14 +149,18 @@ export const isFollowing = async (db: Db, followerId: string, traderId: string) 
   return !!row;
 };
 
-/** Telegram chat ids for a trader's followers who want alerts. */
-export async function alertRecipients(db: Db, traderId: string) {
+export const setAlertLimits = (db: Db, followerId: string, traderId: string, limits: { minUsd: number | null; maxUsd: number | null }) =>
+  db.update(follows).set(limits).where(and(eq(follows.followerId, followerId), eq(follows.traderId, traderId)));
+
+/** Telegram chat ids for a trader's subscribers who want this alert. A trade of unknown size always gets through. */
+export async function alertRecipients(db: Db, traderId: string, sizeUsd: number | null = null) {
   const rows = await db
-    .select({ telegramId: users.telegramId })
+    .select({ telegramId: users.telegramId, minUsd: follows.minUsd, maxUsd: follows.maxUsd })
     .from(follows)
     .innerJoin(users, eq(follows.followerId, users.id))
     .where(and(eq(follows.traderId, traderId), eq(follows.alerts, true), isNotNull(users.telegramId)));
-  return rows.map((r) => r.telegramId!);
+  const wanted = rows.filter((r) => sizeUsd === null || ((r.minUsd === null || sizeUsd >= r.minUsd) && (r.maxUsd === null || sizeUsd <= r.maxUsd)));
+  return wanted.map((r) => r.telegramId!);
 }
 
 export const getOrder = async (db: Db, id: string) => {
@@ -360,7 +364,7 @@ export async function releaseCopy(db: Db, id: string, userId: string, reason?: s
 
 export const listFollowing = (db: Db, userId: string) =>
   db
-    .select({ id: traders.id, displayName: traders.displayName })
+    .select({ id: traders.id, displayName: traders.displayName, minUsd: follows.minUsd, maxUsd: follows.maxUsd })
     .from(follows)
     .innerJoin(traders, eq(follows.traderId, traders.id))
     .where(eq(follows.followerId, userId));

@@ -50,6 +50,11 @@ export async function handleOrder(db: Db, flash: FlashClient, send: Send, frame:
     if (await claimAlert(db, chatId, key)) await send(chatId, text, button);
   };
 
+  // Copies go first: their price depends on speed, and a message can wait a moment.
+  if (auto && trader && order.isPublic && !seenBefore && order.side === "buy") {
+    await autoCopy(db, flash, auto, send, order, trader, o.funderAddress).catch((e) => console.error("Auto-copy failed:", e instanceof Error ? e.message : "unknown"));
+  }
+
   if (statusChanged && closed) {
     const owner = await getUser(db, wallet.userId);
     if (owner?.telegramId) await once(owner.telegramId, `own:${order.id}:${o.status}`, ownOrderAlert(o, order, await copyContext(db, order.id)));
@@ -59,11 +64,8 @@ export async function handleOrder(db: Db, flash: FlashClient, send: Send, frame:
   if (text) {
     const copyable = order.side === "buy" && OPEN_OR_FILLED(o.status);
     const button: AlertButton | undefined = copyable ? { label: "Copy", path: `/trades/${order.id}`, opens: "miniApp" } : undefined;
-    for (const chatId of await alertRecipients(db, trader.id)) await once(chatId, `trade:${order.id}:${o.status}`, text, button);
-  }
-
-  if (auto && !seenBefore && order.side === "buy") {
-    await autoCopy(db, flash, auto, send, order, trader, o.funderAddress).catch((e) => console.error("Auto-copy failed:", e instanceof Error ? e.message : "unknown"));
+    const size = order.filledUsd > 0 ? order.filledUsd : order.side === "buy" ? Number(order.qty) || null : null;
+    for (const chatId of await alertRecipients(db, trader.id, size)) await once(chatId, `trade:${order.id}:${o.status}`, text, button);
   }
 
   // Once a sale is finished, followers who copied this trader get the chance to sell the same share.

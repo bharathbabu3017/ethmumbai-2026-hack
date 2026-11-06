@@ -100,6 +100,9 @@ export const follows = pgTable(
     followerId: uuid("follower_id").notNull().references(() => users.id),
     traderId: uuid("trader_id").notNull().references(() => traders.id),
     alerts: boolean("alerts").notNull().default(true),
+    // Trade size limits for alerts. Either can be empty.
+    minUsd: doublePrecision("min_usd"),
+    maxUsd: doublePrecision("max_usd"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.followerId, t.traderId] })],

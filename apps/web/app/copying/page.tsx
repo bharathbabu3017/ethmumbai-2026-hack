@@ -4,6 +4,7 @@ import type { CopySettings } from "@flashmob/flash";
 import Link from "next/link";
 import { useState } from "react";
 import { AddFunds } from "@/components/add-funds";
+import { AlertLimits, limitsLabel } from "@/components/alert-limits";
 import { AutoCopySetup, TONES } from "@/components/auto-copy";
 import { Avatar } from "@/components/avatar";
 import { Nav } from "@/components/nav";
@@ -40,6 +41,8 @@ interface Row {
   displayName: string;
   settings: CopySettings | null;
   alerts: boolean;
+  minUsd: number | null;
+  maxUsd: number | null;
   spent: number;
 }
 
@@ -56,7 +59,7 @@ interface Data {
 
 type Filter = "All" | "Copied" | "Skipped";
 
-const TRADERS = "minmax(190px,1.4fr) 170px 130px 130px 44px 190px";
+const TRADERS = "minmax(190px,1.4fr) 170px 130px 130px 150px 190px";
 const HISTORY = "64px minmax(170px,1fr) minmax(190px,1.4fr) 80px 90px 130px";
 const empty = { margin: 0, padding: 16 };
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -88,6 +91,7 @@ export default function Copying() {
   const [filter, setFilter] = useState<Filter>("All");
   const [editing, setEditing] = useState<Row>();
   const [funds, setFunds] = useState(false);
+  const [limits, setLimits] = useState<Row>();
   const [busy, setBusy] = useState<string>();
   const [error, setError] = useState("");
 
@@ -169,16 +173,19 @@ export default function Copying() {
             <section className="table">
               {rows.length === 0 ? <p className="mut" style={empty}>You aren&apos;t copying anyone yet. <Link href="/home" style={{ color: "var(--text)" }}>Find a trader</Link> and your wallet follows their trades within your limits.</p> : (
                 <>
-                  <div className="tr head" style={{ gridTemplateColumns: TRADERS, minWidth: 940 }}><span>Trader</span><span>Status</span><span>Size</span><span>Used today</span><span>Alerts</span><span /></div>
+                  <div className="tr head" style={{ gridTemplateColumns: TRADERS, minWidth: 1040 }}><span>Trader</span><span>Status</span><span>Size</span><span>Used today</span><span>Alerts</span><span /></div>
                   {rows.map((r) => (
-                    <div key={r.traderId} className="tr" style={{ gridTemplateColumns: TRADERS, minWidth: 940 }}>
+                    <div key={r.traderId} className="tr" style={{ gridTemplateColumns: TRADERS, minWidth: 1040 }}>
                       <Link href={`/traders/${r.traderId}`} className="row" style={{ gap: 10, fontWeight: 500, flexWrap: "nowrap" }}><Avatar name={r.displayName} size={32} /> {r.displayName}</Link>
                       {r.state
                         ? <span className="row" style={{ gap: 8, color: TONES[r.state.tone], fontWeight: 500, fontSize: 13 }} title={r.state.detail}>{r.state.tone === "on" && <span className="pulse" aria-hidden="true" />}{r.state.label}</span>
                         : <span className="mut" style={{ fontSize: 13 }}>Alerts only</span>}
                       <span className="m">{r.settings ? (r.settings.sizing === "fixed" ? `$${r.settings.amountUsd} per trade` : `${r.settings.percentOfBalance}% of balance`) : "-"}</span>
                       <span className="m">{r.settings ? `$${r.spent.toFixed(2)} of $${r.settings.dailyCapUsd}` : "-"}</span>
-                      <SubscribeButton traderId={r.traderId} initial={r.alerts} compact onChange={load} />
+                      <span className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+                        <SubscribeButton traderId={r.traderId} initial={r.alerts} compact onChange={load} />
+                        {r.alerts && <button className="chip" style={{ padding: "0 6px" }} aria-label={`Change alert size for ${r.displayName}`} onClick={() => setLimits(r)}>{limitsLabel(r.minUsd, r.maxUsd)}</button>}
+                      </span>
                       <span className="row" style={{ gap: 8, justifyContent: "flex-end", flexWrap: "nowrap" }}>
                         {r.settings
                           ? <><button className="btn" onClick={() => setEditing(r)}>Edit</button><button className="btn warn" disabled={busy === r.traderId} onClick={() => stop(r)}>Stop</button></>
@@ -203,6 +210,7 @@ export default function Copying() {
         )}
       </main>
       {editing && <AutoCopySetup traderId={editing.traderId} name={editing.displayName} onClose={() => setEditing(undefined)} onSaved={load} />}
+      {limits && <AlertLimits traderId={limits.traderId} name={limits.displayName} minUsd={limits.minUsd} maxUsd={limits.maxUsd} onClose={() => setLimits(undefined)} onSaved={load} />}
       {funds && data?.tradingWallet && <AddFunds address={data.tradingWallet} onClose={() => setFunds(false)} />}
     </>
   );

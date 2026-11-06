@@ -16,13 +16,14 @@ export async function GET() {
   const balances = wallet ? (await serverFlash().balances(wallet.address).catch(() => ({ balances: [] }))).balances : [];
   const onBase = (test: (b: (typeof balances)[number]) => boolean) => Number(balances.find((b) => b.chain === "base" && test(b))?.balance ?? 0);
 
-  const alerts = new Set(following.map((t) => t.id));
+  const alerts = new Map(following.map((t) => [t.id, t]));
   const copying = await Promise.all(settings.filter((s) => s.enabled).map(async (s) => ({
     traderId: s.traderId, displayName: s.displayName, settings: s.settings as CopySettings, alerts: alerts.has(s.traderId),
+    minUsd: alerts.get(s.traderId)?.minUsd ?? null, maxUsd: alerts.get(s.traderId)?.maxUsd ?? null,
     spent: await autoSpentLast24h(db(), userId, s.traderUserId),
   })));
   const copied = new Set(copying.map((r) => r.traderId));
-  const alertsOnly = following.filter((t) => !copied.has(t.id)).map((t) => ({ traderId: t.id, displayName: t.displayName, settings: null, alerts: true, spent: 0 }));
+  const alertsOnly = following.filter((t) => !copied.has(t.id)).map((t) => ({ traderId: t.id, displayName: t.displayName, settings: null, alerts: true, minUsd: t.minUsd, maxUsd: t.maxUsd, spent: 0 }));
 
   return NextResponse.json({
     history,
