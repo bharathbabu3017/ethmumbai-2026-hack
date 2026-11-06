@@ -8,6 +8,7 @@ import { AutoCopySetup, TONES } from "@/components/auto-copy";
 import { Avatar } from "@/components/avatar";
 import { Nav } from "@/components/nav";
 import { SubscribeButton } from "@/components/subscribe-button";
+import { When } from "@/components/when";
 import { ensureSession, postJson } from "@/lib/account";
 import { useCached } from "@/lib/cached";
 import { copyStatus } from "@/lib/copy-status";
@@ -56,7 +57,6 @@ type Filter = "All" | "Copied" | "Skipped";
 const TRADERS = "minmax(190px,1.4fr) 170px 130px 130px 44px 190px";
 const HISTORY = "64px minmax(170px,1fr) minmax(190px,1.4fr) 80px 90px 130px";
 const empty = { margin: 0, padding: 16 };
-const when = (at: string) => new Date(at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 function HistoryRow({ e }: { e: Entry }) {
@@ -75,7 +75,7 @@ function HistoryRow({ e }: { e: Entry }) {
       <span className="mut" style={{ fontSize: 13 }}>{how}</span>
       <span className="m">{size ? `$${size.toFixed(2)}` : "-"}</span>
       <span style={{ fontSize: 13, color: status.color }}>{status.label}</span>
-      <span className="mut" style={{ fontSize: 13 }}>{when(e.createdAt)}</span>
+      <span className="mut" style={{ fontSize: 13 }}><When at={e.createdAt} /></span>
     </div>
   );
 }

@@ -18,6 +18,8 @@ export function tradeSize(o: { side: string | null; qty: string | null; tokenSym
   return `${Number(o.qty).toPrecision(4)} ${o.tokenSymbol}`;
 }
 
+export const when = (at: Date | string) => new Date(at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
 export function ago(at: Date | string) {
   const minutes = Math.floor((Date.now() - new Date(at).getTime()) / 60_000);
   if (minutes < 1) return "Just now";

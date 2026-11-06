@@ -3,6 +3,7 @@
 import { holdings, OPEN_STATUSES, signedUsd, type FlashOrder, type Holding } from "@flashmob/flash";
 import { useCallback, useEffect, useState } from "react";
 import { OpenOrders } from "@/components/open-orders";
+import { When } from "@/components/when";
 import { useCached } from "@/lib/cached";
 import { flash } from "@/lib/flash";
 import { pct, tradeStatus, usd } from "@/lib/format";
@@ -42,7 +43,7 @@ export function OrderHistory({ reloadKey = 0 }: { reloadKey?: number }) {
           {o.targetAsset.ticker} <span className="mut">{o.orderType}</span>
         </span>
         <span style={{ textAlign: "right" }}>
-          <span style={{ display: "block", fontSize: 12, color: status.color }}>{status.label}</span>
+          <span style={{ display: "block", fontSize: 12, color: status.color }}>{status.label} <span className="mut"><When at={o.placedAt} /></span></span>
           {price > 0 && <span className="m mut" style={{ fontSize: 12 }}>{usd(filledQty * price)} · {filledQty.toPrecision(4)} at {usd(price)}</span>}
         </span>
       </div>

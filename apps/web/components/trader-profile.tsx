@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Nav } from "@/components/nav";
 import { ensureSession, postJson } from "@/lib/account";
-import { ago, pct, plainError } from "@/lib/format";
+import { When } from "@/components/when";
+import { pct, plainError } from "@/lib/format";
 import type { TraderDashboard } from "@/lib/trader-dashboard";
 import { useWallet } from "@/lib/wallet";
 
 type Dashboard = Pick<TraderDashboard, "trader" | "copies">;
 
-const COLUMNS = "minmax(150px,1fr) 100px 110px 110px";
+const COLUMNS = "minmax(150px,1fr) 100px 110px 140px";
 
 export function TraderProfile({ initial }: { initial?: Dashboard }) {
   const { address, login, getSigner } = useWallet();
@@ -83,7 +84,7 @@ export function TraderProfile({ initial }: { initial?: Dashboard }) {
                     <span style={{ fontWeight: 500 }}>{c.tokenSymbol}</span>
                     <span className="m">${c.amountUsd.toFixed(2)}</span>
                     <span className="mut">{c.auto ? "Auto-copy" : "By hand"}</span>
-                    <span className="mut" style={{ fontSize: 13 }}>{ago(c.createdAt)}</span>
+                    <span className="mut" style={{ fontSize: 13 }}><When at={c.createdAt} /></span>
                   </div>
                 ))}
               </>

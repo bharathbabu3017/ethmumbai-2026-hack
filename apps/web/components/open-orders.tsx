@@ -2,6 +2,7 @@
 
 import { editableFields, OPEN_STATUSES, type FlashOrder } from "@flashmob/flash";
 import { useCallback, useEffect, useState } from "react";
+import { When } from "@/components/when";
 import { flash } from "@/lib/flash";
 import { plainError } from "@/lib/format";
 import { useLiveOrders } from "@/lib/order-stream";
@@ -91,6 +92,7 @@ export function OpenOrders({ reloadKey = 0, title, onCount }: { reloadKey?: numb
               <span>
                 <span style={{ fontWeight: 500, textTransform: "capitalize" }}>{o.side} {o.targetAsset.ticker}</span> <span className="mut">{o.orderType}</span>
                 <span className="m mut" style={{ display: "block", fontSize: 12 }}>{describe(o)}</span>
+                <span className="mut" style={{ display: "block", fontSize: 12 }}>Placed <When at={o.placedAt} /></span>
                 {o.attachedBracket && <span className="mut" style={{ display: "block", fontSize: 12 }}>Its stop and target are a separate order once it fills, so cancel that too.</span>}
               </span>
               <span className="row" style={{ gap: 6 }}>

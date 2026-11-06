@@ -1,8 +1,9 @@
 import { COPYABLE_TYPES } from "@flashmob/flash";
 import { CopyButton } from "@/components/copy-button";
-import { ago, pct, tradeSize, tradeStatus, usd } from "@/lib/format";
+import { When } from "@/components/when";
+import { pct, tradeSize, tradeStatus, usd } from "@/lib/format";
 
-export const TRADE_COLUMNS = "56px 90px 80px 80px 100px 90px minmax(90px,1fr) 84px";
+export const TRADE_COLUMNS = "56px 90px 80px 80px 100px 90px minmax(130px,1fr) 84px";
 
 interface Props {
   order: {
@@ -25,7 +26,7 @@ export function TradeRow({ order: o, canCopy }: Props) {
       <span className="m">{tradeSize(o)}</span>
       <span className="m">{price ? usd(price) : "-"}</span>
       {result !== null ? <span className={`m ${result < 0 ? "dn" : "up"}`}>{pct(result)}</span> : <span style={{ fontSize: 13, color: status.color }}>{status.label}</span>}
-      <span className="mut" style={{ fontSize: 13 }}>{o.placedAt ? ago(o.placedAt) : ""}</span>
+      <span className="mut" style={{ fontSize: 13 }}>{o.placedAt ? <When at={o.placedAt} /> : ""}</span>
       <span style={{ display: "flex", justifyContent: "flex-end" }}>
         {canCopy && o.side === "buy" && COPYABLE_TYPES.includes(o.orderType ?? "") && status.label !== "Cancelled" && <CopyButton orderId={o.id} />}
       </span>
