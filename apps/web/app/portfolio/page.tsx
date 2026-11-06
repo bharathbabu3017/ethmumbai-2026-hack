@@ -1,9 +1,12 @@
 "use client";
 
 import type { FlashBalancesResponse } from "@flashmob/flash";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Nav } from "@/components/nav";
 import { OpenOrders } from "@/components/open-orders";
+import { Avatar } from "@/components/avatar";
+import { fetchMe, type Me } from "@/lib/account";
 import { flash } from "@/lib/flash";
 import { useWallet } from "@/lib/wallet";
 
@@ -11,9 +14,11 @@ export default function Portfolio() {
   const { address } = useWallet();
   const [balances, setBalances] = useState<FlashBalancesResponse["balances"]>([]);
   const [error, setError] = useState("");
+  const [me, setMe] = useState<Me>();
 
   useEffect(() => {
     if (address) flash.balances(address).then((b) => setBalances(b.balances)).catch((e) => setError(e.message));
+    fetchMe().then(setMe).catch(() => {});
   }, [address]);
 
   const total = balances.reduce((sum, b) => sum + Number(b.notional), 0);
@@ -39,7 +44,26 @@ export default function Portfolio() {
               ))}
               {!balances.length && <p className="mut" style={{ margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" }}>No balances yet.</p>}
             </section>
-            <OpenOrders />
+            <OpenOrders title="Pending orders" />
+            <section>
+              <h2 style={{ fontSize: 18, paddingBottom: 12 }}>Trades you copied</h2>
+              {me?.copies?.map((c) => (
+                <Link key={c.id} href={`/trades/${c.sourceOrderId}`} className="between" style={{ padding: "12px 0", borderTop: "1px solid var(--line)" }}>
+                  <span>{c.tokenSymbol} <span className="mut">from {c.trader}</span></span>
+                  <span className="m">${c.amountUsd}</span>
+                </Link>
+              ))}
+              {!me?.copies?.length && <p className="mut" style={{ margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" }}>Trades you copy appear here. <Link href="/home" style={{ color: "var(--text)" }}>Find a trader</Link></p>}
+            </section>
+            <section>
+              <h2 style={{ fontSize: 18, paddingBottom: 12 }}>Following</h2>
+              {me?.following?.map((t) => (
+                <Link key={t.id} href={`/traders/${t.id}`} className="row" style={{ padding: "10px 0", borderTop: "1px solid var(--line)", gap: 10 }}>
+                  <Avatar name={t.displayName} size={28} /> {t.displayName}
+                </Link>
+              ))}
+              {!me?.following?.length && <p className="mut" style={{ margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" }}>You aren&apos;t following anyone yet.</p>}
+            </section>
           </>
         )}
       </main>

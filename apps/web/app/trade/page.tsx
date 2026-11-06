@@ -4,9 +4,10 @@ import {
   BASE_TOKENS, buildOrder, ORDER_TYPES, prepareOrder, submitPrepared, USDC_BY_CHAIN,
   type FlashBalancesResponse, type OrderRequest, type OrderTypeName, type PayChain, type QuoteResponse, type Side,
 } from "@flashmob/flash";
-import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { Nav } from "@/components/nav";
-import { OpenOrders } from "@/components/open-orders";
+import { OrdersPanel } from "@/components/orders-panel";
 import { PriceChart } from "@/components/price-chart";
 import { TokenPicker, type PickedToken } from "@/components/token-picker";
 import { flash } from "@/lib/flash";
@@ -29,11 +30,16 @@ const HINTS: Record<OrderTypeName, string> = {
   "trailing-stop-limit": "Follows the price and places a limit order when it reverses by your trail.",
 };
 
-export default function Trade() {
+export default function TradePage() {
+  return <Suspense><Trade /></Suspense>;
+}
+
+function Trade() {
   const { address, getSigner } = useWallet();
+  const linked = useSearchParams().get("token")?.toLowerCase();
   const [side, setSide] = useState<Side>("buy");
   const [type, setType] = useState<OrderTypeName>("market");
-  const [token, setToken] = useState<PickedToken>(BASE_TOKENS[0]!);
+  const [token, setToken] = useState<PickedToken>(BASE_TOKENS.find((t) => t.address.toLowerCase() === linked) ?? BASE_TOKENS[0]!);
   const [payChain, setPayChain] = useState<PayChain>("base");
   const [f, setF] = useState<Fields>(EMPTY);
   const [advanced, setAdvanced] = useState(false);
@@ -131,7 +137,7 @@ export default function Trade() {
               { label: "Target", price: Number(type === "bracket" ? f.bracketTarget : attachable ? f.target : 0) || null, tone: "target" },
             ]} />
           </div>
-          <OpenOrders reloadKey={placed} />
+          <OrdersPanel reloadKey={placed} />
         </section>
 
         <section className="side" style={{ gap: 14 }}>

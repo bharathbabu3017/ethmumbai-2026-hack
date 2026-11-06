@@ -6,7 +6,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { useWallet } from "@/lib/wallet";
 
 const LINKS = [
-  ["/home", "Home"],
+  ["/home", "Traders"],
   ["/trade", "Trade"],
   ["/portfolio", "Portfolio"],
 ] as const;

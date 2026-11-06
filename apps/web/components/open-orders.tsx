@@ -21,7 +21,7 @@ function describe(o: FlashOrder) {
   return [o.qty, prices].filter(Boolean).join(" · ");
 }
 
-export function OpenOrders({ reloadKey = 0, title = "Open orders" }: { reloadKey?: number; title?: string }) {
+export function OpenOrders({ reloadKey = 0, title, onCount }: { reloadKey?: number; title?: string; onCount?(count: number): void }) {
   const { address, getSigner } = useWallet();
   const [orders, setOrders] = useState<FlashOrder[]>([]);
   const [editing, setEditing] = useState<string>();
@@ -31,8 +31,10 @@ export function OpenOrders({ reloadKey = 0, title = "Open orders" }: { reloadKey
 
   const refresh = useCallback(async () => {
     if (!address) return setOrders([]);
-    setOrders((await flash.listOrders({ funderAddress: address, statuses: OPEN_STATUSES })).orders);
-  }, [address]);
+    const { orders: open } = await flash.listOrders({ funderAddress: address, statuses: OPEN_STATUSES });
+    setOrders(open);
+    onCount?.(open.length);
+  }, [address, onCount]);
 
   useEffect(() => {
     refresh().catch((e) => setError(e.message));
@@ -79,10 +81,12 @@ export function OpenOrders({ reloadKey = 0, title = "Open orders" }: { reloadKey
   if (!address) return null;
   return (
     <section>
-      <div className="between" style={{ paddingBottom: 12, alignItems: "center" }}>
-        <h2 style={{ fontSize: 18 }}>{title}</h2>
-        {orders.length > 1 && <button className="btn warn" disabled={busy} onClick={cancelAll}>Cancel all</button>}
-      </div>
+      {(title || orders.length > 1) && (
+        <div className="between" style={{ paddingBottom: 12, alignItems: "center" }}>
+          {title ? <h2 style={{ fontSize: 18 }}>{title}</h2> : <span />}
+          {orders.length > 1 && <button className="btn warn" disabled={busy} onClick={cancelAll}>Cancel all</button>}
+        </div>
+      )}
       {error && <p role="alert" className="dn" style={{ margin: "0 0 10px" }}>{error}</p>}
       {orders.map((o) => {
         const fields = editableFields(o);
@@ -113,7 +117,7 @@ export function OpenOrders({ reloadKey = 0, title = "Open orders" }: { reloadKey
           </div>
         );
       })}
-      {!orders.length && <p className="mut" style={{ margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" }}>No open orders.</p>}
+      {!orders.length && <p className="mut" style={{ margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" }}>No pending orders. Limit, stop and other waiting orders appear here.</p>}
     </section>
   );
 }

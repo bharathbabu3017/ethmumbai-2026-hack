@@ -326,3 +326,27 @@ export async function confirmCopy(db: Db, id: string, userId: string, orderId: s
 
 export const releaseCopy = (db: Db, id: string, userId: string) =>
   db.delete(copies).where(and(eq(copies.id, id), eq(copies.userId, userId), eq(copies.status, "pending")));
+
+export const listFollowing = (db: Db, userId: string) =>
+  db
+    .select({ id: traders.id, displayName: traders.displayName })
+    .from(follows)
+    .innerJoin(traders, eq(follows.traderId, traders.id))
+    .where(eq(follows.followerId, userId));
+
+export const listUserCopies = (db: Db, userId: string) =>
+  db
+    .select({
+      id: copies.id,
+      amountUsd: copies.amountUsd,
+      sourceOrderId: copies.sourceOrderId,
+      tokenSymbol: orders.tokenSymbol,
+      trader: traders.displayName,
+      traderId: traders.id,
+    })
+    .from(copies)
+    .innerJoin(orders, eq(copies.sourceOrderId, orders.id))
+    .innerJoin(traders, eq(orders.userId, traders.userId))
+    .where(and(eq(copies.userId, userId), eq(copies.status, "placed")))
+    .orderBy(desc(copies.createdAt))
+    .limit(50);

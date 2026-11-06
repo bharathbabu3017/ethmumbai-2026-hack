@@ -7,6 +7,8 @@ export interface Me {
   address: string | null;
   trader?: { id: string; displayName: string } | null;
   telegramLinked?: boolean;
+  following?: { id: string; displayName: string }[];
+  copies?: { id: string; amountUsd: number; sourceOrderId: string; tokenSymbol: string | null; trader: string; traderId: string }[];
 }
 
 export const fetchMe = (): Promise<Me> => fetch("/api/me").then((r) => r.json());
