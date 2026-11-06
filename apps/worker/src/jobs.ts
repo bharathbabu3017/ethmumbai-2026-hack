@@ -130,7 +130,9 @@ export function startJobs(deps: JobDeps) {
     try {
       await Promise.all((await claimJobs(deps.db)).map((job) => runJob(deps, job)));
     } catch (e) {
-      console.error("Could not run wallet jobs:", e instanceof Error ? e.message : "unknown");
+      // Database errors keep the real reason, such as a lost connection, in `cause`.
+      const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : e instanceof Error ? e.message : "unknown";
+      console.error("Could not run wallet jobs:", cause);
     } finally {
       busy = false;
     }
