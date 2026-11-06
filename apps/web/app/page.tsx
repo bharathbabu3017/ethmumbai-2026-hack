@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CopyDiagram } from "@/components/copy-diagram";
 import { ProtectDiagram } from "@/components/protect-diagram";
 import { Reveal } from "@/components/reveal";
+import { SkipLanding } from "@/components/skip-landing";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const steps = [
@@ -27,6 +28,7 @@ const wallets = [
 export default function Landing() {
   return (
     <div className="wrap">
+      <SkipLanding />
       <header className="between" style={{ padding: "18px 0", alignItems: "center" }}>
         <Link href="/" style={{ fontSize: 16, fontWeight: 600 }}>Flashmob</Link>
         <nav className="row" style={{ gap: 8 }}>

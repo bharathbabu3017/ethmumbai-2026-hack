@@ -19,7 +19,7 @@ export function Nav() {
     <header className="topbar">
       <div className="wrap">
         <div className="row nav-left" style={{ gap: 28 }}>
-          <Link href="/" style={{ fontSize: 16, fontWeight: 600 }}>Flashmob</Link>
+          <Link href="/home" style={{ fontSize: 16, fontWeight: 600 }}>Flashmob</Link>
           <nav className="row nav-links" style={{ gap: 20 }}>
             {LINKS.map(([href, label]) => (
               <Link key={href} href={href} className={path === href ? undefined : "mut"}>{label}</Link>
