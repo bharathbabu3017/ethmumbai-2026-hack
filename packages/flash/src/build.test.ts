@@ -24,10 +24,12 @@ test("a plain limit is priced in USD, but in the pair rate once a bracket is att
   assert.deepEqual(protectedLimit.attachedBracket, { takeProfit: { notionalPrice: "2500" }, stopLoss: { notionalPrice: "1900" } });
 });
 
-test("a market buy can be paid with another token, and only a market buy", () => {
-  assert.equal(ok({ payToken: "0xweth" }).contraAsset, "0xweth");
-  assert.deepEqual(buildOrder(form({ payToken: "0xweth", type: "limit", price: "1" })), { error: "Paying with another token only works for market buys on Base." });
-  assert.deepEqual(buildOrder(form({ payToken: "0xT" })), { error: "Pick a different token to pay with." });
+test("a market order can pay with or receive another token", () => {
+  assert.equal(ok({ otherToken: "0xweth" }).contraAsset, "0xweth");
+  assert.equal(ok({ side: "sell", otherToken: "0xweth" }).contraAsset, "0xweth");
+  assert.deepEqual(buildOrder(form({ otherToken: "0xweth", type: "limit", price: "1" })), { error: "Swapping into another token only works for market orders on Base." });
+  assert.deepEqual(buildOrder(form({ otherToken: "0xT" })), { error: "Pick a different token to pay with." });
+  assert.deepEqual(buildOrder(form({ side: "sell", otherToken: "0xT" })), { error: "Pick a different token to receive." });
 });
 
 test("trigger orders fire in the right direction", () => {

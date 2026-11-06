@@ -30,7 +30,7 @@ function readRecent(): PickedToken[] {
   }
 }
 
-function saveRecent(token: PickedToken) {
+export function saveRecent(token: PickedToken) {
   try {
     const rest = readRecent().filter((t) => t.address.toLowerCase() !== token.address.toLowerCase());
     localStorage.setItem(RECENT_KEY, JSON.stringify([token, ...rest].slice(0, RECENT_MAX)));
@@ -46,7 +46,7 @@ function TokenIcon({ token, size = 28 }: { token: PickedToken; size?: number }) 
   return <span aria-hidden="true" style={{ ...box, background: "var(--soft)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: size / 2.6, fontWeight: 600 }}>{token.symbol.slice(0, 2)}</span>;
 }
 
-function Search({ onPick, onClose }: { onPick(token: PickedToken): void; onClose(): void }) {
+export function TokenSearch({ onPick, onClose }: { onPick(token: PickedToken): void; onClose(): void }) {
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<Result[]>();
   const [searching, setSearching] = useState(false);
@@ -160,7 +160,7 @@ export function TokenPicker({ value, onChange }: { value: PickedToken; onChange(
         <TokenIcon token={value} size={22} />{value.symbol}
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
       </button>
-      {open && <Search onPick={pick} onClose={() => setOpen(false)} />}
+      {open && <TokenSearch onPick={pick} onClose={() => setOpen(false)} />}
     </>
   );
 }

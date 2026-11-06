@@ -34,8 +34,8 @@ export interface TradeForm {
   qty: string;
   funder: string;
   payChain?: PayChain;
-  /** Pay with a token on Base instead of USDC. Market buys only. */
-  payToken?: string;
+  /** Pay with, or receive, a token on Base instead of USDC. Market orders only. */
+  otherToken?: string;
   price?: string; // limit price, or the limit after a stop or take profit fires
   trigger?: string;
   triggerDirection?: "upper" | "lower"; // a stop buy can fire on a breakout or on a dip
@@ -69,14 +69,14 @@ export function buildOrder(f: TradeForm): { request: OrderRequest } | { error: s
   const payChain = f.payChain ?? "base";
   const crossChain = payChain !== "base";
   if (crossChain && type !== "market") return { error: "Cross-chain only works for market orders." };
-  if (f.payToken && (side !== "buy" || type !== "market" || crossChain)) return { error: "Paying with another token only works for market buys on Base." };
-  if (f.payToken?.toLowerCase() === f.tokenAddress.toLowerCase()) return { error: "Pick a different token to pay with." };
+  if (f.otherToken && (type !== "market" || crossChain)) return { error: "Swapping into another token only works for market orders on Base." };
+  if (f.otherToken?.toLowerCase() === f.tokenAddress.toLowerCase()) return { error: `Pick a different token to ${side === "buy" ? "pay with" : "receive"}.` };
 
   const request: OrderRequest = {
     targetChain: "base",
     contraChain: payChain,
     targetAsset: f.tokenAddress,
-    contraAsset: f.payToken ?? USDC_BY_CHAIN[payChain],
+    contraAsset: f.otherToken ?? USDC_BY_CHAIN[payChain],
     side,
     qty: f.qty.trim(),
     orderType: type,

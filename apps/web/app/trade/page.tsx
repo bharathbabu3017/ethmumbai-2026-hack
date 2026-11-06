@@ -13,7 +13,7 @@ import { Nav } from "@/components/nav";
 import { OrderProgress } from "@/components/order-progress";
 import { OrdersPanel, type OrdersTab } from "@/components/orders-panel";
 import { PriceChart } from "@/components/price-chart";
-import { TokenPicker, type PickedToken } from "@/components/token-picker";
+import { saveRecent, TokenPicker, TokenSearch, type PickedToken } from "@/components/token-picker";
 import { useCached } from "@/lib/cached";
 import { flash } from "@/lib/flash";
 import { pct, plainError, usd } from "@/lib/format";
@@ -23,6 +23,7 @@ import { useWallet } from "@/lib/wallet";
 const QUOTE_REFRESH_MS = 15_000;
 const STATS_REFRESH_MS = 30_000;
 const MIN_PAY_USD = 0.5;
+const SEARCH_TOKENS = "search";
 const compactUsd = (n: number) => `$${Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n)}`;
 
 interface TokenTrader {
@@ -66,7 +67,8 @@ function Trade() {
   const [type, setType] = useState<OrderTypeName>("market");
   const [token, setToken] = useState<PickedToken>(linkedToken(linked, params.get("symbol")));
   const [payChain, setPayChain] = useState<PayChain>("base");
-  const [payToken, setPayToken] = useState<{ address: string; symbol: string }>();
+  const [other, setOther] = useState<{ address: string; symbol: string }>();
+  const [searching, setSearching] = useState(false);
   const [direction, setDirection] = useState<"upper" | "lower">("upper");
   const [f, setF] = useState<Fields>(EMPTY);
   const [advanced, setAdvanced] = useState(false);
@@ -102,16 +104,16 @@ function Trade() {
     setDirection("upper");
     if (!(ORDER_TYPES[type].sides as readonly string[]).includes(s)) setType("market");
     setPayChain("base");
-    setPayToken(undefined);
+    setOther(undefined);
     setF({ ...f, qty: "", stop: "", target: "" });
     change();
   };
 
   // On a buy you spend USDC on the chain you pay from. On a sell you spend the token.
-  const spendAsset = side === "buy" ? (payToken?.address ?? USDC_BY_CHAIN[payChain]).toLowerCase() : token.address.toLowerCase();
+  const spendAsset = side === "buy" ? (other?.address ?? USDC_BY_CHAIN[payChain]).toLowerCase() : token.address.toLowerCase();
   const spendChain = side === "buy" ? payChain : "base";
   const spendBalance = balances.find((b) => b.address.toLowerCase() === spendAsset && b.chain === spendChain)?.balance;
-  const spendSymbol = side === "buy" ? payToken?.symbol ?? "USDC" : token.symbol;
+  const spendSymbol = side === "buy" ? other?.symbol ?? "USDC" : token.symbol;
   // Native ETH stays out: it needs wrapping first, and it's what pays for gas.
   const payOptions = balances.filter((b) => b.chain === "base" && !b.isNative && Number(b.notional) >= MIN_PAY_USD
     && b.address.toLowerCase() !== USDC_BY_CHAIN.base.toLowerCase() && b.address.toLowerCase() !== token.address.toLowerCase());
@@ -125,10 +127,10 @@ function Trade() {
 
   const fetchQuote = useCallback(async () => {
     if (!address) throw new Error("Connect a wallet first");
-    const built = buildOrder({ ...f, side, type, tokenAddress: token.address, funder: address, payChain, payToken: payToken?.address, triggerDirection: direction });
+    const built = buildOrder({ ...f, side, type, tokenAddress: token.address, funder: address, payChain, otherToken: other?.address, triggerDirection: direction });
     if ("error" in built) throw new Error(built.error);
     return { request: built.request, quote: await prepareOrder(flash, address, built.request) };
-  }, [address, f, side, type, token, payChain, payToken, direction]);
+  }, [address, f, side, type, token, payChain, other, direction]);
 
   const run = (fn: () => Promise<void>) => async () => {
     setBusy(true);
@@ -169,7 +171,7 @@ function Trade() {
     setSide("sell");
     setType("market");
     setPayChain("base");
-    setPayToken(undefined);
+    setOther(undefined);
     setF({ ...EMPTY, qty: h.balance });
     change();
   };
@@ -189,14 +191,14 @@ function Trade() {
   const cost = preview ? orderCost(preview.quote) : null;
   const slippage = preview?.quote.recommendedSlippage;
   const impact = preview?.quote.estimatedPriceImpact;
-  const received = side === "buy" ? token.symbol : "USDC";
+  const received = side === "buy" ? token.symbol : other?.symbol ?? "USDC";
 
   return (
     <>
       <Nav />
       <section className="market-bar" aria-label="Market">
         <div className="wrap wide">
-          <TokenPicker value={token} onChange={(t) => { setToken(t); setPayToken(undefined); change(); }} />
+          <TokenPicker value={token} onChange={(t) => { setToken(t); setOther(undefined); change(); }} />
           <h1 className="m" style={{ fontSize: 24, fontWeight: 500 }}>{stats ? usd(stats.price) : "-"}</h1>
           {barStats.map(([label, value, tone]) => (
             <div key={label}>
@@ -229,7 +231,7 @@ function Trade() {
 
           <div>
             <label className="lab" htmlFor="type">Order type</label>
-            <select id="type" className="inp" value={type} onChange={(e) => { setType(e.target.value as OrderTypeName); setPayChain("base"); setPayToken(undefined); change(); }}>
+            <select id="type" className="inp" value={type} onChange={(e) => { setType(e.target.value as OrderTypeName); setPayChain("base"); setOther(undefined); change(); }}>
               {(Object.keys(ORDER_TYPES) as OrderTypeName[]).filter((t) => (ORDER_TYPES[t].sides as readonly string[]).includes(side)).map((t) => (
                 <option key={t} value={t}>{ORDER_TYPES[t].label}</option>
               ))}
@@ -239,17 +241,33 @@ function Trade() {
 
           {type === "market" && (
             <div>
-              <label className="lab" htmlFor="pay">{side === "buy" ? "Pay with" : "Receive USDC on"}</label>
-              <select id="pay" className="inp" value={payToken?.address ?? payChain} onChange={(e) => {
+              <label className="lab" htmlFor="pay">{side === "buy" ? "Pay with" : "Receive"}</label>
+              <select id="pay" className="inp" value={other?.address ?? payChain} onChange={(e) => {
+                if (e.target.value === SEARCH_TOKENS) return setSearching(true);
                 const held = payOptions.find((b) => b.address === e.target.value);
-                setPayToken(held && { address: held.address, symbol: held.symbol });
-                setPayChain(held ? "base" : e.target.value as PayChain);
-                setF({ ...f, qty: "" });
+                setOther(held ? { address: held.address, symbol: held.symbol } : other?.address === e.target.value ? other : undefined);
+                setPayChain(held || other?.address === e.target.value ? "base" : e.target.value as PayChain);
+                if (side === "buy") setF({ ...f, qty: "" });
                 change();
               }}>
-                {(Object.keys(CHAIN_NAMES) as PayChain[]).map((c) => <option key={c} value={c}>{side === "buy" ? "USDC on " : ""}{CHAIN_NAMES[c]}{c === "base" ? "" : " (cross-chain)"}</option>)}
-                {side === "buy" && payOptions.map((b) => <option key={b.address} value={b.address}>{b.symbol} (${Number(b.notional).toFixed(2)})</option>)}
+                {(Object.keys(CHAIN_NAMES) as PayChain[]).map((c) => <option key={c} value={c}>USDC on {CHAIN_NAMES[c]}{c === "base" ? "" : " (cross-chain)"}</option>)}
+                {payOptions.map((b) => <option key={b.address} value={b.address}>{b.symbol} (${Number(b.notional).toFixed(2)})</option>)}
+                {other && !payOptions.some((b) => b.address === other.address) && <option value={other.address}>{other.symbol}</option>}
+                <option value={SEARCH_TOKENS}>Search any token…</option>
               </select>
+              {searching && (
+                <TokenSearch
+                  onClose={() => setSearching(false)}
+                  onPick={(t) => {
+                    saveRecent(t);
+                    setOther({ address: t.address, symbol: t.symbol });
+                    setPayChain("base");
+                    setSearching(false);
+                    if (side === "buy") setF({ ...f, qty: "" });
+                    change();
+                  }}
+                />
+              )}
             </div>
           )}
 
