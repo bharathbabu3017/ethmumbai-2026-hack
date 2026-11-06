@@ -11,5 +11,10 @@
     "@types/node": "^26.6.6",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "@solana/kit": "^8.6.0"
+    }
   }
 }
