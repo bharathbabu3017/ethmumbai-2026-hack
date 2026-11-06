@@ -1,4 +1,5 @@
 import { getUser, leaderboard, listAgentTraders, listTrades, listUserCopies, listUserCopySettings } from "@flashmob/db";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { CopyDiagram } from "@/components/copy-diagram";
 import { GettingStarted } from "@/components/getting-started";
@@ -20,7 +21,7 @@ const TABS = [["", "All"], ["traders", "Traders"], ["agents", "Agents"]] as cons
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ show?: string }> }) {
   const { show } = await searchParams;
-  const [board, feed, session, agentRows] = await Promise.all([leaderboard(db()), listTrades(db(), 300), getSession(), listAgentTraders(db())]);
+  const [board, feed, session, agentRows, cookieStore] = await Promise.all([leaderboard(db()), listTrades(db(), 300), getSession(), listAgentTraders(db()), cookies()]);
   const agentIds = new Set(agentRows.map((a) => a.traderId));
   const [settings, user, copied] = session
     ? await Promise.all([listUserCopySettings(db(), session.userId), getUser(db(), session.userId), listUserCopies(db(), session.userId)])
@@ -52,7 +53,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
       <main className="wrap wide" style={{ paddingTop: 28, paddingBottom: 56, display: "flex", flexDirection: "column", gap: 20 }}>
         {copying.size > 0 && <StatusStrip copying={copying.size} paused={!!user?.copyPaused} />}
         <SellPrompts />
-        {copying.size === 0 && copied.length === 0 && <GettingStarted signedIn={!!session} />}
+        {copying.size === 0 && copied.length === 0 && <GettingStarted signedIn={!!session} saved={cookieStore.get("getStarted")?.value} />}
         <div className="between" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
           <div>
             <h1 style={{ fontSize: 26 }}>Discover</h1>
