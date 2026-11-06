@@ -2,7 +2,7 @@ import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm"
 import { alias, type PgDatabase, type PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
 import { applyFill } from "./position";
-import { copies, follows, linkTokens, mirrors, orders, pendingActions, positions, traders, users, wallets, walletJobs } from "./schema";
+import { copies, copySettings, follows, linkTokens, mirrors, orders, pendingActions, positions, traders, users, wallets, walletJobs } from "./schema";
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -117,6 +117,7 @@ export async function linkTelegram(db: Db, token: string, telegramUserId: string
     await tx.update(traders).set({ userId: telegramUserId }).where(eq(traders.userId, from));
     await tx.update(copies).set({ userId: telegramUserId }).where(eq(copies.userId, from));
     await tx.update(walletJobs).set({ userId: telegramUserId }).where(eq(walletJobs.userId, from));
+    await tx.delete(copySettings).where(eq(copySettings.userId, from));
     await tx.update(mirrors).set({ userId: telegramUserId }).where(eq(mirrors.userId, from));
     await tx.update(mirrors).set({ traderUserId: telegramUserId }).where(eq(mirrors.traderUserId, from));
     const moved = await tx.select().from(follows).where(eq(follows.followerId, from));
@@ -502,3 +503,67 @@ export const getMirror = async (db: Db, id: string, userId: string) => {
   const [row] = await db.select().from(mirrors).where(and(eq(mirrors.id, id), eq(mirrors.userId, userId)));
   return row;
 };
+
+export const getCopySettings = async (db: Db, userId: string, traderId: string) => {
+  const [row] = await db.select().from(copySettings).where(and(eq(copySettings.userId, userId), eq(copySettings.traderId, traderId)));
+  return row?.settings;
+};
+
+export async function saveCopySettings(db: Db, userId: string, traderId: string, settings: { enabled: boolean }) {
+  await db
+    .insert(copySettings)
+    .values({ userId, traderId, settings, enabled: settings.enabled })
+    .onConflictDoUpdate({ target: [copySettings.userId, copySettings.traderId], set: { settings, enabled: settings.enabled, updatedAt: sql`now()` } });
+}
+
+export const listAutoCopiers = (db: Db, traderId: string) =>
+  db
+    .select({ userId: copySettings.userId, settings: copySettings.settings, telegramId: users.telegramId, paused: users.copyPaused })
+    .from(copySettings)
+    .innerJoin(users, eq(copySettings.userId, users.id))
+    .where(and(eq(copySettings.traderId, traderId), eq(copySettings.enabled, true)));
+
+export const listUserCopySettings = (db: Db, userId: string) =>
+  db
+    .select({ traderId: traders.id, displayName: traders.displayName, settings: copySettings.settings, enabled: copySettings.enabled })
+    .from(copySettings)
+    .innerJoin(traders, eq(copySettings.traderId, traders.id))
+    .where(eq(copySettings.userId, userId));
+
+export const setCopyPaused = (db: Db, userId: string, paused: boolean) => db.update(users).set({ copyPaused: paused }).where(eq(users.id, userId));
+
+/** What auto-copy has committed in the last 24 hours, including copies still being placed. */
+export async function autoSpentLast24h(db: Db, userId: string, sourceUserId: string) {
+  const [row] = await db
+    .select({ usd: sql<number>`coalesce(sum(${copies.amountUsd}), 0)::float` })
+    .from(copies)
+    .innerJoin(sourceOrder, eq(copies.sourceOrderId, sourceOrder.id))
+    .where(and(eq(copies.userId, userId), eq(copies.auto, true), eq(sourceOrder.userId, sourceUserId), sql`${copies.createdAt} > now() - interval '24 hours'`));
+  return row?.usd ?? 0;
+}
+
+/** True if this order came from copying someone, so copying it would start a chain. */
+export async function isCopyOrder(db: Db, order: { id: string; walletId: string }) {
+  const [row] = await db
+    .select({ id: copies.id })
+    .from(copies)
+    .where(and(eq(copies.walletId, order.walletId), sql`(${copies.orderId} = ${order.id} or (${copies.status} = 'pending' and ${copies.createdAt} > now() - interval '2 minutes'))`))
+    .limit(1);
+  return !!row;
+}
+
+/** The open stop and target pairs behind a wallet's copied position, for selling. */
+export async function mirrorExits(db: Db, walletId: string, tokenAddress: string, openStatuses: string[]) {
+  const pairOrderIds: string[] = [];
+  let stop: number | null = null;
+  let target: number | null = null;
+  for (const { order } of await listCopyOrders(db, walletId, tokenAddress)) {
+    const pairId = (order.raw as { attachedBracket?: { bracketOrderId?: string | null } } | null)?.attachedBracket?.bracketOrderId;
+    const pair = pairId ? await getOrder(db, pairId) : undefined;
+    if (!pairId || !openStatuses.includes(pair?.status ?? "")) continue;
+    pairOrderIds.push(pairId);
+    stop = pair?.stopPrice ?? order.stopPrice;
+    target = pair?.targetPrice ?? order.targetPrice;
+  }
+  return { pairOrderIds, stop, target };
+}

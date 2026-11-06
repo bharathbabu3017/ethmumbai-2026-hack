@@ -1,5 +1,6 @@
 "use client";
 
+import type { CopySettings } from "@flashmob/flash";
 import { loginMessage } from "./login";
 
 
@@ -9,6 +10,8 @@ export interface Me {
   trader?: { id: string; displayName: string } | null;
   telegramLinked?: boolean;
   following?: { id: string; displayName: string }[];
+  autoCopies?: { traderId: string; displayName: string; settings: CopySettings; enabled: boolean }[];
+  copyPaused?: boolean;
   copies?: { id: string; amountUsd: number; sourceOrderId: string; tokenSymbol: string | null; trader: string; traderId: string }[];
 }
 

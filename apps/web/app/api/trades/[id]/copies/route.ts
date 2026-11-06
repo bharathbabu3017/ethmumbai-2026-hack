@@ -1,7 +1,7 @@
 import { findWallet, getPosition, getTrade, reserveCopy } from "@flashmob/db";
 import { rateLimited } from "@/lib/rate-limit";
 import { NextResponse, type NextRequest } from "next/server";
-import { copyInputError, tradeBlock } from "@/lib/copy";
+import { copyInputError, tradeBlock } from "@flashmob/flash";
 import { db } from "@/lib/db";
 import { currentPrice } from "@/lib/orders";
 import { getSession, unauthorized } from "@/lib/session";

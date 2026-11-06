@@ -13,6 +13,7 @@ export const users = pgTable("users", {
   telegramId: bigint("telegram_id", { mode: "number" }).unique(),
   telegramUsername: text("telegram_username"),
   privyId: text("privy_id").unique(),
+  copyPaused: boolean("copy_paused").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -124,6 +125,7 @@ export const copies = pgTable(
     stopPrice: doublePrecision("stop_price"),
     targetPrice: doublePrecision("target_price"),
     status: copyStatus("status").notNull().default("pending"),
+    auto: boolean("auto").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("one_copy_per_wallet").on(t.sourceOrderId, t.walletId)],
@@ -165,4 +167,16 @@ export const mirrors = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("one_mirror_per_wallet").on(t.sellOrderId, t.walletId), index("mirrors_user").on(t.userId)],
+);
+
+export const copySettings = pgTable(
+  "copy_settings",
+  {
+    userId: uuid("user_id").notNull().references(() => users.id),
+    traderId: uuid("trader_id").notNull().references(() => traders.id),
+    settings: jsonb("settings").notNull(),
+    enabled: boolean("enabled").notNull().default(false),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.traderId] })],
 );

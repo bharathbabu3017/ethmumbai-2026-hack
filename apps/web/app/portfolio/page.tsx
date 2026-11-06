@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Nav } from "@/components/nav";
 import { OpenOrders } from "@/components/open-orders";
 import { SellPrompts } from "@/components/sell-prompts";
+import { AutoCopyList } from "@/components/auto-copy-list";
 import { Avatar } from "@/components/avatar";
 import { fetchMe, type Me } from "@/lib/account";
 import { flash } from "@/lib/flash";
@@ -47,6 +48,7 @@ export default function Portfolio() {
               {!balances.length && <p className="mut" style={{ margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" }}>No balances yet.</p>}
             </section>
             <OpenOrders title="Pending orders" />
+            <AutoCopyList me={me} onChange={() => fetchMe().then(setMe).catch(() => {})} />
             <section>
               <h2 style={{ fontSize: 18, paddingBottom: 12 }}>Trades you copied</h2>
               {me?.copies?.map((c) => (

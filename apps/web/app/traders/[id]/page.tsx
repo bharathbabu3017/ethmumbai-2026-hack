@@ -3,10 +3,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Avatar } from "@/components/avatar";
 import { FollowButton } from "@/components/follow-button";
+import { CopySettingsPanel } from "@/components/copy-settings";
 import { Nav } from "@/components/nav";
 import { ResultsCurve } from "@/components/results-curve";
 import { TradeRow } from "@/components/trade-row";
-import { COPYABLE_TYPES } from "@/lib/copy";
+import { COPYABLE_TYPES } from "@flashmob/flash";
 import { db } from "@/lib/db";
 import { pct } from "@/lib/format";
 import { getSession } from "@/lib/session";
@@ -73,7 +74,7 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
             <h2 style={{ fontSize: 16 }}>Copy their trades</h2>
             <p className="mut" style={{ margin: 0 }}>Open a trade and choose your amount, stop and target. You sign each copy from your wallet.</p>
             {latestBuy ? <Link href={`/trades/${latestBuy.id}`} className="btn pri">View latest buy</Link> : <span className="mut" style={{ fontSize: 13 }}>Nothing to copy yet.</span>}
-            <p className="mut" style={{ margin: 0, fontSize: 13 }}>Auto-copy is coming soon.</p>
+            {session?.userId !== trader.userId && <CopySettingsPanel traderId={id} name={trader.displayName} />}
           </div>
         </aside>
       </main>

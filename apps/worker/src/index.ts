@@ -17,6 +17,7 @@ const db = createDb(required("DATABASE_URL"));
 const apiKey = required("FLASH_API_KEY");
 
 const flash = createFlashClient({ apiKey });
+const searchFlash = createFlashClient({ apiKey: process.env.FLASH_SEARCH_KEY || PUBLIC_DEV_KEY });
 
 const masterKey = parseMasterKey(process.env.WALLET_MASTER_KEY);
 const feeBps = process.env.PLATFORM_FEE_BPS ?? "10";
@@ -25,7 +26,7 @@ const bot = createBot({
   token: required("BOT_TOKEN"),
   db,
   flash,
-  searchFlash: createFlashClient({ apiKey: process.env.FLASH_SEARCH_KEY || PUBLIC_DEV_KEY }),
+  searchFlash,
   masterKey,
   feeBps,
   rpcUrl: process.env.BASE_RPC_URL,
@@ -44,6 +45,8 @@ await bot.api.setMyCommands([
   { command: "twap", description: "TWAP: /twap buy WETH 100 60" },
   { command: "trail", description: "Trailing stop: /trail sell WETH 100% 5" },
   { command: "orders", description: "Pending orders" },
+  { command: "pause", description: "Pause all auto-copy" },
+  { command: "resume", description: "Resume auto-copy" },
   { command: "cancelall", description: "Cancel all pending orders" },
   { command: "help", description: "All commands" },
 ]);
@@ -63,8 +66,10 @@ const send = (chatId: number, text: string, button?: AlertButton) => {
   sendQueue = sent;
   return sent;
 };
-startListener(db, flash, send, apiKey);
-startJobs({ db, flash, masterKey, feeBps, rpcUrl: process.env.BASE_RPC_URL });
+const autoCopyEnabled = process.env.AUTO_COPY_ENABLED === "true";
+console.log(`Auto-copy is ${autoCopyEnabled ? "ON" : "off"}`);
+startListener(db, flash, send, apiKey, { enabled: autoCopyEnabled, searchFlash });
+startJobs({ db, flash, masterKey, feeBps, rpcUrl: process.env.BASE_RPC_URL, send });
 if (appUrl) await bot.api.setChatMenuButton({ menu_button: { type: "web_app", text: "Open app", web_app: { url: `${appUrl}/mini` } } });
 
 console.log("Bot running");

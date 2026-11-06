@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { CopyPanel } from "@/components/copy-panel";
 import { Nav } from "@/components/nav";
 import { PriceChart } from "@/components/price-chart";
-import { COPYABLE_TYPES, entryPrice } from "@/lib/copy";
+import { COPYABLE_TYPES, entryPrice } from "@flashmob/flash";
 import { db } from "@/lib/db";
 import { pct, tradeStatus, usd } from "@/lib/format";
 import { serverFlash } from "@/lib/orders";

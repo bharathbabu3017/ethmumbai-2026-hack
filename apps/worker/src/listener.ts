@@ -1,5 +1,6 @@
-import { alertRecipients, applyOrderFrame, createMirrors, findWallet, findWalletById, getOrder, getTraderByUser, getUser, type Db } from "@flashmob/db";
-import type { FlashClient } from "@flashmob/flash";
+import { alertRecipients, applyOrderFrame, createMirrors, enqueueJob, findWallet, findWalletById, getCopySettings, getOrder, getTraderByUser, getUser, type Db } from "@flashmob/db";
+import type { CopySettings, FlashClient } from "@flashmob/flash";
+import { autoCopy, type AutoCopy } from "./autocopy";
 import { mirrorAlert, OPEN_STATUSES, orderFields, ownOrderAlert, tradeAlert, type Levels, type OrderFrame } from "./trades";
 
 const WS_URL = "wss://flash.definitive.fi/v1/ws";
@@ -24,7 +25,7 @@ async function attachedLevels(flash: FlashClient, o: OrderFrame): Promise<Levels
 
 const OPEN_OR_FILLED = (status: string) => OPEN_STATUSES.has(status) || status === "ORDER_STATUS_FILLED";
 
-export async function handleOrder(db: Db, flash: FlashClient, send: Send, o: OrderFrame, live: boolean) {
+export async function handleOrder(db: Db, flash: FlashClient, send: Send, o: OrderFrame, live: boolean, auto?: AutoCopy) {
   const wallet = await findWallet(db, o.funderAddress);
   if (!wallet) return;
   const trader = await getTraderByUser(db, wallet.userId);
@@ -47,12 +48,22 @@ export async function handleOrder(db: Db, flash: FlashClient, send: Send, o: Ord
     for (const chatId of await alertRecipients(db, trader.id)) await send(chatId, text, button);
   }
 
+  if (auto && !seenBefore && order.side === "buy") {
+    await autoCopy(db, flash, auto, send, order, trader, o.funderAddress).catch((e) => console.error("Auto-copy failed:", e instanceof Error ? e.message : "unknown"));
+  }
+
   // Once a sale is finished, followers who copied this trader get the chance to sell the same share.
   if (order.side === "sell" && statusChanged && !OPEN_STATUSES.has(o.status)) {
     for (const mirror of await createMirrors(db, order)) {
       const follower = await getUser(db, mirror.userId);
-      if (!follower?.telegramId) continue;
+      if (!follower) continue;
       const wallet = await findWalletById(db, mirror.walletId);
+      const settings = (await getCopySettings(db, mirror.userId, trader.id)) as CopySettings | undefined;
+      if (auto?.enabled && wallet?.type === "bot" && settings?.enabled && settings.autoSell && !follower.copyPaused) {
+        await enqueueJob(db, { userId: mirror.userId, walletId: mirror.walletId, kind: "mirror", payload: { mirrorId: mirror.id } });
+        continue;
+      }
+      if (!follower.telegramId) continue;
       await send(follower.telegramId, mirrorAlert(trader.displayName, mirror), {
         label: "Review sale",
         path: "/portfolio",
@@ -62,7 +73,7 @@ export async function handleOrder(db: Db, flash: FlashClient, send: Send, o: Ord
   }
 }
 
-export function startListener(db: Db, flash: FlashClient, send: Send, apiKey: string) {
+export function startListener(db: Db, flash: FlashClient, send: Send, apiKey: string, auto?: AutoCopy) {
   let attempts = 0;
   // Frames are handled one at a time so a status change can't overtake the one before it.
   let queue = Promise.resolve();
@@ -98,7 +109,7 @@ export function startListener(db: Db, flash: FlashClient, send: Send, apiKey: st
       if (frame.channel !== "orders" || !Array.isArray(frame.orders)) return;
       for (const order of frame.orders as OrderFrame[]) {
         queue = queue
-          .then(() => handleOrder(db, flash, send, order, frame.type === "update"))
+          .then(() => handleOrder(db, flash, send, order, frame.type === "update", auto))
           .catch((err) => console.error("Could not handle order:", err instanceof Error ? err.message : "unknown"));
       }
     };

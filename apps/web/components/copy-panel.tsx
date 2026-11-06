@@ -4,7 +4,7 @@ import { buildOrder, prepareOrder, USDC_BASE, type OrderRequest, type QuoteRespo
 import Link from "next/link";
 import { useState } from "react";
 import { ensureSession, postJson } from "@/lib/account";
-import { canAttach, copyForm, copyInputError, copySummary, entryPrice, tradeBlock, type CopyableTrade } from "@/lib/copy";
+import { canAttach, copyForm, copyInputError, copySummary, entryPrice, tradeBlock, type CopyableTrade } from "@flashmob/flash";
 import { flash } from "@/lib/flash";
 import { usd } from "@/lib/format";
 import { useWallet } from "@/lib/wallet";

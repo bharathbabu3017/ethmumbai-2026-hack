@@ -50,6 +50,7 @@ export interface TradeForm {
   activationPrice?: string;
   expiryDays?: string;
   maxImpactPercent?: string;
+  maxSlippagePercent?: string;
   now?: number;
 }
 
@@ -150,6 +151,13 @@ export function buildOrder(f: TradeForm): { request: OrderRequest } | { error: s
     const days = Number(f.expiryDays);
     if (!(days > 0)) return { error: "Enter a valid number of days, or leave expiry empty." };
     request.expireTime = new Date((f.now ?? Date.now()) + days * 86_400_000).toISOString();
+  }
+
+  if (f.maxSlippagePercent) {
+    if (type !== "market") return { error: "Max slippage only applies to market orders." };
+    const slippage = Number(f.maxSlippagePercent);
+    if (!(slippage > 0 && slippage <= 50)) return { error: "Max slippage must be between 0% and 50%." };
+    request.maxSlippage = String(slippage / 100);
   }
 
   if (f.maxImpactPercent) {

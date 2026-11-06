@@ -1,4 +1,4 @@
-import { claimAction, createAction, getOrCreateTelegramUser, linkTelegram, recordOrder, type Db } from "@flashmob/db";
+import { claimAction, createAction, getOrCreateTelegramUser, linkTelegram, recordOrder, setCopyPaused, type Db } from "@flashmob/db";
 import { batchCancelMessage, buildOrder, cancelMessage, FlashError, OPEN_STATUSES, prepareOrder, resolveBaseToken, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
 import { createBotSigner, decryptKey, generateBotWallet } from "@flashmob/signer";
 import { sequentialize } from "@grammyjs/runner";
@@ -38,6 +38,7 @@ Manage
 /balance - your balances
 /orders - pending orders, with cancel buttons
 /cancelall - cancel all pending orders
+/pause and /resume - stop or restart all auto-copy
 /export - show your wallet's private key`;
 
 export interface BotDeps {
@@ -93,6 +94,18 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
   });
 
   pm.command("help", (ctx) => ctx.reply(HELP));
+
+  pm.command("pause", async (ctx) => {
+    const { user } = await load(ctx.from);
+    await setCopyPaused(db, user.id, true);
+    await ctx.reply("Auto-copy is paused for every trader. Open orders stay as they are. Use /resume to turn it back on.");
+  });
+
+  pm.command("resume", async (ctx) => {
+    const { user } = await load(ctx.from);
+    await setCopyPaused(db, user.id, false);
+    await ctx.reply("Auto-copy has resumed.");
+  });
 
   pm.command("balance", async (ctx) => {
     const { wallet } = await load(ctx.from);

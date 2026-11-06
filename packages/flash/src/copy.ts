@@ -1,4 +1,4 @@
-import { OPEN_STATUSES } from "@flashmob/flash";
+import { OPEN_STATUSES } from "./client";
 
 export interface CopyableTrade {
   side: string | null;
@@ -85,4 +85,107 @@ export function copyInputError(t: CopyableTrade, price: number, input: { amountU
   if (stop >= entry) return "Your stop must be below the entry.";
   if (target <= entry) return "Your target must be above the entry.";
   return null;
+}
+
+export type CopySizing = "fixed" | "percent";
+export type CopyExits = "trader" | "custom" | "none";
+
+export interface CopySettings {
+  enabled: boolean;
+  sizing: CopySizing;
+  amountUsd: number;
+  percentOfBalance: number;
+  maxPerTradeUsd: number;
+  dailyCapUsd: number;
+  exits: CopyExits;
+  stopPercent: number | null;
+  targetPercent: number | null;
+  maxSlippagePercent: number | null;
+  maxEntryDriftPercent: number;
+  autoSell: boolean;
+  skipRiskyTokens: boolean;
+  blockedTokens: string[];
+}
+
+export const DEFAULT_COPY_SETTINGS: CopySettings = {
+  enabled: false,
+  sizing: "fixed",
+  amountUsd: 25,
+  percentOfBalance: 5,
+  maxPerTradeUsd: 100,
+  dailyCapUsd: 100,
+  exits: "trader",
+  stopPercent: null,
+  targetPercent: null,
+  maxSlippagePercent: null,
+  maxEntryDriftPercent: 2,
+  autoSell: false,
+  skipRiskyTokens: true,
+  blockedTokens: [],
+};
+
+const between = (n: number, min: number, max: number) => Number.isFinite(n) && n >= min && n <= max;
+
+/** Why these settings can't be saved, or null if they're fine. */
+export function settingsError(s: CopySettings) {
+  if (!["fixed", "percent"].includes(s.sizing)) return "Choose how to size copies.";
+  if (s.sizing === "fixed" && !between(s.amountUsd, 1, 100_000)) return "Amount per trade must be at least $1.";
+  if (s.sizing === "percent" && !between(s.percentOfBalance, 0.1, 100)) return "Percent of balance must be between 0.1% and 100%.";
+  if (s.sizing === "percent" && !between(s.maxPerTradeUsd, 1, 100_000)) return "Set a maximum per trade of at least $1.";
+  if (!between(s.dailyCapUsd, 1, 1_000_000)) return "Daily limit must be at least $1.";
+  if (!["trader", "custom", "none"].includes(s.exits)) return "Choose how to handle exits.";
+  if (s.exits === "custom") {
+    if (s.stopPercent === null || !between(s.stopPercent, 0.5, 90)) return "Stop loss must be between 0.5% and 90%.";
+    if (s.targetPercent === null || !between(s.targetPercent, 0.5, 1000)) return "Take profit must be between 0.5% and 1000%.";
+  }
+  if (s.maxSlippagePercent !== null && !between(s.maxSlippagePercent, 0.1, 50)) return "Max slippage must be between 0.1% and 50%.";
+  if (!between(s.maxEntryDriftPercent, 0, 50)) return "Max price difference must be between 0% and 50%.";
+  return null;
+}
+
+export interface CopyContext {
+  price: number;
+  usdcBalance: number;
+  spentLast24hUsd: number;
+  tokenSymbol: string;
+  tokenFlagged: boolean;
+}
+
+const MIN_COPY_USD = 1;
+const money = (n: number) => `$${n.toFixed(2)}`;
+
+/** Decides whether to auto-copy a trade, and how much to spend. Every reason for skipping is shown to the follower. */
+export function decideCopy(s: CopySettings, t: CopyableTrade, c: CopyContext): { skip: string } | { amountUsd: number; stop: string; target: string; maxSlippagePercent?: string } {
+  const blocked = tradeBlock(t, c.price, true);
+  if (blocked) return { skip: blocked };
+  if (s.blockedTokens.some((b) => b.toLowerCase() === c.tokenSymbol.toLowerCase())) return { skip: `${c.tokenSymbol} is on your blocked list.` };
+  if (s.skipRiskyTokens && c.tokenFlagged) return { skip: `${c.tokenSymbol} is flagged as risky.` };
+
+  const entry = entryPrice(t);
+  if (entry && copyMode(t) === "market") {
+    const drift = ((c.price - entry) / entry) * 100;
+    if (drift > s.maxEntryDriftPercent) return { skip: `The price is ${drift.toFixed(1)}% above the trader's entry, past your ${s.maxEntryDriftPercent}% limit.` };
+  }
+
+  const wanted = s.sizing === "fixed" ? s.amountUsd : Math.min((c.usdcBalance * s.percentOfBalance) / 100, s.maxPerTradeUsd);
+  const left = s.dailyCapUsd - c.spentLast24hUsd;
+  if (left < MIN_COPY_USD) return { skip: `You've reached your ${money(s.dailyCapUsd)} daily limit.` };
+  const amountUsd = Math.floor(Math.min(wanted, left) * 100) / 100;
+  if (amountUsd < MIN_COPY_USD) return { skip: `The copy would be under ${money(MIN_COPY_USD)}.` };
+  if (amountUsd > c.usdcBalance) return { skip: `Not enough USDC: you need ${money(amountUsd)} and have ${money(c.usdcBalance)}.` };
+
+  let stop = "";
+  let target = "";
+  if (canAttach(t)) {
+    const base = copyMode(t) === "limit" ? t.limitPrice! : c.price;
+    if (s.exits === "trader" && t.stopPrice !== null && t.targetPrice !== null) {
+      stop = String(t.stopPrice);
+      target = String(t.targetPrice);
+    }
+    if (s.exits === "custom") {
+      stop = (base * (1 - s.stopPercent! / 100)).toPrecision(8);
+      target = (base * (1 + s.targetPercent! / 100)).toPrecision(8);
+    }
+  }
+  return { amountUsd, stop, target, ...(s.maxSlippagePercent !== null && copyMode(t) === "market" ? { maxSlippagePercent: String(s.maxSlippagePercent) } : {}) };
 }

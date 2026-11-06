@@ -4,7 +4,7 @@ import { buildOrder, prepareOrder, type TradeForm } from "@flashmob/flash";
 import { useCallback, useEffect, useState } from "react";
 import { ensureSession, postJson } from "@/lib/account";
 import { flash } from "@/lib/flash";
-import { mirrorPlan, mirrorSummary, type MirrorPrompt } from "@/lib/mirror";
+import { mirrorPlan, mirrorSummary, type MirrorPrompt } from "@flashmob/flash";
 import { useWallet } from "@/lib/wallet";
 
 const act = (id: string, body: object) => postJson(`/api/mirrors/${id}`, body);
