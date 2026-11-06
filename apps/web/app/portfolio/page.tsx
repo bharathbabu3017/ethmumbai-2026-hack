@@ -7,6 +7,7 @@ import { AddFunds } from "@/components/add-funds";
 import { Nav } from "@/components/nav";
 import { OpenOrders } from "@/components/open-orders";
 import { OrderHistory } from "@/components/orders-panel";
+import { SendFunds } from "@/components/send-funds";
 import { SellPrompts } from "@/components/sell-prompts";
 import { TokenIcon } from "@/components/token-icon";
 import { useCached } from "@/lib/cached";
@@ -36,6 +37,7 @@ export default function Portfolio() {
   const [tab, setTab] = useState<(typeof TABS)[number]>("Assets");
   const [open, setOpen] = useState(0);
   const [funds, setFunds] = useState(false);
+  const [sending, setSending] = useState(false);
   useLiveOrders(load);
 
   const { rows, totalUsd, openPnlUsd, realizedUsd } = holdings(data?.balances ?? [], data?.paid.positions ?? [], data?.paid.realizedUsd ?? 0);
@@ -60,7 +62,10 @@ export default function Portfolio() {
                   </div>
                 ))}
               </div>
-              <button className="btn pri" onClick={() => setFunds(true)}>Add funds</button>
+              <div className="row" style={{ gap: 8 }}>
+                <button className="btn" disabled={!data} onClick={() => setSending(true)}>Send</button>
+                <button className="btn pri" onClick={() => setFunds(true)}>Add funds</button>
+              </div>
             </section>
             <SellPrompts />
 
@@ -98,6 +103,7 @@ export default function Portfolio() {
         )}
       </main>
       {funds && address && <AddFunds address={address} onClose={() => setFunds(false)} />}
+      {sending && data && <SendFunds balances={data.balances} onClose={() => setSending(false)} onSent={load} />}
     </>
   );
 }
