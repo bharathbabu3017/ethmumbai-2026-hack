@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CopyPanel } from "@/components/copy-panel";
 import { Nav } from "@/components/nav";
+import { PriceChart } from "@/components/price-chart";
 import { entryPrice, OPEN_STATUSES } from "@/lib/copy";
 import { db } from "@/lib/db";
 import { pct, tradeStatus, usd } from "@/lib/format";
@@ -48,6 +49,14 @@ export default async function TradePage({ params }: { params: Promise<{ id: stri
               </div>
             ))}
           </div>
+          <PriceChart
+            token={order.tokenAddress!}
+            levels={[
+              { label: order.filledQty > 0 ? "Filled" : "Entry", price: entry, tone: "entry" },
+              { label: "Stop", price: order.stopPrice, tone: "stop" },
+              { label: "Target", price: order.targetPrice, tone: "target" },
+            ]}
+          />
         </section>
         <aside className="side">
           {myCopy ? (

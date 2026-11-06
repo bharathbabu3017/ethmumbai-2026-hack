@@ -1,8 +1,9 @@
 "use client";
 
-import { prepareOrder, resolveBaseToken, submitPrepared, USDC_BASE, type OrderRequest, type QuoteResponse } from "@flashmob/flash";
+import { BASE_TOKENS, prepareOrder, resolveBaseToken, submitPrepared, USDC_BASE, type OrderRequest, type QuoteResponse } from "@flashmob/flash";
 import { useState } from "react";
 import { Nav } from "@/components/nav";
+import { PriceChart } from "@/components/price-chart";
 import { flash } from "@/lib/flash";
 import { useWallet } from "@/lib/wallet";
 
@@ -68,12 +69,23 @@ export default function Trade() {
   );
 
   const slippage = preview?.quote.recommendedSlippage;
+  const typed = token.trim();
+  const chartToken = BASE_TOKENS.find((t) => t.symbol.toLowerCase() === typed.toLowerCase())?.address ?? (/^0x[0-9a-fA-F]{40}$/.test(typed) ? typed : null);
   return (
     <>
       <Nav />
-      <main className="wrap" style={{ maxWidth: 480, paddingTop: 44, paddingBottom: 64 }}>
-        <h1 className="big" style={{ marginBottom: 20 }}>Trade</h1>
-        <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <main className="wrap cols" style={{ paddingTop: 44, paddingBottom: 64 }}>
+        <section className="main">
+          <h1 className="big" style={{ marginBottom: 20 }}>Trade</h1>
+          {chartToken
+            ? <PriceChart token={chartToken} height={420} levels={[
+                { label: "Limit", price: type === "limit" ? Number(price) || null : null, tone: "entry" },
+                { label: "Stop", price: side === "buy" ? Number(stop) || null : null, tone: "stop" },
+                { label: "Target", price: side === "buy" ? Number(target) || null : null, tone: "target" },
+              ]} />
+            : <p className="mut" style={{ margin: 0 }}>Enter a listed token or a Base address to see its chart.</p>}
+        </section>
+        <section className="side" style={{ gap: 14 }}>
           {toggle(["buy", "sell"] as const, side, setSide)}
           {toggle(["market", "limit"] as const, type, setType)}
           <div><label className="lab" htmlFor="token">Token symbol or Base address</label><input id="token" className="inp" value={token} onChange={(e) => { setToken(e.target.value); setPreview(undefined); }} /></div>
