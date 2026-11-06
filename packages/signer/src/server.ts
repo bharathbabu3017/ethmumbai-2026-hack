@@ -1,6 +1,5 @@
 import { createPublicClient, createWalletClient, http, type Chain, type Hex } from "viem";
-import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { decryptKey, encryptKey } from "./crypto";
+import { privateKeyToAccount } from "viem/accounts";
 
 export interface OrderSigner {
   address: `0x${string}`;
@@ -10,11 +9,7 @@ export interface OrderSigner {
   sendTransaction(tx: { to: string; data: string }): Promise<Hex>;
 }
 
-export function generateBotWallet(masterKey: Buffer, owner: string) {
-  const privateKey = generatePrivateKey();
-  return { address: privateKeyToAccount(privateKey).address, encryptedKey: encryptKey(privateKey, masterKey, owner) };
-}
-
+/** Signs with a local key. Only the spike script uses this. */
 export function createPrivateKeySigner(privateKey: Hex, chain: Chain, rpcUrl?: string): OrderSigner {
   const account = privateKeyToAccount(privateKey);
   const transport = http(rpcUrl);
@@ -31,8 +26,4 @@ export function createPrivateKeySigner(privateKey: Hex, chain: Chain, rpcUrl?: s
       return hash;
     },
   };
-}
-
-export function createBotSigner(encryptedKey: string, masterKey: Buffer, owner: string, chain: Chain, rpcUrl?: string) {
-  return createPrivateKeySigner(decryptKey(encryptedKey, masterKey, owner) as Hex, chain, rpcUrl);
 }

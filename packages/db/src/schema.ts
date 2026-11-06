@@ -1,7 +1,6 @@
-import { sql } from "drizzle-orm";
 import { bigint, boolean, doublePrecision, index, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
-export const walletType = pgEnum("wallet_type", ["bot", "external", "embedded"]);
+export const walletType = pgEnum("wallet_type", ["external", "embedded"]);
 export const orderSource = pgEnum("order_source", ["manual", "copy"]);
 export const actionStatus = pgEnum("action_status", ["pending", "used"]);
 export const mirrorStatus = pgEnum("mirror_status", ["pending", "executing", "placed", "dismissed"]);
@@ -24,12 +23,11 @@ export const wallets = pgTable(
     userId: uuid("user_id").notNull().references(() => users.id),
     type: walletType("type").notNull(),
     address: text("address").notNull().unique(),
-    encryptedKey: text("encrypted_key"),
     privyWalletId: text("privy_wallet_id"), // set on a Privy embedded wallet
     delegated: boolean("delegated").notNull().default(false), // the user has approved our server signer
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("one_bot_wallet_per_user").on(t.userId).where(sql`${t.type} = 'bot'`)],
+  (t) => [index("wallets_user").on(t.userId)],
 );
 
 // A confirm button points at one of these, so it can only ever run once.
@@ -133,7 +131,7 @@ export const copies = pgTable(
   (t) => [uniqueIndex("one_copy_per_wallet").on(t.sourceOrderId, t.walletId)],
 );
 
-// Actions on a Telegram wallet requested from the Mini App. Only the worker holds the keys, so it runs these.
+// Trades the worker places for someone who is away, such as auto-copy.
 export const walletJobs = pgTable(
   "wallet_jobs",
   {

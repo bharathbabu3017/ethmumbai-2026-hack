@@ -4,16 +4,15 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import {
-  alertRecipients, applyOrderFrame, getOrCreateTelegramAccount, getTradingWallet, getUserByTelegram, syncPrivyUser, claimJobs, claimMirror, completeMirror, createMirrors, dismissMirror, listCopyOrders, listMirrors, releaseMirror, enqueueJob, finishJob, getJob, recordOrder, claimAction, confirmCopy, countCopies, createAction, createLinkToken, createTrader, findWallet, getBotWallet,
-  getOrCreateTelegramUser, getOrCreateWalletUser, getPosition, getTrade, getTraderByUser, leaderboard, linkTelegram, listTrades, releaseCopy, reserveCopy,
+  alertRecipients, applyOrderFrame, getOrCreateTelegramAccount, getTradingWallet, getUserByTelegram, syncPrivyUser, claimJobs, claimMirror, completeMirror, createMirrors, dismissMirror, listCopyOrders, listMirrors, releaseMirror, enqueueJob, finishJob, getJob, recordOrder, claimAction, confirmCopy, countCopies, createAction, createLinkToken, createTrader, findWallet,
+  getOrCreateWalletUser, getPosition, getTrade, getTraderByUser, leaderboard, linkTelegram, listTrades, releaseCopy, reserveCopy,
   setFollow, type Db, type OrderFields,
 } from "./queries";
 import { sql } from "drizzle-orm";
 import * as schema from "./schema";
 
 let db: Db;
-let n = 0;
-const makeWallet = () => ({ address: `0xwallet${++n}`, encryptedKey: "v1:x:y:z" });
+const telegramUser = async (id: number) => ({ user: await getOrCreateTelegramAccount(db, { id }) });
 
 before(async () => {
   const pg = drizzle(new PGlite(), { schema });
@@ -21,30 +20,23 @@ before(async () => {
   db = pg as unknown as Db;
 });
 
-test("a user gets one wallet, even when /start races", async () => {
-  const results = await Promise.all([1, 2, 3, 4].map(() => getOrCreateTelegramUser(db, { id: 100, username: "a" }, makeWallet)));
-  assert.equal(new Set(results.map((r) => r.user.id)).size, 1);
-  assert.equal(new Set(results.map((r) => r.wallet.id)).size, 1);
-  assert.equal(results.filter((r) => r.created).length, 1);
-});
-
 test("a confirm action only runs once, even when tapped repeatedly", async () => {
-  const { user } = await getOrCreateTelegramUser(db, { id: 101 }, makeWallet);
+  const { user } = await telegramUser(101);
   const id = await createAction(db, user.id, "buy", { qty: "5" });
   const claims = await Promise.all([1, 2, 3, 4, 5].map(() => claimAction(db, id, user.id)));
   assert.equal(claims.filter(Boolean).length, 1);
 });
 
 test("another user cannot claim an action", async () => {
-  const a = await getOrCreateTelegramUser(db, { id: 102 }, makeWallet);
-  const b = await getOrCreateTelegramUser(db, { id: 103 }, makeWallet);
+  const a = await telegramUser(102);
+  const b = await telegramUser(103);
   const id = await createAction(db, a.user.id, "buy", {});
   assert.equal(await claimAction(db, id, b.user.id), undefined);
   assert.ok(await claimAction(db, id, a.user.id));
 });
 
 test("an expired action cannot be claimed", async () => {
-  const { user } = await getOrCreateTelegramUser(db, { id: 104 }, makeWallet);
+  const { user } = await telegramUser(104);
   const id = await createAction(db, user.id, "buy", {}, -1);
   assert.equal(await claimAction(db, id, user.id), undefined);
 });
@@ -53,18 +45,17 @@ test("an expired action cannot be claimed", async () => {
 test("linking moves the web wallet and trader onto the Telegram user, and the token works once", async () => {
   const webId = await getOrCreateWalletUser(db, "0xAbC1");
   await createTrader(db, { userId: webId, displayName: "linker" });
-  const tg = await getOrCreateTelegramUser(db, { id: 200 }, makeWallet);
+  const tg = await telegramUser(200);
   await createLinkToken(db, "tok1", webId);
   assert.equal(await linkTelegram(db, "tok1", tg.user.id), "linked");
   assert.equal(await linkTelegram(db, "tok1", tg.user.id), "invalid");
   assert.equal((await findWallet(db, "0xabc1"))!.userId, tg.user.id);
   assert.ok(await getTraderByUser(db, tg.user.id));
-  assert.equal((await getBotWallet(db, tg.user.id))!.id, tg.wallet.id);
 });
 
 test("an expired link token does nothing", async () => {
   const webId = await getOrCreateWalletUser(db, "0xAbC2");
-  const tg = await getOrCreateTelegramUser(db, { id: 201 }, makeWallet);
+  const tg = await telegramUser(201);
   await createLinkToken(db, "tok2", webId, -1);
   assert.equal(await linkTelegram(db, "tok2", tg.user.id), "invalid");
   assert.equal((await findWallet(db, "0xabc2"))!.userId, webId);
@@ -73,7 +64,7 @@ test("an expired link token does nothing", async () => {
 test("alerts only go to followers with Telegram linked", async () => {
   const u = await getOrCreateWalletUser(db, "0xAbC4");
   const t = (await createTrader(db, { userId: u, displayName: "alerter" }))!;
-  const tg = await getOrCreateTelegramUser(db, { id: 300 }, makeWallet);
+  const tg = await telegramUser(300);
   const webOnly = await getOrCreateWalletUser(db, "0xAbC5");
   await setFollow(db, tg.user.id, t.id, true);
   await setFollow(db, webOnly, t.id, true);
@@ -352,14 +343,6 @@ test("web and Telegram become one account, keeping the Telegram user", async () 
   assert.equal(id, tg.id);
   assert.equal((await findWallet(db, "0xmeta"))!.userId, tg.id);
   assert.ok(await getTraderByUser(db, tg.id));
-});
-
-test("an older generated wallet still works until a Privy wallet is approved, then Privy wins", async () => {
-  const old = await getOrCreateTelegramUser(db, { id: 5001 }, makeWallet);
-  assert.equal((await getTradingWallet(db, old.user.id))!.type, "bot");
-  await syncPrivyUser(db, { privyId: "did:5", telegramId: 5001, embedded: embedded(5, true), externalAddresses: [] });
-  assert.equal((await getTradingWallet(db, old.user.id))!.type, "embedded");
-  assert.equal((await getUserByTelegram(db, 5001))!.privyId, "did:5");
 });
 
 test("two trader profiles are never merged", async () => {

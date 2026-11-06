@@ -1,5 +1,5 @@
 import { claimJobs, claimMirror, completeMirror, confirmCopy, finishJob, getPosition, getTradingWallet, getUser, mirrorExits, recordOrder, releaseCopy, releaseMirror, type Db } from "@flashmob/db";
-import { batchCancelMessage, buildOrder, buildUpdate, cancelMessage, feeFields, FlashError, mirrorPlan, OPEN_STATUSES, prepareOrder, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
+import { buildOrder, cancelMessage, feeFields, FlashError, mirrorPlan, OPEN_STATUSES, prepareOrder, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
 import { signerFor, type PrivyAccess } from "./signers";
 
 const POLL_MS = 1_000;
@@ -8,18 +8,16 @@ const MAX_PRICE_MOVE = 0.02;
 interface JobDeps {
   db: Db;
   flash: FlashClient;
-  masterKey: Buffer;
   feeBps: string;
   rpcUrl?: string;
-  privy?: PrivyAccess;
+  privy: PrivyAccess;
   send?: (chatId: number, text: string) => Promise<void>;
 }
 
 type Job = Awaited<ReturnType<typeof claimJobs>>[number];
 
 /**
- * The website can't see this wallet's key, but a stolen session could still ask for anything.
- * So funds may only be traded on Base and may only ever come back to this wallet.
+ * A last check before the server signs: funds may only be traded on Base, and may only ever come back to this wallet.
  */
 export function unsafeReason(request: OrderRequest, address: string) {
   if (request.targetChain !== "base" || request.contraChain !== "base") return "Telegram wallets only trade on Base.";
@@ -31,7 +29,7 @@ async function run(deps: JobDeps, job: Job) {
   const { db, flash, feeBps } = deps;
   const wallet = await getTradingWallet(db, job.userId);
   if (!wallet || wallet.id !== job.walletId) throw new Error("This wallet can't be used here.");
-  const signer = signerFor(deps, wallet, job.userId);
+  const signer = signerFor(deps, wallet);
   const payload = job.payload as Record<string, never>;
 
   if (job.kind === "order") {
@@ -97,27 +95,6 @@ async function run(deps: JobDeps, job: Job) {
       });
     }
     return { orderId, summary: `Sold ${plan.sellQty} ${mirror.tokenSymbol}, ${mirror.percent.toFixed(0)}% of your copy.` };
-  }
-
-  if (job.kind === "cancel") {
-    const { orderId } = payload as unknown as { orderId: string };
-    const message = cancelMessage(orderId);
-    await flash.cancelOrder(orderId, { cancelMessage: message, userSignature: await signer.signMessage(message) });
-    return { ok: true };
-  }
-
-  if (job.kind === "cancelMany") {
-    const { orderIds } = payload as unknown as { orderIds: string[] };
-    const message = batchCancelMessage(orderIds);
-    return flash.cancelOrders({ orderIds, cancelMessage: message, userSignature: await signer.signMessage(message) });
-  }
-
-  if (job.kind === "update") {
-    const { orderId, next } = payload as unknown as { orderId: string; next: Record<string, string> };
-    const { order } = await flash.getOrder(orderId, wallet.address);
-    const { message, body } = buildUpdate(orderId, order, next, new Date().toISOString());
-    await flash.updateOrder(orderId, { ...body, updateMessage: message, userSignature: await signer.signMessage(message) });
-    return { ok: true };
   }
 
   throw new Error("Unknown request.");

@@ -11,7 +11,7 @@ const act = (id: string, body: object) => postJson(`/api/mirrors/${id}`, body);
 
 /** Prompts to sell the same share as a trader you copied. */
 export function SellPrompts() {
-  const { address, actions, getSigner, miniApp } = useWallet();
+  const { address, actions, getSigner } = useWallet();
   const [prompts, setPrompts] = useState<MirrorPrompt[]>([]);
   const [busy, setBusy] = useState<string>();
   const [status, setStatus] = useState("");
@@ -77,11 +77,11 @@ export function SellPrompts() {
             <div className="mut">Sell the same share of your copy: <span className="m">{mirrorPlan(m).sellQty} {m.tokenSymbol}</span>. {mirrorSummary(m)}</div>
             {usable ? (
               <div className="row" style={{ gap: 8 }}>
-                <button className="btn pri" disabled={!!busy} onClick={() => sell(m)}>{busy === m.id ? (miniApp ? "Selling" : "Check your wallet") : "Sell"}</button>
+                <button className="btn pri" disabled={!!busy} onClick={() => sell(m)}>{busy === m.id ? "Check your wallet" : "Sell"}</button>
                 <button className="btn" disabled={!!busy} onClick={() => keep(m)}>Keep position</button>
               </div>
             ) : (
-              <p className="mut" style={{ margin: 0, fontSize: 13 }}>{m.walletType === "external" ? "Connect the wallet that made this copy to sell." : "This is on your Flashmob wallet. Open the app in Telegram to sell."}</p>
+              <p className="mut" style={{ margin: 0, fontSize: 13 }}>{m.walletType === "external" ? "Connect the wallet that made this copy to sell." : "This is on your Flashmob wallet. Open the app in Telegram to sell, or log in with it here."}</p>
             )}
           </div>
         );

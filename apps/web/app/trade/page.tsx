@@ -37,7 +37,7 @@ export default function TradePage() {
 }
 
 function Trade() {
-  const { address, actions, miniApp } = useWallet();
+  const { address, actions } = useWallet();
   const linked = useSearchParams().get("token")?.toLowerCase();
   const [side, setSide] = useState<Side>("buy");
   const [type, setType] = useState<OrderTypeName>("market");
@@ -130,7 +130,7 @@ function Trade() {
     setPlaced((n) => n + 1);
   });
 
-  const stepLabel = step === "approving" ? `Approve ${spendSymbol} in your wallet` : step === "signing" ? "Sign in your wallet" : step === "submitting" ? "Placing your order" : miniApp ? "Placing your order" : "Check your wallet";
+  const stepLabel = step === "approving" ? `Approve ${spendSymbol} in your wallet` : step === "signing" ? "Sign in your wallet" : step === "submitting" ? "Placing your order" : "Check your wallet";
   const actionLabel = type === "market" ? `${side === "buy" ? "Buy" : "Sell"} ${token.symbol}` : `Place ${ORDER_TYPES[type].label.toLowerCase()} order`;
 
   const slippage = preview?.quote.recommendedSlippage;
@@ -173,7 +173,7 @@ function Trade() {
             <p className="mut" style={{ margin: "6px 0 0", fontSize: 12 }}>{HINTS[type]}</p>
           </div>
 
-          {type === "market" && !miniApp && (
+          {type === "market" && (
             <div>
               <label className="lab" htmlFor="pay">{side === "buy" ? "Pay with USDC on" : "Receive USDC on"}</label>
               <select id="pay" className="inp" value={payChain} onChange={(e) => { setPayChain(e.target.value as PayChain); change(); }}>

@@ -11,15 +11,13 @@ interface TelegramProfile {
   username?: string;
 }
 
-type MakeWallet = (userId: string) => { address: string; encryptedKey: string };
-
-/** The wallet our server may sign with: a Privy wallet the user approved, or an older generated one. */
+/** The wallet our server may sign with: a Privy wallet the user has approved. */
 export async function getTradingWallet(db: Db, userId: string) {
-  const rows = await db.select().from(wallets).where(eq(wallets.userId, userId));
-  return rows.find((w) => w.type === "embedded" && w.delegated) ?? rows.find((w) => w.type === "bot");
+  const [wallet] = await db.select().from(wallets).where(and(eq(wallets.userId, userId), eq(wallets.type, "embedded"), eq(wallets.delegated, true)));
+  return wallet;
 }
 
-/** Finds or creates a Telegram user without making a wallet, for when wallets come from Privy. */
+/** Finds or creates a Telegram user. Their wallet comes from Privy. */
 export async function getOrCreateTelegramAccount(db: Db, tg: TelegramProfile) {
   const [user] = await db
     .insert(users)
@@ -28,33 +26,6 @@ export async function getOrCreateTelegramAccount(db: Db, tg: TelegramProfile) {
     .returning();
   if (!user) throw new Error("Could not load user");
   return user;
-}
-
-/** Safe to call concurrently: a user and their bot wallet are only ever created once. */
-export async function getOrCreateTelegramUser(db: Db, tg: TelegramProfile, makeWallet: MakeWallet) {
-  const [user] = await db
-    .insert(users)
-    .values({ telegramId: tg.id, telegramUsername: tg.username })
-    .onConflictDoUpdate({ target: users.telegramId, set: { telegramUsername: tg.username ?? null } })
-    .returning();
-  if (!user) throw new Error("Could not load user");
-
-  const existing = await getBotWallet(db, user.id);
-  if (existing) return { user, wallet: existing, created: false };
-
-  const inserted = await db
-    .insert(wallets)
-    .values({ userId: user.id, type: "bot", ...makeWallet(user.id) })
-    .onConflictDoNothing()
-    .returning();
-  const wallet = inserted[0] ?? (await getBotWallet(db, user.id));
-  if (!wallet) throw new Error("Could not load wallet");
-  return { user, wallet, created: inserted.length > 0 };
-}
-
-export async function getBotWallet(db: Db, userId: string) {
-  const [wallet] = await db.select().from(wallets).where(and(eq(wallets.userId, userId), eq(wallets.type, "bot")));
-  return wallet;
 }
 
 export async function createAction(db: Db, userId: string, kind: string, payload: unknown, ttlSeconds = 120) {
@@ -131,8 +102,7 @@ async function mergeUsers(tx: Db, from: string, telegramUserId: string) {
 }
 
 /**
- * Links a web account to a Telegram account using a one-time token. The Telegram user is kept,
- * because bot wallet keys are encrypted to that user's id.
+ * Links a web account to a Telegram account using a one-time token.
  */
 export async function linkTelegram(db: Db, token: string, telegramUserId: string) {
   return db.transaction(async (tx) => {
@@ -601,7 +571,6 @@ export interface PrivyIdentity {
 
 /**
  * Connects a verified Privy user to one Flashmob account, merging any accounts that turn out to be the same person.
- * A Telegram account wins a merge, because older generated wallet keys are encrypted to that user's id.
  */
 export async function syncPrivyUser(db: Db, identity: PrivyIdentity) {
   return db.transaction(async (raw) => {

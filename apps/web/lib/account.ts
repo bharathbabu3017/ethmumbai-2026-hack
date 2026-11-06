@@ -6,7 +6,7 @@ import { loginMessage } from "./login";
 
 export interface Me {
   address: string | null;
-  walletType?: "bot" | "external" | "embedded";
+  walletType?: "external" | "embedded";
   /** The wallet the bot and auto-copy use, once it exists and is approved. */
   tradingWallet?: string | null;
   trader?: { id: string; displayName: string } | null;

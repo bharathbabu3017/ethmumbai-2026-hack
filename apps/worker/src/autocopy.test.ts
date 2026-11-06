@@ -1,21 +1,19 @@
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
 import { beforeEach, test } from "node:test";
 import {
-  claimJobs, createTrader, findWallet, getOrCreateTelegramUser, getOrCreateWalletUser, getOrder, reserveCopy, confirmCopy, saveCopySettings, schema, setCopyPaused, setFollow, type Db,
+  claimJobs, createTrader, findWallet, getOrCreateWalletUser, getOrder, reserveCopy, confirmCopy, saveCopySettings, schema, setCopyPaused, setFollow, type Db,
 } from "@flashmob/db";
 import { migrationsFolder } from "@flashmob/db/migrations";
 import { DEFAULT_COPY_SETTINGS, USDC_BASE, type FlashClient } from "@flashmob/flash";
-import { generateBotWallet } from "@flashmob/signer";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { sql } from "drizzle-orm";
 import { runJob } from "./jobs";
+import { approvedUser, fakePrivy } from "./test-helpers";
 import { handleOrder } from "./listener";
 import type { OrderFrame } from "./trades";
 
-const masterKey = randomBytes(32);
 const WETH = "0x4200000000000000000000000000000000000006";
 const typedData = JSON.stringify({ domain: { name: "T", chainId: 8453 }, types: { M: [{ name: "a", type: "uint256" }] }, primaryType: "M", message: { a: "1" } });
 const CHAT = 700;
@@ -45,7 +43,7 @@ const frame = (over: Partial<OrderFrame> = {}): OrderFrame => ({
 });
 
 const save = (over = {}) => saveCopySettings(db, follower.userId, trader.id, { ...DEFAULT_COPY_SETTINGS, enabled: true, ...over });
-const drain = async () => { for (const job of await claimJobs(db)) await runJob({ db, flash, masterKey, feeBps: "10", send }, job); };
+const drain = async () => { for (const job of await claimJobs(db)) await runJob({ db, flash, privy: fakePrivy, feeBps: "10", send }, job); };
 
 beforeEach(async () => {
   const pg = drizzle(new PGlite(), { schema });
@@ -54,7 +52,7 @@ beforeEach(async () => {
   sent = []; submits = []; cancels = []; usdc = "500";
   const userId = await getOrCreateWalletUser(db, "0xTrader");
   trader = (await createTrader(db, { userId, displayName: "Ana" }))!;
-  const f = await getOrCreateTelegramUser(db, { id: CHAT }, (id) => generateBotWallet(masterKey, id));
+  const f = await approvedUser(db, CHAT);
   follower = { userId: f.user.id, walletId: f.wallet.id, address: f.wallet.address };
   await setFollow(db, f.user.id, trader.id, true);
 });
@@ -117,7 +115,7 @@ test("the daily limit holds across trades", async () => {
 
 test("a copied order never triggers more copies", async () => {
   const followerTrader = (await createTrader(db, { userId: follower.userId, displayName: "Bo" }))!;
-  const second = await getOrCreateTelegramUser(db, { id: 701 }, (id) => generateBotWallet(masterKey, id));
+  const second = await approvedUser(db, 701);
   await saveCopySettings(db, second.user.id, followerTrader.id, { ...DEFAULT_COPY_SETTINGS, enabled: true });
   await save();
   await handleOrder(db, flash, send, frame(), true, on);
@@ -129,7 +127,7 @@ test("a copied order never triggers more copies", async () => {
 
 test("an order placed by the follower by hand can still be copied", async () => {
   const followerTrader = (await createTrader(db, { userId: follower.userId, displayName: "Bo" }))!;
-  const second = await getOrCreateTelegramUser(db, { id: 702 }, (id) => generateBotWallet(masterKey, id));
+  const second = await approvedUser(db, 702);
   await saveCopySettings(db, second.user.id, followerTrader.id, { ...DEFAULT_COPY_SETTINGS, enabled: true });
   await handleOrder(db, flash, send, frame({ orderId: "own", funderAddress: follower.address, qty: "25", filled: { targetAmount: "0.0125", contraAmount: "25" } }), true, on);
   await drain();

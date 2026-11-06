@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import { confirmCopy, createTrader, reserveCopy, getOrCreateTelegramUser, getOrCreateWalletUser, getOrder, getPosition, findWallet, setFollow, schema, type Db } from "@flashmob/db";
+import { confirmCopy, createTrader, reserveCopy, getOrCreateWalletUser, getOrder, getPosition, findWallet, setFollow, schema, type Db } from "@flashmob/db";
 import { migrationsFolder } from "@flashmob/db/migrations";
 import { USDC_BASE, type FlashClient } from "@flashmob/flash";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { handleOrder, syncOrders, type AlertButton } from "./listener";
+import { approvedUser } from "./test-helpers";
 import type { OrderFrame } from "./trades";
 
 let db: Db;
@@ -37,7 +38,7 @@ beforeEach(async () => {
   legReads = 0;
   const userId = await getOrCreateWalletUser(db, TRADER);
   const trader = (await createTrader(db, { userId, displayName: "Ana" }))!;
-  const follower = await getOrCreateTelegramUser(db, { id: FOLLOWER_CHAT }, () => ({ address: "0xbot", encryptedKey: "x" }));
+  const follower = await approvedUser(db, FOLLOWER_CHAT);
   await setFollow(db, follower.user.id, trader.id, true);
 });
 
@@ -88,8 +89,8 @@ test("when a trader sells, a copier gets a prompt that opens the right place", a
   const bought = { status: "ORDER_STATUS_FILLED", orderType: "market", filled: { targetAmount: "2", contraAmount: "4000" } };
   await handleOrder(db, flash, send, frame(bought), true);
 
-  const { user, wallet } = await getOrCreateTelegramUser(db, { id: FOLLOWER_CHAT }, () => ({ address: "0xbot", encryptedKey: "x" }));
-  await handleOrder(db, flash, send, frame({ orderId: "c1", funderAddress: "0xbot", status: "ORDER_STATUS_FILLED", orderType: "market", filled: { targetAmount: "0.02", contraAmount: "40" } }), true);
+  const { user, wallet } = await approvedUser(db, FOLLOWER_CHAT);
+  await handleOrder(db, flash, send, frame({ orderId: "c1", funderAddress: wallet.address, status: "ORDER_STATUS_FILLED", orderType: "market", filled: { targetAmount: "0.02", contraAmount: "40" } }), true);
   const copy = (await reserveCopy(db, { sourceOrderId: "o1", userId: user.id, walletId: wallet.id, amountUsd: 40 }))!;
   await confirmCopy(db, copy.id, user.id, "c1");
 

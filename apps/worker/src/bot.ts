@@ -1,6 +1,5 @@
-import { claimAction, createAction, getBotWallet, getOrCreateTelegramAccount, getOrCreateTelegramUser, getTradingWallet, linkTelegram, recordOrder, setCopyPaused, type Db } from "@flashmob/db";
+import { claimAction, createAction, getOrCreateTelegramAccount, getTradingWallet, linkTelegram, recordOrder, setCopyPaused, type Db } from "@flashmob/db";
 import { batchCancelMessage, buildOrder, cancelMessage, feeFields, FlashError, OPEN_STATUSES, prepareOrder, resolveBaseToken, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
-import { decryptKey, generateBotWallet } from "@flashmob/signer";
 import { sequentialize } from "@grammyjs/runner";
 import { Bot, InlineKeyboard, type BotConfig, type Context } from "grammy";
 import { signerFor, type PrivyAccess } from "./signers";
@@ -10,7 +9,6 @@ const CHAIN = "base";
 // This wallet's key lives on our server, so approvals are sized to each order instead of left unlimited.
 const SAFE_APPROVALS = { forceMinimalAllowance: true, evmUsePermit2: true };
 const MAX_PRICE_MOVE = 0.02; // abort if a market order got this much worse between preview and confirm
-const EXPORT_VISIBLE_MS = 60_000;
 
 const HELP = `Flashmob commands
 
@@ -38,18 +36,16 @@ Manage
 /balance - your balances
 /orders - pending orders, with cancel buttons
 /cancelall - cancel all pending orders
-/pause and /resume - stop or restart all auto-copy
-/export - show your wallet's private key`;
+/pause and /resume - stop or restart all auto-copy`;
 
 export interface BotDeps {
   token: string;
   db: Db;
   flash: FlashClient;
   searchFlash: FlashClient; // token lookup only, see the note in the web proxy
-  masterKey: Buffer;
   feeBps: string;
   rpcUrl?: string;
-  privy?: PrivyAccess; // when set, wallets come from Privy instead of being generated here
+  privy: PrivyAccess;
   appUrl?: string;
   botInfo?: BotConfig<Context>["botInfo"];
 }
@@ -59,26 +55,22 @@ interface OrderPayload {
   minReceived?: number;
 }
 
-export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rpcUrl, privy, appUrl, botInfo }: BotDeps) {
+export function createBot({ token, db, flash, searchFlash, feeBps, rpcUrl, privy, appUrl, botInfo }: BotDeps) {
   const bot = new Bot(token, { botInfo });
   // Updates run in parallel across people, but stay in order within one chat.
   bot.use(sequentialize((ctx) => ctx.chat?.id.toString()));
-  // Wallet details and keys must never appear in a group, so everything is private-chat only.
+  // Wallet details must never appear in a group, so everything is private-chat only.
   const pm = bot.chatType("private");
 
-  const signing = { masterKey, rpcUrl, privy };
+  const signing = { rpcUrl, privy };
 
   type Profile = { id: number; username?: string };
-  const account = (from: Profile) =>
-    privy
-      ? getOrCreateTelegramAccount(db, { id: from.id, username: from.username }).then((user) => ({ user, created: false }))
-      : getOrCreateTelegramUser(db, { id: from.id, username: from.username }, (owner) => generateBotWallet(masterKey, owner));
 
   // Commands below only run once the wallet check has passed, so a wallet is always there.
   const load = async (from: Profile) => {
-    const { user, created } = await account(from);
+    const user = await getOrCreateTelegramAccount(db, { id: from.id, username: from.username });
     const wallet = await getTradingWallet(db, user.id);
-    return { user, created, wallet: wallet! };
+    return { user, wallet: wallet! };
   };
 
   const openAppKeyboard = () => (appUrl ? new InlineKeyboard().webApp("Open Flashmob", `${appUrl}/mini`) : undefined);
@@ -88,8 +80,7 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
   pm.use(async (ctx, next) => {
     const command = ctx.message?.text?.match(/^\/(\w+)/)?.[1];
     if (!ctx.from || command === undefined || command === "start" || command === "help") return next();
-    const { user } = await account(ctx.from);
-    if (await getTradingWallet(db, user.id)) return next();
+    if ((await load(ctx.from)).wallet) return next();
     await ctx.reply(NEEDS_WALLET, { reply_markup: openAppKeyboard() });
   });
 
@@ -98,7 +89,7 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
   const friendly = (e: unknown) => (e instanceof FlashError ? e.message : "Something went wrong");
 
   pm.command("start", async (ctx) => {
-    const { user, wallet, created } = await load(ctx.from);
+    const { user, wallet } = await load(ctx.from);
     if (ctx.match) {
       const result = await linkTelegram(db, ctx.match, user.id);
       const replies = {
@@ -110,7 +101,7 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
     }
     if (!wallet) return void (await ctx.reply(`Welcome to Flashmob.\n\n${NEEDS_WALLET}\n\n${HELP}`, { reply_markup: openAppKeyboard() }));
     await ctx.reply(
-      `${created ? "Your trading wallet is ready." : "Welcome back."}\n\n${wallet.address}\n\n` +
+      `Welcome back. Your trading wallet:\n\n${wallet.address}\n\n` +
         `Send USDC on Base to this address, plus a little ETH for gas. Only keep what you want to trade with.\n\n${HELP}`,
     );
   });
@@ -252,17 +243,6 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
   pm.command("orders", showOrders);
   pm.command("cancel", showOrders);
 
-  pm.command("export", async (ctx) => {
-    const { user } = await load(ctx.from);
-    // An older generated wallet stays exportable after moving to Privy, so its funds are never stranded.
-    const generated = await getBotWallet(db, user.id);
-    if (!generated?.encryptedKey) return void (await ctx.reply("Your wallet is secured by Privy, so Flashmob can't see its key."));
-    const id = await createAction(db, user.id, "export", {});
-    await ctx.reply("This shows your private key. Anyone who sees it can take your funds, and we can never ask you for it. Show it?", {
-      reply_markup: new InlineKeyboard().text("Show my key", `ok:${id}`).text("Cancel", `no:${id}`),
-    });
-  });
-
   pm.callbackQuery(/^no:(.+)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
     const { user } = await load(ctx.from);
@@ -280,7 +260,7 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
       await ctx.editMessageReplyMarkup();
       const { request, minReceived } = action.payload as OrderPayload;
       try {
-        const signer = signerFor(signing, wallet, user.id);
+        const signer = signerFor(signing, wallet);
         const quote = await prepareOrder(flash, signer.address, request);
         if (minReceived !== undefined && Number(quote.to.amount) < minReceived) {
           return void (await ctx.reply("The price moved too much since your preview, so nothing was placed. Try again."));
@@ -298,7 +278,7 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
       const { orderId } = action.payload as { orderId: string };
       try {
         const message = cancelMessage(orderId);
-        const signer = signerFor(signing, wallet, user.id);
+        const signer = signerFor(signing, wallet);
         await flash.cancelOrder(orderId, { cancelMessage: message, userSignature: await signer.signMessage(message) });
         await ctx.editMessageText("Order cancelled.");
       } catch (e) {
@@ -311,7 +291,7 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
       const { orderIds } = action.payload as { orderIds: string[] };
       try {
         const message = batchCancelMessage(orderIds);
-        const signer = signerFor(signing, wallet, user.id);
+        const signer = signerFor(signing, wallet);
         const { results } = await flash.cancelOrders({ orderIds, cancelMessage: message, userSignature: await signer.signMessage(message) });
         await ctx.editMessageText(`Cancelled ${results.filter((r) => r.ok).length} of ${results.length} orders.`);
       } catch (e) {
@@ -319,18 +299,9 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
       }
       return;
     }
-
-    if (action.kind === "export") {
-      const generated = await getBotWallet(db, user.id);
-      if (!generated?.encryptedKey) return;
-      await ctx.editMessageReplyMarkup();
-      const key = decryptKey(generated.encryptedKey, masterKey, user.id);
-      const sent = await ctx.reply(`Wallet ${generated.address}\n\n<tg-spoiler>${key}</tg-spoiler>\n\nSave this now. This message deletes itself in 60 seconds.`, { parse_mode: "HTML" });
-      setTimeout(() => void ctx.api.deleteMessage(sent.chat.id, sent.message_id).catch(() => {}), EXPORT_VISIBLE_MS).unref();
-    }
   });
 
-  // Log only the message: error objects can carry request payloads, which may include a key.
+  // Log only the message: error objects can carry request payloads.
   bot.catch((err) => console.error("Bot error:", err.error instanceof Error ? err.error.message : "unknown"));
   return bot;
 }

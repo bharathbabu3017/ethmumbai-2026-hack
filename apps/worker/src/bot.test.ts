@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
 import { beforeEach, test } from "node:test";
-import { schema, syncPrivyUser, type Db } from "@flashmob/db";
+import { schema, type Db } from "@flashmob/db";
 import { migrationsFolder } from "@flashmob/db/migrations";
 import { FlashError, type FlashClient } from "@flashmob/flash";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { createBot } from "./bot";
+import { approvedUser, fakePrivy } from "./test-helpers";
 import { parseBracket, parseBuy, parseLimit, parseSell, parseSellAt, parseStopBuy, parseTimed, sellQty } from "./parse";
 
 const WETH = "0x4200000000000000000000000000000000000006";
@@ -41,8 +41,9 @@ beforeEach(async () => {
   await migrate(pg, { migrationsFolder });
   db = pg as unknown as Db;
   sent = []; submits = []; quotes = []; received = "0.005";
+  await approvedUser(db, 7);
   bot = createBot({
-    token: "1:test", db, flash, searchFlash: flash, masterKey: randomBytes(32), feeBps: "10",
+    token: "1:test", db, flash, searchFlash: flash, privy: fakePrivy, feeBps: "10",
     botInfo: { id: 1, is_bot: true, first_name: "t", username: "t_bot" } as never,
   });
   bot.api.config.use(async (_prev, method, payload) => {
@@ -87,7 +88,7 @@ test("double-tapping Confirm places exactly one order, with the fee and a signat
   assert.equal(submits[0].maxSlippage, undefined);
   assert.deepEqual([quotes[0].forceMinimalAllowance, quotes[0].evmUsePermit2], [true, true]);
   assert.equal(submits[0].forceMinimalAllowance, undefined);
-  assert.match(submits[0].userSignature, /^0x/);
+  assert.equal(submits[0].userSignature, "0xsigned");
   assert.match(lastText(), /already used/);
 });
 
@@ -115,19 +116,8 @@ test("Cancel on a preview places nothing and uses up the button", async () => {
 
 test("commands are ignored in groups", async () => {
   await say("/start", 7, { id: -100, type: "group", title: "g" });
-  await say("/export", 7, { id: -100, type: "group", title: "g" });
+  await say("/balance", 7, { id: -100, type: "group", title: "g" });
   assert.equal(sent.length, 0);
-});
-
-test("export needs a confirm tap and only shows the key once", async () => {
-  await say("/export");
-  assert.ok(!/0x[0-9a-f]{64}/.test(lastText()));
-  const data = confirmData();
-  await tap(data);
-  assert.match(lastText(), /0x[0-9a-f]{64}/);
-  const count = sent.filter((m) => /0x[0-9a-f]{64}/.test(m.payload.text ?? "")).length;
-  await tap(data);
-  assert.equal(sent.filter((m) => /0x[0-9a-f]{64}/.test(m.payload.text ?? "")).length, count);
 });
 
 test("an unlisted token is refused when search is unavailable", async () => {
@@ -182,28 +172,12 @@ test("rules from the website apply in Telegram too", async () => {
   assert.match(lastText(), /at least 5 minutes/);
 });
 
-test("an old generated wallet can still be exported after approving a Privy wallet", async () => {
-  await say("/start");
-  const [row] = await db.select().from(schema.users);
-  await syncPrivyUser(db, { privyId: "did:x", telegramId: row!.telegramId!, embedded: { walletId: "pw", address: "0xNewPrivy", delegated: true }, externalAddresses: [] });
-  await say("/export");
-  await tap(confirmData());
-  assert.match(lastText(), /0x[0-9a-f]{64}/);
-});
-
-test("with Privy on, trading waits until the user has approved a wallet", async () => {
-  const client = {} as never;
-  bot = createBot({ token: "1:test", db, flash, searchFlash: flash, masterKey: randomBytes(32), feeBps: "0", privy: { client, authorizationKey: "k" }, botInfo: { id: 1, is_bot: true, first_name: "t", username: "t_bot" } as never });
-  bot.api.config.use(async (_prev, method, payload) => {
-    sent.push({ method, payload });
-    return { ok: true, result: { message_id: 1, date: 0, chat: { id: 7, type: "private" } } } as never;
-  });
-  await say("/start");
+test("trading waits until the user has approved a wallet", async () => {
+  await say("/start", 9);
   assert.match(lastText(), /Connect your wallet first/);
-  await say("/buy WETH 10");
+  await say("/buy WETH 10", 9);
   assert.match(lastText(), /Connect your wallet first/);
   assert.equal(quotes.length, 0);
-  assert.equal(await db.$count(schema.wallets), 0);
 });
 
 test("parsing rejects bad input", () => {

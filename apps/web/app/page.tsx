@@ -22,7 +22,7 @@ const features = [
 
 const wallets = [
   ["On the web", "Connect your own wallet, or log in with email. You sign every order, and your funds stay in your wallet until it fills."],
-  ["In Telegram", "The bot creates a trading wallet for you. Flashmob holds its key so the bot can trade for you, and you can export the key any time."],
+  ["In Telegram", "Your Flashmob wallet works in Telegram too. Approve it once and the bot can trade for you, without Flashmob ever seeing its key."],
 ];
 
 export default function Landing() {
