@@ -1,6 +1,6 @@
 "use client";
 
-import { DEFAULT_COPY_SETTINGS, type CopyExits, type CopySettings, type CopySizing } from "@flashmob/flash";
+import { copySize, DEFAULT_COPY_SETTINGS, type CopyExits, type CopySettings, type CopySizing } from "@flashmob/flash";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { WalletAddress } from "@/components/wallet-address";
 import { ensureSession, postJson } from "@/lib/account";
@@ -90,32 +90,35 @@ export function CopySettingsPanel({ traderId, name }: { traderId: string; name: 
   const state = copyStatus({ ...status, approved: !!status.tradingWallet });
   const perTrade = status.settings.sizing === "fixed" ? `$${status.settings.amountUsd} per trade` : `${status.settings.percentOfBalance}% of balance per trade`;
 
+  const next = copySize({
+    ...s, amountUsd: Number(s.amountUsd), percentOfBalance: Number(s.percentOfBalance), maxPerTradeUsd: Number(s.maxPerTradeUsd), dailyCapUsd: Number(s.dailyCapUsd),
+  }, status.usdc, status.spent);
+
   const form = (
     <>
-      {s.sizing === "fixed"
-        ? (
-          <div className="row" style={{ flexWrap: "nowrap" }}>
-            <Field id="amountUsd" label="Per trade (USD)"><input {...num("amountUsd")} /></Field>
-            <Field id="dailyCapUsd" label="Daily limit (USD)"><input {...num("dailyCapUsd")} /></Field>
-          </div>
-        ) : <Field id="dailyCapUsd" label="Daily limit (USD)"><input {...num("dailyCapUsd")} /></Field>}
+      <div>
+        <label className="lab" htmlFor="sizing">Size each copy by</label>
+        <select id="sizing" className="inp" value={s.sizing} onChange={(e) => set("sizing", e.target.value as CopySizing)}>
+          <option value="fixed">Fixed amount</option>
+          <option value="percent">Percent of my USDC balance</option>
+        </select>
+      </div>
+      <div className="row" style={{ flexWrap: "nowrap" }}>
+        {s.sizing === "fixed"
+          ? <Field id="amountUsd" label="Per trade (USD)"><input {...num("amountUsd")} /></Field>
+          : <Field id="percentOfBalance" label="Percent of balance"><input {...num("percentOfBalance")} /></Field>}
+        <Field id="dailyCapUsd" label="Daily limit (USD)"><input {...num("dailyCapUsd")} /></Field>
+      </div>
+      {status.tradingWallet && (
+        <p className={"skip" in next ? "dn" : "mut"} style={{ margin: 0, fontSize: 13 }}>
+          {"skip" in next ? `Copies will be skipped. ${next.skip}` : `Next copy: $${next.amountUsd.toFixed(2)}`}
+        </p>
+      )}
 
       <button style={{ all: "unset", cursor: "pointer", fontSize: 13, color: "var(--mut)" }} onClick={() => setAdvanced(!advanced)}>{advanced ? "Hide" : "More"} options</button>
       {advanced && (
         <>
-          <div>
-            <label className="lab" htmlFor="sizing">Size each copy by</label>
-            <select id="sizing" className="inp" value={s.sizing} onChange={(e) => set("sizing", e.target.value as CopySizing)}>
-              <option value="fixed">Fixed amount</option>
-              <option value="percent">Percent of my USDC balance</option>
-            </select>
-          </div>
-          {s.sizing === "percent" && (
-            <div className="row" style={{ flexWrap: "nowrap" }}>
-              <Field id="percentOfBalance" label="Percent of balance"><input {...num("percentOfBalance")} /></Field>
-              <Field id="maxPerTradeUsd" label="Max per trade (USD)"><input {...num("maxPerTradeUsd")} /></Field>
-            </div>
-          )}
+          {s.sizing === "percent" && <Field id="maxPerTradeUsd" label="Max per trade (USD)"><input {...num("maxPerTradeUsd")} /></Field>}
           <div>
             <label className="lab" htmlFor="exits">Stop loss and take profit</label>
             <select id="exits" className="inp" value={s.exits} onChange={(e) => set("exits", e.target.value as CopyExits)}>
