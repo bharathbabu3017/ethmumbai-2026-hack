@@ -3,9 +3,11 @@
 import { OPEN_STATUSES, type FlashFill, type FlashOrder } from "@flashmob/flash";
 import { useEffect, useRef, useState } from "react";
 import { flash } from "@/lib/flash";
+import { onOrderChange } from "@/lib/order-stream";
 import { closeReason, usd } from "@/lib/format";
 
-const POLL_MS = 1_500;
+// The stream wakes this up, but it can miss an instant fill, so it still checks by itself.
+const POLL_MS = 3_000;
 const GIVE_UP_MS = 90_000;
 
 interface Props {
@@ -29,8 +31,10 @@ export function OrderProgress({ orderId, funder, market, side, symbol, onResting
   useEffect(() => {
     let stopped = false;
     let told = false;
+    let next: ReturnType<typeof setTimeout>;
     const started = Date.now();
     const poll = async () => {
+      clearTimeout(next);
       // Flash's reads can trail a new order by a moment, so a miss here just means try again.
       const found = await flash.getOrder(orderId, funder).catch(() => undefined);
       if (stopped) return;
@@ -44,11 +48,14 @@ export function OrderProgress({ orderId, funder, market, side, symbol, onResting
         }
       }
       if (Date.now() - started > GIVE_UP_MS) return setSlow(true);
-      setTimeout(poll, POLL_MS);
+      next = setTimeout(poll, POLL_MS);
     };
     void poll();
+    const off = onOrderChange(() => void poll());
     return () => {
       stopped = true;
+      clearTimeout(next);
+      off();
     };
   }, [orderId, funder, market]);
 

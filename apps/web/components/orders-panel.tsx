@@ -1,33 +1,31 @@
 "use client";
 
 import { OPEN_STATUSES, type FlashBalancesResponse, type FlashOrder } from "@flashmob/flash";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { OpenOrders } from "@/components/open-orders";
 import { flash } from "@/lib/flash";
 import { tradeStatus, usd } from "@/lib/format";
+import { useLiveOrders } from "@/lib/order-stream";
 import { useWallet } from "@/lib/wallet";
 
-const REFRESH_MS = 5_000;
 const empty = { margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" };
 
 export function OrderHistory({ reloadKey = 0 }: { reloadKey?: number }) {
   const { address } = useWallet();
   const [orders, setOrders] = useState<FlashOrder[]>();
   const [failed, setFailed] = useState(false);
-  useEffect(() => {
+  // Flash's status filter refuses some final statuses, such as rejected, so closed orders are picked out here.
+  const load = useCallback(() => {
     if (!address) return;
-    // Flash's status filter refuses some final statuses, such as rejected, so closed orders are picked out here.
-    const load = () =>
-      flash.listOrders({ funderAddress: address, pageSize: 50 })
-        .then((r) => {
-          setOrders(r.orders.filter((o) => !OPEN_STATUSES.includes(o.status)));
-          setFailed(false);
-        })
-        .catch(() => setFailed(true));
-    void load();
-    const timer = setInterval(load, REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [address, reloadKey]);
+    flash.listOrders({ funderAddress: address, pageSize: 50 })
+      .then((r) => {
+        setOrders(r.orders.filter((o) => !OPEN_STATUSES.includes(o.status)));
+        setFailed(false);
+      })
+      .catch(() => setFailed(true));
+  }, [address]);
+  useEffect(load, [load, reloadKey]);
+  useLiveOrders(load);
 
   if (failed && !orders) return <p className="dn" style={empty}>Couldn&apos;t load your order history.</p>;
   if (!orders) return <p className="mut" style={empty}>Loading…</p>;

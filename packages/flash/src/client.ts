@@ -21,6 +21,7 @@ export type Chain = Schemas["Chain"];
 export const OPEN_STATUSES = ["ORDER_STATUS_PENDING", "ORDER_STATUS_ACCEPTED", "ORDER_STATUS_PARTIALLY_FILLED"];
 
 export const FLASH_BASE_URL = "https://flash.definitive.fi/v1";
+export const FLASH_WS_URL = "wss://flash.definitive.fi/v1/ws";
 export const PUBLIC_DEV_KEY = "dpka_513a2bd7_57a2_46d2_927b_2a3857fe271b";
 
 // Flash allows 5 requests per second on each endpoint, per key.

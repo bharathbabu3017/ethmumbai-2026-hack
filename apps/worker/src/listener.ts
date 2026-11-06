@@ -1,9 +1,8 @@
 import { alertRecipients, applyOrderFrame, createMirrors, enqueueJob, findWallet, findWalletById, getCopySettings, getOrder, getTraderByUser, getUser, type Db } from "@flashmob/db";
-import type { CopySettings, FlashClient } from "@flashmob/flash";
+import { FLASH_WS_URL, type CopySettings, type FlashClient } from "@flashmob/flash";
 import { autoCopy, type AutoCopy } from "./autocopy";
 import { mirrorAlert, OPEN_STATUSES, orderFields, ownOrderAlert, tradeAlert, type Levels, type OrderFrame } from "./trades";
 
-const WS_URL = "wss://flash.definitive.fi/v1/ws";
 const HEARTBEAT_TIMEOUT_MS = 10_000;
 
 export interface AlertButton {
@@ -98,7 +97,7 @@ export function startListener(db: Db, flash: FlashClient, send: Send, apiKey: st
   let queue = Promise.resolve();
 
   const connect = () => {
-    const ws = new WebSocket(WS_URL);
+    const ws = new WebSocket(FLASH_WS_URL);
     let stop = false;
     let watchdog: NodeJS.Timeout;
     const alive = () => {

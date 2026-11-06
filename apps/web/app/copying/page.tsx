@@ -8,6 +8,7 @@ import { Nav } from "@/components/nav";
 import { SubscribeButton } from "@/components/subscribe-button";
 import { ensureSession, fetchMe, postJson, type Me } from "@/lib/account";
 import { plainError, tradeStatus } from "@/lib/format";
+import { useLiveOrders } from "@/lib/order-stream";
 import { useWallet } from "@/lib/wallet";
 
 interface Entry {
@@ -27,7 +28,6 @@ interface Entry {
   filledQty?: number | null;
 }
 
-const REFRESH_MS = 5_000;
 const empty = { margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" };
 const when = (at: string) => new Date(at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -62,14 +62,14 @@ export default function Copying() {
   const [error, setError] = useState("");
 
   const loadMe = useCallback(() => fetchMe().then(setMe).catch(() => {}), []);
+  const loadHistory = useCallback(() => {
+    if (address) fetch("/api/copying").then((r) => (r.ok ? r.json() : { history: [] })).then((r) => setHistory(r.history)).catch(() => {});
+  }, [address]);
   useEffect(() => {
-    if (!address) return;
-    void loadMe();
-    const load = () => fetch("/api/copying").then((r) => (r.ok ? r.json() : { history: [] })).then((r) => setHistory(r.history)).catch(() => {});
-    void load();
-    const timer = setInterval(load, REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [address, loadMe]);
+    if (address) void loadMe();
+    loadHistory();
+  }, [address, loadMe, loadHistory]);
+  useLiveOrders(loadHistory);
 
   const togglePause = async () => {
     setError("");
