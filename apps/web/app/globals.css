@@ -116,3 +116,7 @@ select.inp{font-family:var(--font-inter),sans-serif;appearance:auto}
 .asset:hover{border-color:var(--line2)}
 .asset.sel{border-color:var(--lime);background:var(--soft)}
 .asset:focus-visible{outline:2px solid var(--line2);outline-offset:2px}
+.search-bar{all:unset;box-sizing:border-box;cursor:text;margin-left:auto;display:flex;align-items:center;gap:8px;width:min(340px,100%);min-height:44px;padding:0 12px;border:1px solid var(--line);border-radius:8px;color:var(--mut);font-size:14px}
+.search-bar:hover{border-color:var(--line2)}
+.search-bar:focus-visible{outline:2px solid var(--line2);outline-offset:2px}
+.search-bar kbd{margin-left:auto;padding:0 6px;border:1px solid var(--line2);border-radius:4px;font:12px var(--font-mono),monospace}

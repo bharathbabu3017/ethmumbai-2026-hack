@@ -124,7 +124,7 @@ function Trade() {
   const assetChoices: AssetChoice[] = [
     usdcOn("base"),
     ...payOptions.map((b) => ({ key: b.address, address: b.address, symbol: b.symbol, note: `$${Number(b.notional).toFixed(2)}` })),
-    ...(Object.keys(CHAIN_NAMES) as PayChain[]).filter((c) => c !== "base").map(usdcOn),
+    ...(Object.keys(CHAIN_NAMES) as PayChain[]).filter((c) => c !== "base").map((c) => ({ ...usdcOn(c), moreOnly: true })),
   ];
   const selectedAsset = other ? assetChoices.find((c) => c.key === other.address) ?? { key: other.address, ...other } : usdcOn(payChain);
   const pickAsset = (c: AssetChoice) => {
@@ -222,6 +222,7 @@ function Trade() {
               <div className={`m ${tone}`}>{value}</div>
             </div>
           ))}
+          <TokenPicker bar value={token} onChange={(t) => { setToken(t); setOther(undefined); change(); }} />
         </div>
       </section>
       <main className="wrap wide cols" style={{ paddingTop: 16, paddingBottom: 48, gap: 16 }}>

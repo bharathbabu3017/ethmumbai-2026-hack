@@ -147,8 +147,22 @@ export function TokenSearch({ onPick, onClose, quick, onQuick }: { onPick(token:
   );
 }
 
-export function TokenPicker({ value, onChange }: { value: PickedToken; onChange(token: PickedToken): void }) {
+export function TokenPicker({ value, onChange, bar }: { value: PickedToken; onChange(token: PickedToken): void; bar?: boolean }) {
   const [open, setOpen] = useState(false);
+
+  // The search bar also opens with "/", as on most trading sites, unless you're typing somewhere.
+  useEffect(() => {
+    if (!bar) return;
+    const shortcut = (e: KeyboardEvent) => {
+      const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, select");
+      if (e.key === "/" && !typing) {
+        e.preventDefault();
+        setOpen(true);
+      }
+    };
+    document.addEventListener("keydown", shortcut);
+    return () => document.removeEventListener("keydown", shortcut);
+  }, [bar]);
 
   const pick = (t: PickedToken) => {
     const token = { symbol: t.symbol, address: t.address, riskFlagged: t.riskFlagged, imageUrl: t.imageUrl };
@@ -156,6 +170,19 @@ export function TokenPicker({ value, onChange }: { value: PickedToken; onChange(
     onChange(token);
     setOpen(false);
   };
+
+  if (bar) {
+    return (
+      <>
+        <button className="search-bar" aria-label="Search tokens" onClick={() => setOpen(true)}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></svg>
+          Search tokens
+          <kbd>/</kbd>
+        </button>
+        {open && <TokenSearch onPick={pick} onClose={() => setOpen(false)} />}
+      </>
+    );
+  }
 
   return (
     <>
