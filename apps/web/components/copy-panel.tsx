@@ -12,7 +12,7 @@ import { useWallet } from "@/lib/wallet";
 const PRESETS = ["1", "2", "5", "10"];
 type Preview = { request: OrderRequest; quote: QuoteResponse; price: number };
 
-export function CopyPanel({ trade }: { trade: CopyableTrade & { id: string; tokenSymbol: string; tokenAddress: string } }) {
+export function CopyPanel({ trade, inDrawer }: { trade: CopyableTrade & { id: string; tokenSymbol: string; tokenAddress: string }; inDrawer?: boolean }) {
   const { address, login, getSigner, actions } = useWallet();
   const [amount, setAmount] = useState("1");
   const [stop, setStop] = useState(trade.stopPrice === null ? "" : String(trade.stopPrice));
@@ -86,7 +86,7 @@ export function CopyPanel({ trade }: { trade: CopyableTrade & { id: string; toke
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <h2 style={{ fontSize: 18 }}>Copy this trade</h2>
+      {!inDrawer && <h2 style={{ fontSize: 18 }}>Copy this trade</h2>}
       <p className="mut" style={{ margin: 0 }}>{copySummary(trade)}</p>
       <div>
         <label className="lab" htmlFor="amount">Amount (USDC)</label>

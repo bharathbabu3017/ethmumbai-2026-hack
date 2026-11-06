@@ -43,7 +43,7 @@ export function CopyButton({ orderId }: { orderId: string }) {
               <PriceChart token={data.trade.tokenAddress} height={170} levels={[{ label: "Their entry", price: entry, tone: "entry" }]} />
               {data.copiedUsd !== null ? <p className="mut" style={{ margin: 0 }}>You copied this trade with ${data.copiedUsd}. <Link href="/copying" style={{ color: "var(--text)" }}>View in Copying</Link></p>
                 : data.own ? <p className="mut" style={{ margin: 0 }}>This is your trade.</p>
-                : data.copyable ? <CopyPanel trade={data.trade} />
+                : data.copyable ? <CopyPanel trade={data.trade} inDrawer />
                 : <p className="mut" style={{ margin: 0 }}>This trade can&apos;t be copied any more.</p>}
             </>
           )}
