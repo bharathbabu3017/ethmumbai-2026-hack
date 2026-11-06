@@ -1,4 +1,4 @@
-import { leaderboard, listTrades } from "@flashmob/db";
+import { leaderboard, listTrades, listUserCopySettings } from "@flashmob/db";
 import Link from "next/link";
 import { CopyDiagram } from "@/components/copy-diagram";
 import { GettingStarted } from "@/components/getting-started";
@@ -8,6 +8,7 @@ import { StatusStrip } from "@/components/status-strip";
 import { TraderCard, TraderTable, type DiscoverTrader } from "@/components/trader-card";
 import { db } from "@/lib/db";
 import { tradeSize } from "@/lib/format";
+import { getSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -16,14 +17,18 @@ const TABLE_FROM = 6;
 const TOP_TOKENS = 5;
 
 export default async function Home() {
-  const [board, feed] = await Promise.all([leaderboard(db()), listTrades(db(), 300)]);
+  const [board, feed, session] = await Promise.all([leaderboard(db()), listTrades(db(), 300), getSession()]);
+  const settings = session ? await listUserCopySettings(db(), session.userId) : [];
+  const copying = new Set(settings.filter((s) => s.enabled).map((s) => s.traderId));
+  const isTrader = board.some((t) => t.userId === session?.userId);
 
   const traders: DiscoverTrader[] = board.map((t) => {
     const theirs = feed.filter((r) => r.trader.id === t.id).map((r) => r.order);
     const filled = theirs.filter((o) => o.filledQty > 0);
     const curve = filled.filter((o) => o.soldCostUsd > 0).reverse().reduce<number[]>((sum, o) => [...sum, (sum.at(-1) ?? 0) + o.realizedUsd], []);
     const recent = filled.slice(0, 2).map((o) => ({ id: o.id, text: `${o.side === "sell" ? "Sold" : "Bought"} ${o.tokenSymbol} ${tradeSize(o)}`, at: o.placedAt }));
-    return { ...t, curve, recent };
+    const viewer = t.userId === session?.userId ? "you" as const : copying.has(t.id) ? "copying" as const : null;
+    return { ...t, curve, recent, viewer };
   });
 
   const bought = new Map<string, { symbol: string; address: string; buys: number; usd: number }>();
@@ -58,11 +63,13 @@ export default async function Home() {
         ) : traders.length >= TABLE_FROM ? <TraderTable traders={traders} /> : (
           <section aria-label="Traders" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 12 }}>
             {traders.map((t) => <TraderCard key={t.id} trader={t} />)}
-            <article style={{ padding: 16, border: "1px dashed var(--line2)", borderRadius: 10, display: "flex", flexDirection: "column", gap: 10, justifyContent: "center" }}>
-              <h2 style={{ fontSize: 18 }}>Trade in public</h2>
-              <p className="mut" style={{ margin: 0 }}>Create a profile, and your real results appear here for others to copy.</p>
-              <Link href="/become-a-trader" className="btn">Become a trader</Link>
-            </article>
+            {!isTrader && (
+              <article style={{ padding: 16, border: "1px dashed var(--line2)", borderRadius: 10, display: "flex", flexDirection: "column", gap: 10, justifyContent: "center" }}>
+                <h2 style={{ fontSize: 18 }}>Trade in public</h2>
+                <p className="mut" style={{ margin: 0 }}>Create a profile, and your real results appear here for others to copy.</p>
+                <Link href="/become-a-trader" className="btn">Become a trader</Link>
+              </article>
+            )}
           </section>
         )}
 

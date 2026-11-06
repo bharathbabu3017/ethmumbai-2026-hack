@@ -15,7 +15,17 @@ export interface DiscoverTrader {
   copiers: number;
   curve: number[];
   recent: { id: string; text: string; at: Date | null }[];
+  /** How this trader relates to whoever is looking. */
+  viewer: "you" | "copying" | null;
 }
+
+function TraderAction({ trader: t }: { trader: DiscoverTrader }) {
+  if (t.viewer === "you") return <Link href="/become-a-trader" className="btn">Your dashboard</Link>;
+  if (t.viewer === "copying") return <Link href={`/traders/${t.id}`} className="btn">Copying</Link>;
+  return <Link href={`/traders/${t.id}`} className="btn pri">Copy</Link>;
+}
+
+const YouTag = () => <span className="tag" style={{ border: "1px solid var(--line2)", borderRadius: 5, padding: "1px 6px", flex: "none" }}>You</span>;
 
 export const returnOf = (t: DiscoverTrader) => (t.soldCostUsd > 0 ? (t.realizedUsd / t.soldCostUsd) * 100 : null);
 
@@ -26,7 +36,7 @@ export function TraderCard({ trader: t }: { trader: DiscoverTrader }) {
       <Link href={`/traders/${t.id}`} className="row" style={{ gap: 10, flexWrap: "nowrap", minWidth: 0 }}>
         <Avatar name={t.displayName} size={40} />
         <span style={{ minWidth: 0 }}>
-          <span style={{ display: "block", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.displayName}</span>
+          <span className="row" style={{ gap: 6, flexWrap: "nowrap", fontWeight: 600 }}><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.displayName}</span>{t.viewer === "you" && <YouTag />}</span>
           {t.walletAddress && <span className="m mut" style={{ fontSize: 12 }}>{shortAddress(t.walletAddress)}</span>}
         </span>
       </Link>
@@ -46,12 +56,12 @@ export function TraderCard({ trader: t }: { trader: DiscoverTrader }) {
         {t.recent.map((r) => <div key={r.id} className="between" style={{ fontSize: 13 }}><span>{r.text}</span><span className="mut" style={{ flex: "none" }}>{r.at ? ago(r.at) : ""}</span></div>)}
         {!t.recent.length && <span className="mut" style={{ fontSize: 13 }}>No trades yet.</span>}
       </div>
-      <Link href={`/traders/${t.id}`} className="btn pri">Copy</Link>
+      <TraderAction trader={t} />
     </article>
   );
 }
 
-const COLUMNS = "36px minmax(200px,1.6fr) 100px 130px 80px 80px 80px minmax(170px,1fr) 96px";
+const COLUMNS = "36px minmax(200px,1.6fr) 100px 130px 80px 80px 80px minmax(170px,1fr) 136px";
 
 /** The ranked view, once there are enough traders for one to be worth reading. */
 export function TraderTable({ traders }: { traders: DiscoverTrader[] }) {
@@ -63,14 +73,14 @@ export function TraderTable({ traders }: { traders: DiscoverTrader[] }) {
         return (
           <div key={t.id} className="tr" style={{ gridTemplateColumns: COLUMNS, minWidth: 1060 }}>
             <span className="m mut">{i + 1}</span>
-            <Link href={`/traders/${t.id}`} className="row" style={{ gap: 10, flexWrap: "nowrap", fontWeight: 500 }}><Avatar name={t.displayName} size={32} /> {t.displayName}</Link>
+            <Link href={`/traders/${t.id}`} className="row" style={{ gap: 10, flexWrap: "nowrap", fontWeight: 500 }}><Avatar name={t.displayName} size={32} /> {t.displayName}{t.viewer === "you" && <YouTag />}</Link>
             {ret === null ? <span className="mut">-</span> : <span className={`m ${ret < 0 ? "dn" : "up"}`} style={{ fontSize: 15 }}>{pct(ret)}</span>}
             <Spark points={t.curve} height={32} />
             <span className="m">{t.closed ? `${t.wins}/${t.closed}` : "-"}</span>
             <span className="m">{t.trades}</span>
             <span className="m">{t.copiers}</span>
             <span className="mut" style={{ fontSize: 13 }}>{t.recent[0]?.text ?? "-"}</span>
-            <Link href={`/traders/${t.id}`} className="btn pri">Copy</Link>
+            <TraderAction trader={t} />
           </div>
         );
       })}

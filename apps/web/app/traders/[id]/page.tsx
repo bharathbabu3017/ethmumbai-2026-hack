@@ -1,4 +1,5 @@
 import { isFollowing, leaderboard, listTraderTrades } from "@flashmob/db";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Avatar } from "@/components/avatar";
 import { AutoCopyCard } from "@/components/auto-copy";
@@ -48,7 +49,7 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
               {trader.xHandle && <a className="tag" href={`https://x.com/${encodeURIComponent(trader.xHandle)}`}>@{trader.xHandle} on X</a>}
             </div>
           </div>
-          {!mine && <SubscribeButton traderId={id} initial={following} />}
+          {mine ? <Link href="/become-a-trader" className="btn">Your dashboard</Link> : <SubscribeButton traderId={id} initial={following} />}
           </section>
           <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 20 }}>
             {stats.map(([label, value, tone]) => (
