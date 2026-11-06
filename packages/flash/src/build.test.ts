@@ -55,10 +55,21 @@ test("a stop and target only attach where Flash allows them", () => {
   assert.match(err({ type: "stop", trigger: "2", stop: "1", target: "3" }), /attached/);
 });
 
-test("cross-chain is market buys only, paid in that chain's USDC, sent to the funder", () => {
+test("the extra options reach the order", () => {
+  assert.equal(ok({ type: "stop", trigger: "1900", triggerDirection: "lower" }).triggers![0]!.triggerType, "lower");
+  const legs = ok({ type: "bracket", side: "sell", bracketStop: "1900", bracketTarget: "2500", bracketStopLimit: "1880" }).triggers!;
+  assert.deepEqual(legs.map((l) => l.limitPrice), [undefined, "1880"]);
+  const twap = ok({ type: "twap", durationMinutes: "60", price: "2000", startInMinutes: "30", now: 0 });
+  assert.deepEqual([twap.limitNotionalPrice, twap.startTime], ["2000", "1970-01-01T00:30:00.000Z"]);
+  assert.equal(ok({ type: "twap", durationMinutes: "60", price: "2000", stop: "1", target: "3000" }).limitCrossPrice, "2000");
+});
+
+test("cross-chain is market only, in that chain's USDC, sent to the funder", () => {
   const r = ok({ payChain: "arbitrum" });
   assert.deepEqual([r.contraChain, r.targetChain, r.contraAsset, r.recipientAddress], ["arbitrum", "base", USDC_BY_CHAIN.arbitrum, "0xf"]);
-  assert.match(err({ payChain: "arbitrum", type: "limit", price: "1" }), /market buys/);
+  assert.match(err({ payChain: "arbitrum", type: "limit", price: "1" }), /market orders/);
+  const sell = ok({ payChain: "arbitrum", side: "sell" });
+  assert.deepEqual([sell.targetChain, sell.contraChain, sell.recipientAddress], ["base", "arbitrum", "0xf"]);
   assert.match(err({ payChain: "arbitrum", stop: "1", target: "2" }), /same-chain/);
 });
 

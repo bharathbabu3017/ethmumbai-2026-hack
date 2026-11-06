@@ -8,8 +8,9 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { createBot } from "./bot";
-import { parseBuy, parseLimit, parseSell, sellQty } from "./parse";
+import { parseBracket, parseBuy, parseLimit, parseSell, parseSellAt, parseStopBuy, parseTimed, sellQty } from "./parse";
 
+const WETH = "0x4200000000000000000000000000000000000006";
 const typedData = JSON.stringify({
   domain: { name: "T", chainId: 8453 },
   types: { M: [{ name: "a", type: "uint256" }] },
@@ -31,6 +32,7 @@ const flash = {
     quoteId: "q1", recommendedSlippage: "0.15", from: { amount: "10" }, to: { amount: received }, fees: { estimatedFeeNotional: "0.01" },
     evm: { approveTx: null, permitTypedData: "", orderTypedData: typedData },
   }),
+  balances: async () => ({ balances: [{ chain: "base", isNative: false, symbol: "WETH", address: WETH, balance: "2" }] }),
   submitOrder: async (body: any) => { submits.push(body); return { orderId: `order-${submits.length}` }; },
 } as unknown as FlashClient;
 
@@ -133,6 +135,53 @@ test("an unlisted token is refused when search is unavailable", async () => {
   assert.match(lastText(), /Couldn't find NOTATOKEN/);
 });
 
+const lastQuote = () => quotes.at(-1);
+
+test("every order type reaches Flash correctly from Telegram", async () => {
+  await say("/buy WETH 10 stop 1900 target 2500");
+  assert.equal(lastQuote().attachedBracket.stopLoss.notionalPrice, "1900");
+  await say("/limit WETH 10 2000 stop 1900 target 2500");
+  assert.equal(lastQuote().limitCrossPrice, "2000");
+  await say("/stopbuy WETH 10 1900 dip");
+  assert.deepEqual([lastQuote().orderType, lastQuote().triggers[0].triggerType], ["stop", "lower"]);
+  await say("/limitsell WETH 50% 2500");
+  assert.deepEqual([lastQuote().side, lastQuote().qty, lastQuote().limitNotionalPrice], ["sell", "1", "2500"]);
+  await say("/stoploss WETH 0.5 1900");
+  assert.deepEqual([lastQuote().orderType, lastQuote().triggers[0].triggerType], ["stop-loss", "lower"]);
+  await say("/takeprofit WETH 100% 2500");
+  assert.deepEqual([lastQuote().orderType, lastQuote().qty], ["take-profit", "2"]);
+  await say("/bracket WETH 100% 1900 2500");
+  assert.deepEqual([lastQuote().orderType, lastQuote().triggers.length], ["bracket", 2]);
+  await say("/twap buy WETH 100 60");
+  assert.deepEqual([lastQuote().orderType, lastQuote().durationSeconds], ["twap", 3600]);
+  await say("/trail sell WETH 50% 5");
+  assert.deepEqual([lastQuote().orderType, lastQuote().trailingStop.trailPercent], ["trailing-stop", "0.05"]);
+  assert.ok(quotes.every((q) => q.forceMinimalAllowance && q.flashIntegratorFeeBps === "10"));
+});
+
+test("a limit order confirms without the market price check, and quote-only fields stay off the order", async () => {
+  received = "0.005";
+  await say("/twap buy WETH 100 60");
+  const data = confirmData();
+  received = "0.001";
+  await tap(data);
+  assert.equal(submits.length, 1);
+  assert.equal(submits[0].durationSeconds, undefined);
+});
+
+test("selling more than you hold is refused", async () => {
+  await say("/stoploss WETH 5 1900");
+  assert.match(lastText(), /only have 2/);
+  assert.equal(quotes.length, 0);
+});
+
+test("rules from the website apply in Telegram too", async () => {
+  await say("/trail sell WETH 50% 90");
+  assert.match(lastText(), /between 0\.5% and 50%/);
+  await say("/twap buy WETH 100 2");
+  assert.match(lastText(), /at least 5 minutes/);
+});
+
 test("parsing rejects bad input", () => {
   assert.deepEqual(parseBuy("WETH 10"), { token: "WETH", usdc: "10" });
   assert.equal(parseBuy("WETH -5"), null);
@@ -141,6 +190,13 @@ test("parsing rejects bad input", () => {
   assert.equal(parseLimit("WETH 10"), null);
   assert.deepEqual(parseSell("WETH 50%"), { token: "WETH", percent: 50 });
   assert.equal(parseSell("WETH 150%"), null);
+  assert.deepEqual(parseBuy("WETH 10 stop 1 target 2"), { token: "WETH", usdc: "10", stop: "1", target: "2" });
+  assert.equal(parseBuy("WETH 10 stop 1"), null);
+  assert.equal(parseSellAt("WETH 50%"), null);
+  assert.equal(parseStopBuy("WETH 10 1 sideways"), null);
+  assert.equal(parseBracket("WETH 100% 2500 1900"), null);
+  assert.equal(parseTimed("hold WETH 1 2"), null);
+  assert.deepEqual(parseTimed("sell WETH 50% 60"), { side: "sell", token: "WETH", sell: { percent: 50 }, value: "60" });
 });
 
 test("sell amounts round down and never exceed the balance", () => {

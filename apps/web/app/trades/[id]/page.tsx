@@ -1,12 +1,13 @@
-import { countCopies, getPosition, getTrade, getUserCopy } from "@flashmob/db";
+import { countCopies, findWalletById, getPosition, getTrade, getUserCopy } from "@flashmob/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CopyPanel } from "@/components/copy-panel";
 import { Nav } from "@/components/nav";
 import { PriceChart } from "@/components/price-chart";
-import { entryPrice, OPEN_STATUSES } from "@/lib/copy";
+import { COPYABLE_TYPES, entryPrice, OPEN_STATUSES } from "@/lib/copy";
 import { db } from "@/lib/db";
 import { pct, tradeStatus, usd } from "@/lib/format";
+import { serverFlash } from "@/lib/orders";
 import { getSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +23,14 @@ export default async function TradePage({ params }: { params: Promise<{ id: stri
   const entry = entryPrice(order);
   const result = order.soldCostUsd > 0 ? (order.realizedUsd / order.soldCostUsd) * 100 : null;
   const traderStillHolds = (held?.qty ?? 0) > 0;
-  const copyable = order.side === "buy" && (order.orderType === "market" || order.orderType === "limit") && (order.filledQty > 0 ? traderStillHolds : OPEN_STATUSES.includes(order.status ?? ""));
+  const funder = (await findWalletById(db(), order.walletId))?.address ?? "";
+  const copyable = order.side === "buy" && COPYABLE_TYPES.includes(order.orderType ?? "") && (order.filledQty > 0 ? traderStillHolds : OPEN_STATUSES.includes(order.status ?? ""));
+
+  // What a copy needs beyond the stored fields, from the order as Flash last reported it.
+  const raw = order.raw as { trigger?: { notionalPrice?: string; crossPrice?: string; triggerType: "upper" | "lower" } | null; trailingStop?: { trailPercent: string; activationPrice: string | null } } | null;
+  const triggerPrice = raw?.trigger?.notionalPrice ?? raw?.trigger?.crossPrice;
+  const expires = copyable && order.orderType === "twap" ? (await serverFlash().getOrder(id, funder).catch(() => undefined))?.order.expiresAt : undefined;
+  const twapMinutesLeft = expires ? (Date.parse(expires) - Date.now()) / 60_000 : null;
 
   const levels = [
     [order.filledQty > 0 ? "Filled at" : "Price", entry === null ? "Market" : usd(entry), ""],
@@ -68,6 +76,9 @@ export default async function TradePage({ params }: { params: Promise<{ id: stri
               trade={{
                 id: order.id, tokenSymbol: order.tokenSymbol!, tokenAddress: order.tokenAddress!, side: order.side, status: order.status, orderType: order.orderType,
                 limitPrice: order.limitPrice, stopPrice: order.stopPrice, targetPrice: order.targetPrice, filledQty: order.filledQty, filledUsd: order.filledUsd,
+                trigger: triggerPrice && raw?.trigger ? { price: triggerPrice, direction: raw.trigger.triggerType } : null,
+                trail: raw?.trailingStop ? { percent: raw.trailingStop.trailPercent, activationPrice: raw.trailingStop.activationPrice } : null,
+                twapMinutesLeft,
               }}
             />
           ) : (

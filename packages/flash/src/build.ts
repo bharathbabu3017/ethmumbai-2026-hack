@@ -16,7 +16,7 @@ export const ORDER_TYPES = {
 export type OrderTypeName = keyof typeof ORDER_TYPES;
 export type Side = "buy" | "sell";
 
-/** USDC on the chains a cross-chain buy can be paid from. */
+/** USDC on the chains a cross-chain order can pay from or pay out to. */
 export const USDC_BY_CHAIN = {
   base: USDC_BASE,
   ethereum: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -36,10 +36,14 @@ export interface TradeForm {
   payChain?: PayChain;
   price?: string; // limit price, or the limit after a stop or take profit fires
   trigger?: string;
+  triggerDirection?: "upper" | "lower"; // a stop buy can fire on a breakout or on a dip
   stop?: string; // attached to a buy
   target?: string;
   bracketStop?: string; // on a standalone bracket, which sells a token already held
   bracketTarget?: string;
+  bracketStopLimit?: string;
+  bracketTargetLimit?: string;
+  startInMinutes?: string;
   durationMinutes?: string;
   slices?: string;
   trailPercent?: string;
@@ -61,7 +65,7 @@ export function buildOrder(f: TradeForm): { request: OrderRequest } | { error: s
 
   const payChain = f.payChain ?? "base";
   const crossChain = payChain !== "base";
-  if (crossChain && (type !== "market" || side !== "buy")) return { error: "Paying from another chain only works for market buys." };
+  if (crossChain && type !== "market") return { error: "Cross-chain only works for market orders." };
 
   const request: OrderRequest = {
     targetChain: "base",
@@ -90,7 +94,8 @@ export function buildOrder(f: TradeForm): { request: OrderRequest } | { error: s
 
   if (type === "stop" || type === "stop-loss" || type === "take-profit") {
     if (!positive(f.trigger)) return { error: "Enter a trigger price." };
-    request.triggers = [{ notionalPrice: f.trigger!.trim(), triggerType: type === "stop-loss" ? "lower" : "upper" }];
+    const direction = type === "stop-loss" ? "lower" : type === "stop" ? f.triggerDirection ?? "upper" : "upper";
+    request.triggers = [{ notionalPrice: f.trigger!.trim(), triggerType: direction }];
     if (f.price) {
       if (!positive(f.price)) return { error: "Enter a valid limit price, or leave it empty." };
       request.limitNotionalPrice = f.price.trim();
@@ -100,7 +105,13 @@ export function buildOrder(f: TradeForm): { request: OrderRequest } | { error: s
   if (type === "bracket") {
     const stop = f.bracketStop, target = f.bracketTarget;
     if (!positive(stop) || !positive(target) || Number(target) <= Number(stop)) return { error: "Enter a stop loss and a take profit above it." };
-    request.triggers = [{ notionalPrice: target!.trim(), triggerType: "upper" }, { notionalPrice: stop!.trim(), triggerType: "lower" }];
+    for (const limit of [f.bracketStopLimit, f.bracketTargetLimit]) {
+      if (limit && !positive(limit)) return { error: "Enter a valid leg limit, or leave it empty." };
+    }
+    request.triggers = [
+      { notionalPrice: target!.trim(), triggerType: "upper", ...(f.bracketTargetLimit ? { limitPrice: f.bracketTargetLimit.trim() } : {}) },
+      { notionalPrice: stop!.trim(), triggerType: "lower", ...(f.bracketStopLimit ? { limitPrice: f.bracketStopLimit.trim() } : {}) },
+    ];
   }
 
   if (type === "twap") {
@@ -111,6 +122,16 @@ export function buildOrder(f: TradeForm): { request: OrderRequest } | { error: s
       const slices = Number(f.slices);
       if (!Number.isInteger(slices) || slices < 2 || slices > 2560) return { error: "Slices must be a whole number from 2 to 2560." };
       request.twapBucketCount = slices;
+    }
+    if (f.price) {
+      if (!positive(f.price)) return { error: "Enter a valid limit price, or leave it empty." };
+      if (protect) request.limitCrossPrice = f.price.trim();
+      else request.limitNotionalPrice = f.price.trim();
+    }
+    if (f.startInMinutes) {
+      const start = Number(f.startInMinutes);
+      if (!(start > 0)) return { error: "Enter a valid start delay, or leave it empty." };
+      request.startTime = new Date((f.now ?? Date.now()) + start * 60_000).toISOString();
     }
   }
 

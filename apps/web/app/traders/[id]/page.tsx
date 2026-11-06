@@ -6,6 +6,7 @@ import { FollowButton } from "@/components/follow-button";
 import { Nav } from "@/components/nav";
 import { ResultsCurve } from "@/components/results-curve";
 import { TradeRow } from "@/components/trade-row";
+import { COPYABLE_TYPES } from "@/lib/copy";
 import { db } from "@/lib/db";
 import { pct } from "@/lib/format";
 import { getSession } from "@/lib/session";
@@ -29,7 +30,7 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
   ];
   const sales = trades.filter((t) => t.soldCostUsd > 0).reverse();
   const curve = sales.reduce<number[]>((sum, t) => [...sum, (sum.at(-1) ?? 0) + t.realizedUsd], []);
-  const latestBuy = trades.find((t) => t.side === "buy" && (t.orderType === "market" || t.orderType === "limit"));
+  const latestBuy = trades.find((t) => t.side === "buy" && COPYABLE_TYPES.includes(t.orderType ?? ""));
 
   return (
     <>

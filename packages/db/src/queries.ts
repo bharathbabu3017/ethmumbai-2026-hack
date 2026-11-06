@@ -350,3 +350,8 @@ export const listUserCopies = (db: Db, userId: string) =>
     .where(and(eq(copies.userId, userId), eq(copies.status, "placed")))
     .orderBy(desc(copies.createdAt))
     .limit(50);
+
+export const findWalletById = async (db: Db, id: string) => {
+  const [wallet] = await db.select().from(wallets).where(eq(wallets.id, id));
+  return wallet;
+};

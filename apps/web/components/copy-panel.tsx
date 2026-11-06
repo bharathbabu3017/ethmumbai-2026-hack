@@ -1,10 +1,10 @@
 "use client";
 
-import { prepareOrder, submitPrepared, USDC_BASE, type OrderRequest, type QuoteResponse } from "@flashmob/flash";
+import { buildOrder, prepareOrder, submitPrepared, USDC_BASE, type OrderRequest, type QuoteResponse, type TradeForm } from "@flashmob/flash";
 import Link from "next/link";
 import { useState } from "react";
 import { ensureSession, postJson } from "@/lib/account";
-import { copyInputError, copyMode, entryPrice, tradeBlock, type CopyableTrade } from "@/lib/copy";
+import { canAttach, copyForm, copyInputError, copySummary, entryPrice, tradeBlock, type CopyableTrade } from "@/lib/copy";
 import { flash } from "@/lib/flash";
 import { usd } from "@/lib/format";
 import { useWallet } from "@/lib/wallet";
@@ -21,9 +21,9 @@ export function CopyPanel({ trade }: { trade: CopyableTrade & { id: string; toke
   const [placed, setPlaced] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const mode = copyMode(trade);
+  const attachable = canAttach(trade);
   const entry = entryPrice(trade);
-  const levels = { stopPrice: stop === "" ? null : Number(stop), targetPrice: target === "" ? null : Number(target) };
+  const levels = { stopPrice: !attachable || stop === "" ? null : Number(stop), targetPrice: !attachable || target === "" ? null : Number(target) };
 
   const edit = (set: (v: string) => void) => (e: { target: { value: string } }) => {
     set(e.target.value);
@@ -44,19 +44,14 @@ export function CopyPanel({ trade }: { trade: CopyableTrade & { id: string; toke
 
   const review = run(async () => {
     if (!address) throw new Error("Connect a wallet first");
-    const pair = { targetChain: "base", contraChain: "base", targetAsset: trade.tokenAddress, contraAsset: USDC_BASE, side: "buy", qty: amount } as const;
-    const probe = await flash.quote({ ...pair, orderType: "market" });
+    const probe = await flash.quote({ targetChain: "base", contraChain: "base", targetAsset: trade.tokenAddress, contraAsset: USDC_BASE, side: "buy", qty: amount, orderType: "market" });
     const price = Number(probe.from.notional) / Number(probe.to.amount);
     // The server rechecks this, including whether the trader still holds the position.
     const problem = tradeBlock(trade, price, true) ?? copyInputError(trade, price, { amountUsd: Number(amount), ...levels });
     if (problem) throw new Error(problem);
-    const request: OrderRequest = {
-      ...pair,
-      orderType: mode,
-      // Flash rejects limitNotionalPrice on a limit entry with a bracket. Against USDC the pair rate is the USD price.
-      ...(mode === "limit" ? (stop ? { limitCrossPrice: String(trade.limitPrice) } : { limitNotionalPrice: String(trade.limitPrice) }) : {}),
-      ...(stop ? { attachedBracket: { takeProfit: { notionalPrice: target }, stopLoss: { notionalPrice: stop } } } : {}),
-    };
+    const built = buildOrder({ ...copyForm(trade, { qty: amount, stop, target }), tokenAddress: trade.tokenAddress, funder: address } as TradeForm);
+    if ("error" in built) throw new Error(built.error);
+    const { request } = built;
     setPreview({ request, quote: await prepareOrder(flash, address, request), price });
   });
 
@@ -92,7 +87,7 @@ export function CopyPanel({ trade }: { trade: CopyableTrade & { id: string; toke
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <h2 style={{ fontSize: 18 }}>Copy this trade</h2>
-      <p className="mut" style={{ margin: 0 }}>{mode === "limit" ? `Limit order at ${usd(trade.limitPrice)}. It fills if the price gets there.` : "Market order at the current price."}</p>
+      <p className="mut" style={{ margin: 0 }}>{copySummary(trade)}</p>
       <div>
         <label className="lab" htmlFor="amount">Amount (USDC)</label>
         <input id="amount" className="inp" inputMode="decimal" value={amount} onChange={edit(setAmount)} />
@@ -102,12 +97,12 @@ export function CopyPanel({ trade }: { trade: CopyableTrade & { id: string; toke
           ))}
         </div>
       </div>
-      <div className="row" style={{ flexWrap: "nowrap" }}>
+      {attachable && <div className="row" style={{ flexWrap: "nowrap" }}>
         <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="stop">Stop loss (USD)</label><input id="stop" className="inp" inputMode="decimal" value={stop} onChange={edit(setStop)} /></div>
         <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="target">Take profit (USD)</label><input id="target" className="inp" inputMode="decimal" value={target} onChange={edit(setTarget)} /></div>
-      </div>
+      </div>}
 
-      {!stop && !target && <p className="dn" style={{ margin: 0, fontSize: 13 }}>No stop or target set. You&apos;ll have to exit this position yourself.</p>}
+      {(!attachable || (!stop && !target)) && <p className="dn" style={{ margin: 0, fontSize: 13 }}>No stop or target set. You&apos;ll have to exit this position yourself.</p>}
 
       {preview && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "12px 0", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>

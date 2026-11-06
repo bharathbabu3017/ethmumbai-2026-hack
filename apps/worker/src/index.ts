@@ -27,10 +27,18 @@ const bot = createBot({
 
 await bot.api.setMyCommands([
   { command: "balance", description: "Your balances" },
-  { command: "buy", description: "Buy a token: /buy WETH 10" },
-  { command: "sell", description: "Sell a token: /sell WETH 50%" },
+  { command: "buy", description: "Buy: /buy WETH 10" },
+  { command: "sell", description: "Sell: /sell WETH 50%" },
   { command: "limit", description: "Limit buy: /limit WETH 10 2000" },
-  { command: "orders", description: "Open orders" },
+  { command: "limitsell", description: "Limit sell: /limitsell WETH 50% 2500" },
+  { command: "stopbuy", description: "Stop buy: /stopbuy WETH 10 2500" },
+  { command: "stoploss", description: "Stop loss: /stoploss WETH 50% 1900" },
+  { command: "takeprofit", description: "Take profit: /takeprofit WETH 50% 2500" },
+  { command: "bracket", description: "Stop and target: /bracket WETH 100% 1900 2500" },
+  { command: "twap", description: "TWAP: /twap buy WETH 100 60" },
+  { command: "trail", description: "Trailing stop: /trail sell WETH 100% 5" },
+  { command: "orders", description: "Pending orders" },
+  { command: "cancelall", description: "Cancel all pending orders" },
   { command: "help", description: "All commands" },
 ]);
 // Telegram allows about 30 messages a second, so sends are spaced out.

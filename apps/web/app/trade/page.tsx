@@ -15,13 +15,13 @@ import { useWallet } from "@/lib/wallet";
 
 const QUOTE_REFRESH_MS = 15_000;
 const CHAIN_NAMES: Record<PayChain, string> = { base: "Base", ethereum: "Ethereum", arbitrum: "Arbitrum", optimism: "Optimism", polygon: "Polygon" };
-const EMPTY = { qty: "", price: "", trigger: "", stop: "", target: "", bracketStop: "", bracketTarget: "", durationMinutes: "60", slices: "", trailPercent: "5", activationPrice: "", expiryDays: "", maxImpactPercent: "" };
+const EMPTY = { qty: "", price: "", trigger: "", stop: "", target: "", bracketStop: "", bracketTarget: "", bracketStopLimit: "", bracketTargetLimit: "", startInMinutes: "", durationMinutes: "60", slices: "", trailPercent: "5", activationPrice: "", expiryDays: "", maxImpactPercent: "" };
 type Fields = typeof EMPTY;
 
 const HINTS: Record<OrderTypeName, string> = {
   market: "Fills now at the best available price.",
   limit: "Fills only at your price or better.",
-  stop: "Buys when the price rises to your trigger.",
+  stop: "Buys when the price reaches your trigger.",
   "stop-loss": "Sells when the price falls to your trigger.",
   "take-profit": "Sells when the price rises to your trigger.",
   bracket: "Sells at your stop or target, whichever comes first.",
@@ -41,6 +41,7 @@ function Trade() {
   const [type, setType] = useState<OrderTypeName>("market");
   const [token, setToken] = useState<PickedToken>(BASE_TOKENS.find((t) => t.address.toLowerCase() === linked) ?? BASE_TOKENS[0]!);
   const [payChain, setPayChain] = useState<PayChain>("base");
+  const [direction, setDirection] = useState<"upper" | "lower">("upper");
   const [f, setF] = useState<Fields>(EMPTY);
   const [advanced, setAdvanced] = useState(false);
   const [balances, setBalances] = useState<FlashBalancesResponse["balances"]>([]);
@@ -64,6 +65,7 @@ function Trade() {
   });
   const pickSide = (s: Side) => {
     setSide(s);
+    setDirection("upper");
     if (!(ORDER_TYPES[type].sides as readonly string[]).includes(s)) setType("market");
     setPayChain("base");
     setF({ ...f, qty: "", stop: "", target: "" });
@@ -84,10 +86,10 @@ function Trade() {
 
   const fetchQuote = useCallback(async () => {
     if (!address) throw new Error("Connect a wallet first");
-    const built = buildOrder({ ...f, side, type, tokenAddress: token.address, funder: address, payChain });
+    const built = buildOrder({ ...f, side, type, tokenAddress: token.address, funder: address, payChain, triggerDirection: direction });
     if ("error" in built) throw new Error(built.error);
     return { request: built.request, quote: await prepareOrder(flash, address, built.request) };
-  }, [address, f, side, type, token, payChain]);
+  }, [address, f, side, type, token, payChain, direction]);
 
   const run = (fn: () => Promise<void>) => async () => {
     setBusy(true);
@@ -159,9 +161,9 @@ function Trade() {
             <p className="mut" style={{ margin: "6px 0 0", fontSize: 12 }}>{HINTS[type]}</p>
           </div>
 
-          {side === "buy" && type === "market" && (
+          {type === "market" && (
             <div>
-              <label className="lab" htmlFor="pay">Pay with USDC on</label>
+              <label className="lab" htmlFor="pay">{side === "buy" ? "Pay with USDC on" : "Receive USDC on"}</label>
               <select id="pay" className="inp" value={payChain} onChange={(e) => { setPayChain(e.target.value as PayChain); change(); }}>
                 {(Object.keys(CHAIN_NAMES) as PayChain[]).map((c) => <option key={c} value={c}>{CHAIN_NAMES[c]}{c === "base" ? "" : " (cross-chain)"}</option>)}
               </select>
@@ -185,6 +187,16 @@ function Trade() {
 
           {type === "limit" && <div><label className="lab" htmlFor="price">Limit price (USD)</label><input id="price" className="inp" inputMode="decimal" {...set("price")} /></div>}
 
+          {type === "stop" && (
+            <div>
+              <label className="lab" htmlFor="dir">Buy when the price</label>
+              <select id="dir" className="inp" value={direction} onChange={(e) => { setDirection(e.target.value as "upper" | "lower"); change(); }}>
+                <option value="upper">Rises to the trigger (breakout)</option>
+                <option value="lower">Falls to the trigger (dip)</option>
+              </select>
+            </div>
+          )}
+
           {needsTrigger && (
             <div className="row" style={{ flexWrap: "nowrap" }}>
               <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="trigger">Trigger price (USD)</label><input id="trigger" className="inp" inputMode="decimal" {...set("trigger")} /></div>
@@ -206,6 +218,13 @@ function Trade() {
             </div>
           )}
 
+          {type === "twap" && (
+            <div className="row" style={{ flexWrap: "nowrap" }}>
+              <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="tp">Limit price, optional</label><input id="tp" className="inp" inputMode="decimal" {...set("price")} /></div>
+              <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="st">Start in (minutes)</label><input id="st" className="inp" inputMode="numeric" placeholder="Now" {...set("startInMinutes")} /></div>
+            </div>
+          )}
+
           {trailing && (
             <div className="row" style={{ flexWrap: "nowrap" }}>
               <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="tr">Trail (%)</label><input id="tr" className="inp" inputMode="decimal" {...set("trailPercent")} /></div>
@@ -223,6 +242,12 @@ function Trade() {
           {(canExpire || canLimitImpact) && (
             <button className="mut" style={{ all: "unset", cursor: "pointer", fontSize: 13, color: "var(--mut)" }} onClick={() => setAdvanced(!advanced)}>{advanced ? "Hide" : "Show"} advanced</button>
           )}
+          {advanced && type === "bracket" && (
+            <div className="row" style={{ flexWrap: "nowrap" }}>
+              <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="bsl">Stop sells no lower than</label><input id="bsl" className="inp" inputMode="decimal" placeholder="Market" {...set("bracketStopLimit")} /></div>
+              <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="btl">Target sells no lower than</label><input id="btl" className="inp" inputMode="decimal" placeholder="Market" {...set("bracketTargetLimit")} /></div>
+            </div>
+          )}
           {advanced && (canExpire || canLimitImpact) && (
             <div className="row" style={{ flexWrap: "nowrap" }}>
               {canExpire && <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="exp">Expires in (days)</label><input id="exp" className="inp" inputMode="decimal" placeholder="Never" {...set("expiryDays")} /></div>}
@@ -239,7 +264,7 @@ function Trade() {
               <div className="between"><span className="mut">Estimated fees</span><span className="m">${preview.quote.fees.estimatedFeeNotional}</span></div>
               {impact && <div className="between"><span className="mut">Price impact</span><span className="m">{(Number(impact) * 100).toFixed(2)}%</span></div>}
               {slippage && <div className="between"><span className="mut">Max slippage</span><span className="m">{(Number(slippage) * 100).toFixed(1)}%</span></div>}
-              {payChain !== "base" && <p className="mut" style={{ margin: "6px 0 0", fontSize: 13 }}>Your wallet will switch to {CHAIN_NAMES[payChain]}. A cross-chain order can&apos;t be cancelled once its funds are moving.</p>}
+              {payChain !== "base" && <p className="mut" style={{ margin: "6px 0 0", fontSize: 13 }}>{side === "buy" ? `Your wallet will switch to ${CHAIN_NAMES[payChain]}.` : `Your USDC arrives on ${CHAIN_NAMES[payChain]}.`} A cross-chain order can&apos;t be cancelled once its funds are moving.</p>}
               <p className="mut" style={{ margin: "6px 0 0", fontSize: 13 }}>This spends real funds.</p>
             </div>
           )}

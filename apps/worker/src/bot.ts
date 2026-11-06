@@ -1,9 +1,9 @@
 import { claimAction, createAction, getOrCreateTelegramUser, linkTelegram, recordOrder, type Db } from "@flashmob/db";
-import { batchCancelMessage, cancelMessage, FlashError, prepareOrder, resolveBaseToken, submitPrepared, USDC_BASE as USDC, type FlashClient, type OrderRequest } from "@flashmob/flash";
+import { batchCancelMessage, buildOrder, cancelMessage, FlashError, prepareOrder, resolveBaseToken, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
 import { createBotSigner, decryptKey, generateBotWallet } from "@flashmob/signer";
 import { Bot, InlineKeyboard, type BotConfig, type Context } from "grammy";
 import { base } from "viem/chains";
-import { parseBuy, parseLimit, parseSell, sellQty } from "./parse";
+import { parseBracket, parseBuy, parseLimit, parseSell, parseSellAt, parseStopBuy, parseTimed, sellQty, type SellAmount } from "./parse";
 
 const CHAIN = "base";
 // This wallet's key lives on our server, so approvals are sized to each order instead of left unlimited.
@@ -14,12 +14,30 @@ const OPEN_STATUSES = ["ORDER_STATUS_PENDING", "ORDER_STATUS_ACCEPTED", "ORDER_S
 
 const HELP = `Flashmob commands
 
+Buy
+/buy WETH 10 - market buy with 10 USDC
+/buy WETH 10 stop 1900 target 2500 - with a stop and target
+/limit WETH 10 2000 - limit buy, add stop and target the same way
+/stopbuy WETH 10 2500 - buy when the price rises to $2,500
+/stopbuy WETH 10 1900 dip - buy when it falls to $1,900
+
+Sell (use an amount or a percent)
+/sell WETH 50%
+/limitsell WETH 0.01 2500
+/stoploss WETH 50% 1900
+/takeprofit WETH 50% 2500
+/bracket WETH 100% 1900 2500 - stop, then target
+
+Over time
+/twap buy WETH 100 60 - spend 100 USDC over 60 minutes
+/twap sell WETH 50% 60
+/trail sell WETH 100% 5 - sell after a 5% drop from the high
+/trail buy WETH 100 5 - buy after a 5% rise from the low
+
+Manage
 /balance - your balances
-/buy WETH 10 - buy with 10 USDC
-/sell WETH 50% - sell a share, or /sell WETH 0.01
-/limit WETH 10 2000 - buy with 10 USDC at $2,000 or better
-/orders - open orders, with cancel buttons
-/cancelall - cancel all open orders
+/orders - pending orders, with cancel buttons
+/cancelall - cancel all pending orders
 /export - show your wallet's private key`;
 
 export interface BotDeps {
@@ -81,66 +99,102 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
     await ctx.reply(balances.map((b) => `${b.symbol} on ${b.chain}: ${b.balance} ($${Number(b.notional).toFixed(2)})`).join("\n"));
   });
 
-  async function offerOrder(ctx: Context, userId: string, funder: string, request: OrderRequest, describe: (received: string) => string, market: boolean, warning = "") {
-    const quote = await prepareOrder(flash, funder, request);
-    const payload: OrderPayload = { request, minReceived: market ? Number(quote.to.amount) * (1 - MAX_PRICE_MOVE) : undefined };
-    const id = await createAction(db, userId, "order", payload);
-    const slippage = quote.recommendedSlippage ? `\nMax slippage: ${(Number(quote.recommendedSlippage) * 100).toFixed(1)}%` : "";
-    await ctx.reply(`${describe(quote.to.amount)}\nEstimated fees: $${quote.fees.estimatedFeeNotional}${slippage}${warning}\n\nThis expires in 2 minutes.`, { reply_markup: confirmKeyboard(id) });
-  }
-
   const riskNote = (flagged: boolean) => (flagged ? "\n\nWarning: this token is flagged as risky or isn't on our list. Check the address carefully." : "");
 
+  /** Builds an order with the same rules as the website, then shows a preview to confirm. */
+  async function offer(ctx: Context, form: Omit<TradeForm, "tokenAddress" | "funder">, token: string, describe: (symbol: string, received: string) => string) {
+    const from = ctx.from!;
+    const { user, wallet } = await load(from);
+    const asset = await resolveBaseToken(searchFlash, token);
+    if (!asset) return void (await ctx.reply(`Couldn't find ${token} on Base.`));
+    const built = buildOrder({ ...form, tokenAddress: asset.address, funder: wallet.address });
+    if ("error" in built) return void (await ctx.reply(built.error));
+    const request: OrderRequest = { ...built.request, flashIntegratorFeeBps: feeBps, ...SAFE_APPROVALS };
+    try {
+      const quote = await prepareOrder(flash, wallet.address, request);
+      const market = form.type === "market";
+      const payload: OrderPayload = { request, minReceived: market ? Number(quote.to.amount) * (1 - MAX_PRICE_MOVE) : undefined };
+      const id = await createAction(db, user.id, "order", payload);
+      const slippage = quote.recommendedSlippage ? `\nMax slippage: ${(Number(quote.recommendedSlippage) * 100).toFixed(1)}%` : "";
+      const exits = form.stop ? `\nStop $${form.stop}, target $${form.target}` : "";
+      await ctx.reply(`${describe(asset.symbol, quote.to.amount)}${exits}\nEstimated fees: $${quote.fees.estimatedFeeNotional}${slippage}${riskNote(asset.riskFlagged)}\n\nThis expires in 2 minutes.`, { reply_markup: confirmKeyboard(id) });
+    } catch (e) {
+      await ctx.reply(`Couldn't get a quote: ${friendly(e)}`);
+    }
+  }
+
+  /** Turns "50%" or an amount into a quantity of a token the wallet holds on Base. */
+  async function sellAmount(ctx: Context, token: string, sell: SellAmount) {
+    const { wallet } = await load(ctx.from!);
+    const { balances } = await flash.balances(wallet.address);
+    const q = token.toLowerCase();
+    const row = balances.find((b) => b.chain === CHAIN && !b.isNative && (b.symbol.toLowerCase() === q || b.address.toLowerCase() === q));
+    if (!row) return void (await ctx.reply(`You don't hold ${token} on Base.`));
+    const qty = sellQty(row.balance, sell);
+    if (!qty) return void (await ctx.reply(`You only have ${row.balance} ${row.symbol}.`));
+    return { qty, token: row.address };
+  }
+
   pm.command("buy", async (ctx) => {
-    const args = parseBuy(ctx.match);
-    if (!args) return void (await ctx.reply("Usage: /buy WETH 10"));
-    const { user, wallet } = await load(ctx.from);
-    const asset = await resolveBaseToken(searchFlash, args.token);
-    if (!asset) return void (await ctx.reply(`Couldn't find ${args.token} on Base.`));
-    const request: OrderRequest = {
-      targetChain: CHAIN, contraChain: CHAIN, targetAsset: asset.address, contraAsset: USDC,
-      side: "buy", qty: args.usdc, orderType: "market", flashIntegratorFeeBps: feeBps, ...SAFE_APPROVALS,
-    };
-    await offerOrder(ctx, user.id, wallet.address, request, (got) => `Buy about ${got} ${asset.symbol} for ${args.usdc} USDC.`, true, riskNote(asset.riskFlagged))
-      .catch((e) => ctx.reply(`Couldn't get a quote: ${friendly(e)}`));
+    const a = parseBuy(ctx.match);
+    if (!a) return void (await ctx.reply("Usage: /buy WETH 10, or /buy WETH 10 stop 1900 target 2500"));
+    await offer(ctx, { side: "buy", type: "market", qty: a.usdc, stop: a.stop, target: a.target }, a.token, (s, got) => `Buy about ${got} ${s} for ${a.usdc} USDC.`);
   });
 
   pm.command("limit", async (ctx) => {
-    const args = parseLimit(ctx.match);
-    if (!args) return void (await ctx.reply("Usage: /limit WETH 10 2000"));
-    const { user, wallet } = await load(ctx.from);
-    const asset = await resolveBaseToken(searchFlash, args.token);
-    if (!asset) return void (await ctx.reply(`Couldn't find ${args.token} on Base.`));
-    const request: OrderRequest = {
-      targetChain: CHAIN, contraChain: CHAIN, targetAsset: asset.address, contraAsset: USDC,
-      side: "buy", qty: args.usdc, orderType: "limit", limitNotionalPrice: args.price, flashIntegratorFeeBps: feeBps, ...SAFE_APPROVALS,
-    };
-    await offerOrder(ctx, user.id, wallet.address, request, () => `Limit buy ${asset.symbol} with ${args.usdc} USDC at $${args.price} or better.`, false, riskNote(asset.riskFlagged))
-      .catch((e) => ctx.reply(`Couldn't get a quote: ${friendly(e)}`));
+    const a = parseLimit(ctx.match);
+    if (!a) return void (await ctx.reply("Usage: /limit WETH 10 2000, or add stop 1900 target 2500"));
+    await offer(ctx, { side: "buy", type: "limit", qty: a.usdc, price: a.price, stop: a.stop, target: a.target }, a.token, (s) => `Limit buy ${s} with ${a.usdc} USDC at $${a.price} or better.`);
+  });
+
+  pm.command("stopbuy", async (ctx) => {
+    const a = parseStopBuy(ctx.match);
+    if (!a) return void (await ctx.reply("Usage: /stopbuy WETH 10 2500, or /stopbuy WETH 10 1900 dip"));
+    await offer(ctx, { side: "buy", type: "stop", qty: a.usdc, trigger: a.trigger, triggerDirection: a.direction }, a.token, (s) => `Buy ${s} with ${a.usdc} USDC when the price ${a.direction === "upper" ? "rises" : "falls"} to $${a.trigger}.`);
   });
 
   pm.command("sell", async (ctx) => {
-    const args = parseSell(ctx.match);
-    if (!args) return void (await ctx.reply("Usage: /sell WETH 50% or /sell WETH 0.01"));
-    const { user, wallet } = await load(ctx.from);
-    const { balances } = await flash.balances(wallet.address);
-    const q = args.token.toLowerCase();
-    const row = balances.find((b) => b.chain === CHAIN && !b.isNative && (b.symbol.toLowerCase() === q || b.address.toLowerCase() === q));
-    if (!row) return void (await ctx.reply(`You don't hold ${args.token} on Base.`));
-    const qty = sellQty(row.balance, args);
-    if (!qty) return void (await ctx.reply(`You only have ${row.balance} ${row.symbol}.`));
-    const request: OrderRequest = {
-      targetChain: CHAIN, contraChain: CHAIN, targetAsset: row.address, contraAsset: USDC,
-      side: "sell", qty, orderType: "market", flashIntegratorFeeBps: feeBps, ...SAFE_APPROVALS,
-    };
-    await offerOrder(ctx, user.id, wallet.address, request, (got) => `Sell ${qty} ${row.symbol} for about ${got} USDC.`, true)
-      .catch((e) => ctx.reply(`Couldn't get a quote: ${friendly(e)}`));
+    const a = parseSell(ctx.match);
+    if (!a) return void (await ctx.reply("Usage: /sell WETH 50% or /sell WETH 0.01"));
+    const held = await sellAmount(ctx, a.token, a);
+    if (held) await offer(ctx, { side: "sell", type: "market", qty: held.qty }, held.token, (s, got) => `Sell ${held.qty} ${s} for about ${got} USDC.`);
   });
+
+  const sellAt = (command: string, type: "limit" | "stop-loss" | "take-profit", describe: (qty: string, symbol: string, price: string) => string) =>
+    pm.command(command, async (ctx) => {
+      const a = parseSellAt(ctx.match);
+      if (!a) return void (await ctx.reply(`Usage: /${command} WETH 50% 2000`));
+      const held = await sellAmount(ctx, a.token, a.sell);
+      if (!held) return;
+      const prices = type === "limit" ? { price: a.price } : { trigger: a.price };
+      await offer(ctx, { side: "sell", type, qty: held.qty, ...prices }, held.token, (s) => describe(held.qty, s, a.price));
+    });
+  sellAt("limitsell", "limit", (q, s, p) => `Limit sell ${q} ${s} at $${p} or better.`);
+  sellAt("stoploss", "stop-loss", (q, s, p) => `Sell ${q} ${s} if the price falls to $${p}.`);
+  sellAt("takeprofit", "take-profit", (q, s, p) => `Sell ${q} ${s} if the price rises to $${p}.`);
+
+  pm.command("bracket", async (ctx) => {
+    const a = parseBracket(ctx.match);
+    if (!a) return void (await ctx.reply("Usage: /bracket WETH 100% 1900 2500 (stop, then target)"));
+    const held = await sellAmount(ctx, a.token, a.sell);
+    if (held) await offer(ctx, { side: "sell", type: "bracket", qty: held.qty, bracketStop: a.stop, bracketTarget: a.target }, held.token, (s) => `Sell ${held.qty} ${s} at $${a.stop} or $${a.target}, whichever comes first.`);
+  });
+
+  const timed = (command: string, usage: string, form: (value: string) => Pick<TradeForm, "type" | "durationMinutes" | "trailPercent">, describe: (value: string) => string) =>
+    pm.command(command, async (ctx) => {
+      const a = parseTimed(ctx.match);
+      if (!a) return void (await ctx.reply(usage));
+      if (a.side === "buy") return offer(ctx, { side: "buy", qty: a.usdc!, ...form(a.value) }, a.token, (s) => `Buy ${s} with ${a.usdc} USDC ${describe(a.value)}.`);
+      const held = await sellAmount(ctx, a.token, a.sell!);
+      if (held) await offer(ctx, { side: "sell", qty: held.qty, ...form(a.value) }, held.token, (s) => `Sell ${held.qty} ${s} ${describe(a.value)}.`);
+    });
+  timed("twap", "Usage: /twap buy WETH 100 60, or /twap sell WETH 50% 60 (minutes)", (v) => ({ type: "twap", durationMinutes: v }), (v) => `evenly over ${v} minutes`);
+  timed("trail", "Usage: /trail sell WETH 100% 5, or /trail buy WETH 100 5 (percent)", (v) => ({ type: "trailing-stop", trailPercent: v }), (v) => `with a ${v}% trailing stop`);
 
   const showOrders = async (ctx: Context & { from: { id: number; username?: string } }) => {
     const { user, wallet } = await load(ctx.from);
     const { orders } = await flash.listOrders({ funderAddress: wallet.address, statuses: OPEN_STATUSES });
-    if (!orders.length) return void (await ctx.reply("No open orders."));
+    if (!orders.length) return void (await ctx.reply("No pending orders."));
     for (const o of orders) {
       const id = await createAction(db, user.id, "cancel", { orderId: o.orderId }, 3600);
       const price = o.limitNotionalPrice ? ` at $${o.limitNotionalPrice}` : "";
@@ -152,10 +206,10 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
   pm.command("cancelall", async (ctx) => {
     const { user, wallet } = await load(ctx.from);
     const { orders } = await flash.listOrders({ funderAddress: wallet.address, statuses: OPEN_STATUSES });
-    if (!orders.length) return void (await ctx.reply("No open orders."));
+    if (!orders.length) return void (await ctx.reply("No pending orders."));
     const orderIds = orders.slice(0, 25).map((o) => o.orderId);
     const id = await createAction(db, user.id, "cancelall", { orderIds });
-    await ctx.reply(`Cancel ${orderIds.length} open order${orderIds.length === 1 ? "" : "s"}?`, { reply_markup: confirmKeyboard(id) });
+    await ctx.reply(`Cancel ${orderIds.length} pending order${orderIds.length === 1 ? "" : "s"}?`, { reply_markup: confirmKeyboard(id) });
   });
 
   pm.command("orders", showOrders);
