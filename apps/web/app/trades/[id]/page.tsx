@@ -7,7 +7,7 @@ import { Nav } from "@/components/nav";
 import { PriceChart } from "@/components/price-chart";
 import { COPYABLE_TYPES, entryPrice } from "@flashmob/flash";
 import { db } from "@/lib/db";
-import { pct, tradeStatus, usd } from "@/lib/format";
+import { pct, tradeSize, tradeStatus, usd } from "@/lib/format";
 import { serverFlash } from "@/lib/orders";
 import { getSession } from "@/lib/session";
 
@@ -34,6 +34,7 @@ export default async function TradePage({ params }: { params: Promise<{ id: stri
   const twapMinutesLeft = expires ? (Date.parse(expires) - Date.now()) / 60_000 : null;
 
   const levels = [
+    ["Size", tradeSize(order), ""],
     [order.filledQty > 0 ? "Filled at" : "Price", entry === null ? "Market" : usd(entry), ""],
     ["Stop loss", usd(order.stopPrice), "dn"],
     ["Take profit", usd(order.targetPrice), "up"],

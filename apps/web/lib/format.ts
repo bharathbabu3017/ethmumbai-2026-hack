@@ -10,3 +10,10 @@ export function tradeStatus(status: string | null, filledQty: number) {
   if (OPEN_STATUSES.includes(status ?? "")) return filledQty > 0 ? { label: "Part filled", color: "var(--blue)" } : { label: "Open", color: "var(--blue)" };
   return filledQty > 0 ? { label: "Part filled, closed", color: "var(--mut)" } : { label: "Cancelled", color: "var(--orange)" };
 }
+
+/** How big a trade is: what actually filled if anything has, otherwise what the order is for. */
+export function tradeSize(o: { side: string | null; qty: string | null; tokenSymbol: string | null; filledUsd: number; filledQty: number }) {
+  if (o.filledUsd > 0) return `$${o.filledUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+  if (o.side === "buy") return `$${Number(o.qty).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+  return `${Number(o.qty).toPrecision(4)} ${o.tokenSymbol}`;
+}

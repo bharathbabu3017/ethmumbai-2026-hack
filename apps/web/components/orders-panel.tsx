@@ -44,7 +44,7 @@ function History({ reloadKey }: { reloadKey: number }) {
         </span>
         <span style={{ textAlign: "right" }}>
           <span style={{ display: "block", fontSize: 12, color: status.color }}>{status.label}</span>
-          {price > 0 && <span className="m mut" style={{ fontSize: 12 }}>{filledQty.toPrecision(4)} at {usd(price)}</span>}
+          {price > 0 && <span className="m mut" style={{ fontSize: 12 }}>{usd(filledQty * price)} · {filledQty.toPrecision(4)} at {usd(price)}</span>}
         </span>
       </div>
     );

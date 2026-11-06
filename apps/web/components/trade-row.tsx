@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { tradeStatus, usd } from "@/lib/format";
+import { tradeSize, tradeStatus, usd } from "@/lib/format";
 
 interface Props {
   order: {
@@ -17,7 +17,7 @@ export function TradeRow({ order: o, trader }: Props) {
   return (
     <article style={{ padding: "14px 0", borderTop: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: 4 }}>
       <div className="between">
-        <Link href={`/trades/${o.id}`} className="row" style={{ gap: 8, fontWeight: 500 }}><span className={`badge ${o.side === "sell" ? "sell" : "buy"}`}>{o.side}</span>{o.tokenSymbol}</Link>
+        <Link href={`/trades/${o.id}`} className="row" style={{ gap: 8, fontWeight: 500 }}><span className={`badge ${o.side === "sell" ? "sell" : "buy"}`}>{o.side}</span>{o.tokenSymbol}<span className="m">{tradeSize(o)}</span></Link>
         <span style={{ fontSize: 12, color: status.color }}>
           {result !== null ? <span className={result >= 0 ? "up" : "dn"}>{result >= 0 ? "+" : ""}{result.toFixed(1)}% </span> : null}{status.label}
         </span>
