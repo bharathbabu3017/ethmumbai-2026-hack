@@ -4,7 +4,8 @@
   "packageManager": "pnpm@10.0.0",
   "scripts": {
     "typecheck": "pnpm -r typecheck",
-    "spike": "pnpm --filter @flashmob/flash spike"
+    "spike": "pnpm --filter @flashmob/flash spike",
+    "test": "pnpm -r --if-present test"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
