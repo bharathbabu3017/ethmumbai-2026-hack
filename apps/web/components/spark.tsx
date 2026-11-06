@@ -1,13 +1,28 @@
-/** A small line of realized results over time. Nothing is drawn until there's a trend to show. */
-export function Spark({ points, width = 120, height = 40 }: { points: number[]; width?: number; height?: number }) {
-  if (points.length < 2) return <span style={{ width, height }} />;
+/**
+ * Realized results over time. Profit only changes when something is sold, so it's drawn in steps from a zero line.
+ * With `width` left out it fills its container.
+ */
+export function Spark({ points, width, height = 40 }: { points: number[]; width?: number; height?: number }) {
+  if (!points.length) return <span style={{ width, height }} />;
+  const w = width ?? 300;
+  const pad = 4;
   const line = [0, ...points];
   const low = Math.min(...line);
-  const range = Math.max(...line) - low || 1;
-  const path = line.map((v, i) => `${(i / (line.length - 1)) * width},${height - 2 - ((v - low) / range) * (height - 4)}`).join(" ");
+  const high = Math.max(...line);
+  const y = (v: number) => pad + (1 - (v - low) / (high - low || 1)) * (height - pad * 2);
+  const x = (i: number) => (i / (points.length + 1)) * w;
+
+  // Each sale is a step down or up, and the line then runs on to the right edge.
+  const steps = [...line.flatMap((v, i) => (i === 0 ? [[0, y(v)]] : [[x(i), y(line[i - 1]!)], [x(i), y(v)]])), [w, y(line.at(-1)!)]];
+  const path = steps.map(([px, py]) => `${px},${py}`).join(" ");
+  const [endX, endY] = steps.at(-1)!;
+  const color = line.at(-1)! < 0 ? "var(--orange)" : "var(--up)";
+
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
-      <polyline points={path} fill="none" stroke={line.at(-1)! < 0 ? "var(--orange)" : "var(--up)"} strokeWidth="1.5" />
+    <svg width={width ?? "100%"} height={height} viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" aria-hidden="true" style={{ display: "block" }}>
+      <polygon points={`0,${y(0)} ${path} ${endX},${y(0)}`} fill={color} opacity="0.12" />
+      <line x1="0" x2={w} y1={y(0)} y2={y(0)} stroke="var(--line2)" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" />
+      <polyline points={path} fill="none" stroke={color} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }

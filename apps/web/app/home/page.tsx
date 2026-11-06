@@ -5,6 +5,7 @@ import { GettingStarted } from "@/components/getting-started";
 import { Nav } from "@/components/nav";
 import { SellPrompts } from "@/components/sell-prompts";
 import { StatusStrip } from "@/components/status-strip";
+import { TokenIcon } from "@/components/token-icon";
 import { TraderCard, TraderTable, type DiscoverTrader } from "@/components/trader-card";
 import { db } from "@/lib/db";
 import { tradeSize } from "@/lib/format";
@@ -28,7 +29,7 @@ export default async function Home() {
     const theirs = feed.filter((r) => r.trader.id === t.id).map((r) => r.order);
     const filled = theirs.filter((o) => o.filledQty > 0);
     const curve = filled.filter((o) => o.soldCostUsd > 0).reverse().reduce<number[]>((sum, o) => [...sum, (sum.at(-1) ?? 0) + o.realizedUsd], []);
-    const recent = filled.slice(0, 2).map((o) => ({ id: o.id, text: `${o.side === "sell" ? "Sold" : "Bought"} ${o.tokenSymbol} ${tradeSize(o)}`, at: o.placedAt }));
+    const recent = filled.slice(0, 2).map((o) => ({ id: o.id, text: `${o.side === "sell" ? "Sold" : "Bought"} ${o.tokenSymbol} ${tradeSize(o)}`, at: o.placedAt, symbol: o.tokenSymbol ?? "", address: o.tokenAddress }));
     const viewer = t.userId === session?.userId ? "you" as const : copying.has(t.id) ? "copying" as const : null;
     return { ...t, curve, recent, viewer };
   });
@@ -81,7 +82,7 @@ export default async function Home() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: "4px 32px" }}>
               {tokens.map((t) => (
                 <Link key={t.address} href={`/trade?token=${t.address}`} className="between" style={{ alignItems: "center", minHeight: 44 }}>
-                  <span style={{ fontWeight: 500 }}>{t.symbol}</span>
+                  <span className="row" style={{ gap: 8, fontWeight: 500 }}><TokenIcon token={t} size={22} />{t.symbol}</span>
                   <span className="m mut" style={{ fontSize: 13 }}>{t.buys} {t.buys === 1 ? "buy" : "buys"}, ${t.usd.toFixed(2)}</span>
                 </Link>
               ))}
