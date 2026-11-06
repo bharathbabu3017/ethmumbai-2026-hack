@@ -1,11 +1,13 @@
 import { claimAction, createAction, getOrCreateTelegramUser, linkTelegram, recordOrder, type Db } from "@flashmob/db";
-import { cancelMessage, FlashError, prepareOrder, resolveBaseToken, submitPrepared, USDC_BASE as USDC, type FlashClient, type OrderRequest } from "@flashmob/flash";
+import { batchCancelMessage, cancelMessage, FlashError, prepareOrder, resolveBaseToken, submitPrepared, USDC_BASE as USDC, type FlashClient, type OrderRequest } from "@flashmob/flash";
 import { createBotSigner, decryptKey, generateBotWallet } from "@flashmob/signer";
 import { Bot, InlineKeyboard, type BotConfig, type Context } from "grammy";
 import { base } from "viem/chains";
 import { parseBuy, parseLimit, parseSell, sellQty } from "./parse";
 
 const CHAIN = "base";
+// This wallet's key lives on our server, so approvals are sized to each order instead of left unlimited.
+const SAFE_APPROVALS = { forceMinimalAllowance: true, evmUsePermit2: true };
 const MAX_PRICE_MOVE = 0.02; // abort if a market order got this much worse between preview and confirm
 const EXPORT_VISIBLE_MS = 60_000;
 const OPEN_STATUSES = ["ORDER_STATUS_PENDING", "ORDER_STATUS_ACCEPTED", "ORDER_STATUS_PARTIALLY_FILLED"];
@@ -17,12 +19,14 @@ const HELP = `Flashmob commands
 /sell WETH 50% - sell a share, or /sell WETH 0.01
 /limit WETH 10 2000 - buy with 10 USDC at $2,000 or better
 /orders - open orders, with cancel buttons
+/cancelall - cancel all open orders
 /export - show your wallet's private key`;
 
 export interface BotDeps {
   token: string;
   db: Db;
   flash: FlashClient;
+  searchFlash: FlashClient; // token lookup only, see the note in the web proxy
   masterKey: Buffer;
   feeBps: string;
   rpcUrl?: string;
@@ -34,7 +38,7 @@ interface OrderPayload {
   minReceived?: number;
 }
 
-export function createBot({ token, db, flash, masterKey, feeBps, rpcUrl, botInfo }: BotDeps) {
+export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rpcUrl, botInfo }: BotDeps) {
   const bot = new Bot(token, { botInfo });
   // Wallet details and keys must never appear in a group, so everything is private-chat only.
   const pm = bot.chatType("private");
@@ -91,11 +95,11 @@ export function createBot({ token, db, flash, masterKey, feeBps, rpcUrl, botInfo
     const args = parseBuy(ctx.match);
     if (!args) return void (await ctx.reply("Usage: /buy WETH 10"));
     const { user, wallet } = await load(ctx.from);
-    const asset = await resolveBaseToken(flash, args.token);
+    const asset = await resolveBaseToken(searchFlash, args.token);
     if (!asset) return void (await ctx.reply(`Couldn't find ${args.token} on Base.`));
     const request: OrderRequest = {
       targetChain: CHAIN, contraChain: CHAIN, targetAsset: asset.address, contraAsset: USDC,
-      side: "buy", qty: args.usdc, orderType: "market", flashIntegratorFeeBps: feeBps,
+      side: "buy", qty: args.usdc, orderType: "market", flashIntegratorFeeBps: feeBps, ...SAFE_APPROVALS,
     };
     await offerOrder(ctx, user.id, wallet.address, request, (got) => `Buy about ${got} ${asset.symbol} for ${args.usdc} USDC.`, true, riskNote(asset.riskFlagged))
       .catch((e) => ctx.reply(`Couldn't get a quote: ${friendly(e)}`));
@@ -105,11 +109,11 @@ export function createBot({ token, db, flash, masterKey, feeBps, rpcUrl, botInfo
     const args = parseLimit(ctx.match);
     if (!args) return void (await ctx.reply("Usage: /limit WETH 10 2000"));
     const { user, wallet } = await load(ctx.from);
-    const asset = await resolveBaseToken(flash, args.token);
+    const asset = await resolveBaseToken(searchFlash, args.token);
     if (!asset) return void (await ctx.reply(`Couldn't find ${args.token} on Base.`));
     const request: OrderRequest = {
       targetChain: CHAIN, contraChain: CHAIN, targetAsset: asset.address, contraAsset: USDC,
-      side: "buy", qty: args.usdc, orderType: "limit", limitNotionalPrice: args.price, flashIntegratorFeeBps: feeBps,
+      side: "buy", qty: args.usdc, orderType: "limit", limitNotionalPrice: args.price, flashIntegratorFeeBps: feeBps, ...SAFE_APPROVALS,
     };
     await offerOrder(ctx, user.id, wallet.address, request, () => `Limit buy ${asset.symbol} with ${args.usdc} USDC at $${args.price} or better.`, false, riskNote(asset.riskFlagged))
       .catch((e) => ctx.reply(`Couldn't get a quote: ${friendly(e)}`));
@@ -127,7 +131,7 @@ export function createBot({ token, db, flash, masterKey, feeBps, rpcUrl, botInfo
     if (!qty) return void (await ctx.reply(`You only have ${row.balance} ${row.symbol}.`));
     const request: OrderRequest = {
       targetChain: CHAIN, contraChain: CHAIN, targetAsset: row.address, contraAsset: USDC,
-      side: "sell", qty, orderType: "market", flashIntegratorFeeBps: feeBps,
+      side: "sell", qty, orderType: "market", flashIntegratorFeeBps: feeBps, ...SAFE_APPROVALS,
     };
     await offerOrder(ctx, user.id, wallet.address, request, (got) => `Sell ${qty} ${row.symbol} for about ${got} USDC.`, true)
       .catch((e) => ctx.reply(`Couldn't get a quote: ${friendly(e)}`));
@@ -145,6 +149,15 @@ export function createBot({ token, db, flash, masterKey, feeBps, rpcUrl, botInfo
       });
     }
   };
+  pm.command("cancelall", async (ctx) => {
+    const { user, wallet } = await load(ctx.from);
+    const { orders } = await flash.listOrders({ funderAddress: wallet.address, statuses: OPEN_STATUSES });
+    if (!orders.length) return void (await ctx.reply("No open orders."));
+    const orderIds = orders.slice(0, 25).map((o) => o.orderId);
+    const id = await createAction(db, user.id, "cancelall", { orderIds });
+    await ctx.reply(`Cancel ${orderIds.length} open order${orderIds.length === 1 ? "" : "s"}?`, { reply_markup: confirmKeyboard(id) });
+  });
+
   pm.command("orders", showOrders);
   pm.command("cancel", showOrders);
 
@@ -196,6 +209,19 @@ export function createBot({ token, db, flash, masterKey, feeBps, rpcUrl, botInfo
         await ctx.editMessageText("Order cancelled.");
       } catch (e) {
         await ctx.reply(e instanceof FlashError && e.status === 422 ? "That order already executed or closed." : `Couldn't cancel: ${friendly(e)}`);
+      }
+      return;
+    }
+
+    if (action.kind === "cancelall") {
+      const { orderIds } = action.payload as { orderIds: string[] };
+      try {
+        const message = batchCancelMessage(orderIds);
+        const signer = signerFor(wallet.encryptedKey, user.id);
+        const { results } = await flash.cancelOrders({ orderIds, cancelMessage: message, userSignature: await signer.signMessage(message) });
+        await ctx.editMessageText(`Cancelled ${results.filter((r) => r.ok).length} of ${results.length} orders.`);
+      } catch (e) {
+        await ctx.reply(`Couldn't cancel: ${friendly(e)}`);
       }
       return;
     }

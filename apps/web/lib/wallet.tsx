@@ -3,7 +3,9 @@
 import { PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { createPublicClient, createWalletClient, custom, http, type Hex } from "viem";
-import { base } from "viem/chains";
+import { arbitrum, base, mainnet, optimism, polygon, type Chain } from "viem/chains";
+
+const CHAINS: Record<string, Chain> = { base, ethereum: mainnet, arbitrum, optimism, polygon };
 
 export interface BrowserSigner {
   address: string;
@@ -19,7 +21,8 @@ interface WalletState {
   address?: string;
   login(): void;
   logout(): void;
-  getSigner(): Promise<BrowserSigner>;
+  /** A signer on the given chain, which is Base unless an order is paid from elsewhere. */
+  getSigner(chain?: string): Promise<BrowserSigner>;
 }
 
 const notConfigured: WalletState = {
@@ -45,18 +48,20 @@ function PrivyBridge({ children }: { children: ReactNode }) {
       address: wallet?.address,
       login,
       logout: () => void logout(),
-      async getSigner() {
+      async getSigner(name = "base") {
         if (!wallet) throw new Error("Connect a wallet first");
-        await wallet.switchChain(base.id);
+        const chain = CHAINS[name];
+        if (!chain) throw new Error(`${name} isn't supported yet`);
+        await wallet.switchChain(chain.id);
         const account = wallet.address as Hex;
-        const client = createWalletClient({ account, chain: base, transport: custom(await wallet.getEthereumProvider()) });
+        const client = createWalletClient({ account, chain, transport: custom(await wallet.getEthereumProvider()) });
         return {
           address: account,
           signTypedData: (typedData) => client.signTypedData(JSON.parse(typedData)),
           signMessage: (message) => client.signMessage({ message }),
           async sendTransaction({ to, data }) {
             const hash = await client.sendTransaction({ to: to as Hex, data: data as Hex });
-            const receipt = await createPublicClient({ chain: base, transport: http() }).waitForTransactionReceipt({ hash });
+            const receipt = await createPublicClient({ chain, transport: http() }).waitForTransactionReceipt({ hash });
             if (receipt.status !== "success") throw new Error(`Transaction reverted: ${hash}`);
             return hash;
           },
@@ -77,7 +82,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       config={{
         loginMethods: ["wallet", "email"],
         defaultChain: base,
-        supportedChains: [base],
+        supportedChains: Object.values(CHAINS),
         appearance: { theme: "dark", accentColor: "#C4F250" },
         embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
       }}

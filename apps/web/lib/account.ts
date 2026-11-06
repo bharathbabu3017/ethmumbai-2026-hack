@@ -19,7 +19,7 @@ export async function postJson<T>(url: string, body: unknown = {}): Promise<T> {
 }
 
 /** Asks the wallet for a free sign-in signature, unless this wallet already has a session. */
-export async function ensureSession(getSigner: () => Promise<BrowserSigner>) {
+export async function ensureSession(getSigner: (chain?: string) => Promise<BrowserSigner>) {
   const signer = await getSigner();
   const me = await fetchMe();
   if (me.address?.toLowerCase() === signer.address.toLowerCase()) return me;

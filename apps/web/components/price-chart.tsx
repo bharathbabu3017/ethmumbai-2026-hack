@@ -1,6 +1,6 @@
 "use client";
 
-import { CandlestickSeries, ColorType, createChart, LineStyle, type IChartApi, type IPriceLine, type ISeriesApi } from "lightweight-charts";
+import { CandlestickSeries, ColorType, createChart, LineStyle, type AutoscaleInfo, type IChartApi, type IPriceLine, type ISeriesApi } from "lightweight-charts";
 import { useEffect, useRef, useState } from "react";
 import { pricePrecision, TIMEFRAMES, type Candle, type Timeframe } from "@/lib/chart";
 
@@ -32,6 +32,7 @@ export function PriceChart({ token, levels = [], height = 340 }: { token: string
   const chart = useRef<IChartApi>(null);
   const series = useRef<ISeriesApi<"Candlestick">>(null);
   const lines = useRef<{ line: IPriceLine; tone: PriceLevel["tone"] }[]>([]);
+  const prices = useRef<number[]>([]);
   const [timeframe, setTimeframe] = useState<Timeframe>("1h");
   const [error, setError] = useState("");
 
@@ -39,7 +40,16 @@ export function PriceChart({ token, levels = [], height = 340 }: { token: string
     if (!box.current) return;
     const created = createChart(box.current, { autoSize: true, ...theme() });
     chart.current = created;
-    series.current = created.addSeries(CandlestickSeries, candleColors());
+    series.current = created.addSeries(CandlestickSeries, {
+      ...candleColors(),
+      // Price lines don't widen the scale by themselves, so a far-off stop would be invisible.
+      autoscaleInfoProvider: (base: () => AutoscaleInfo | null) => {
+        const info = base();
+        if (!info?.priceRange) return info;
+        const { minValue, maxValue } = info.priceRange;
+        return { ...info, priceRange: { minValue: Math.min(minValue, ...prices.current), maxValue: Math.max(maxValue, ...prices.current) } };
+      },
+    });
     // Canvas colors don't follow CSS, so they are reapplied when the theme changes.
     const observer = new MutationObserver(() => {
       created.applyOptions(theme());
@@ -88,12 +98,14 @@ export function PriceChart({ token, levels = [], height = 340 }: { token: string
     const target = series.current;
     if (!target) return;
     lines.current.forEach(({ line }) => target.removePriceLine(line));
+    prices.current = levels.flatMap((l) => (l.price !== null && l.price > 0 ? [l.price] : []));
     lines.current = levels
       .filter((l) => l.price !== null && l.price > 0)
       .map((l) => ({
         tone: l.tone,
         line: target.createPriceLine({ price: l.price!, title: l.label, color: toneColor(l.tone), lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: true }),
       }));
+    chart.current?.priceScale("right").applyOptions({ autoScale: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 

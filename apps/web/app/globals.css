@@ -35,6 +35,9 @@ h1,h2,h3{margin:0;font-weight:600;letter-spacing:-.02em;line-height:1.15}
 .big{font-size:clamp(26px,3.4vw,36px)}
 @media (max-width:640px){.nav-left{display:contents}.nav-links{order:3;width:100%}}
 .icon{width:44px;padding:0}
+.pick{display:flex;justify-content:space-between;gap:10px;width:100%;padding:10px 12px;background:transparent;border:0;border-bottom:1px solid var(--line);color:var(--text);font:400 14px var(--font-inter),sans-serif;text-align:left;cursor:pointer}
+.pick:hover{background:var(--soft)}
+select.inp{font-family:var(--font-inter),sans-serif;appearance:auto}
 .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:36px 40px}
 .item{border-top:1px solid var(--line);padding-top:16px}
 .item h3{font-size:16px;margin-bottom:6px}

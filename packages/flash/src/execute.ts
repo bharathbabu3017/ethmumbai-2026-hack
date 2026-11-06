@@ -50,6 +50,7 @@ export async function submitPrepared(flash: FlashClient, signer: OrderSigner, re
     ...(body as Omit<SubmitOrderRequest, "funderAddress" | "userSignature">),
     funderAddress: signer.address,
     quoteId: quote.quoteId,
+    ...(quote.bridgeQuoteId ? { bridgeQuoteId: quote.bridgeQuoteId } : {}),
     userSignature: await signer.signTypedData(evm.orderTypedData),
     evmOrderTypedData: evm.orderTypedData,
     ...permit,

@@ -18,18 +18,25 @@ export const BASE_TOKENS: Token[] = [
 
 export const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
-/** Finds a Base token by symbol or address. A pasted address is accepted but marked as unverified. */
+/** Picks an exact match, preferring tokens that aren't flagged and have the deepest liquidity, so a copycat can't win on name alone. */
+function bestMatch<T extends { symbol: string; address: string; riskFlagged: boolean; liquidity: string }>(assets: T[], q: string) {
+  return assets
+    .filter((a) => a.symbol.toLowerCase() === q || a.address.toLowerCase() === q)
+    .sort((a, b) => Number(a.riskFlagged) - Number(b.riskFlagged) || Number(b.liquidity) - Number(a.liquidity))[0];
+}
+
+/** Finds a Base token by symbol or address. A pasted address that search can't confirm is marked as unverified. */
 export async function resolveBaseToken(flash: FlashClient, query: string): Promise<Token | undefined> {
   const q = query.trim().toLowerCase();
   const listed = BASE_TOKENS.find((t) => t.symbol.toLowerCase() === q || t.address.toLowerCase() === q);
   if (listed) return listed;
   try {
-    const { assets } = await flash.search(query, { chain: "base", limit: 10 });
-    const found = assets.find((a) => a.symbol.toLowerCase() === q || a.address.toLowerCase() === q);
+    const { assets } = await flash.search(query.trim(), { chain: "base", limit: 10 });
+    const found = bestMatch(assets, q);
     if (found) return { symbol: found.symbol, address: found.address, riskFlagged: found.riskFlagged };
   } catch (e) {
     if (!(e instanceof FlashError && e.status === 403)) throw e;
   }
-  if (/^0x[0-9a-f]{40}$/.test(q)) return { symbol: `${query.slice(0, 6)}…`, address: query.trim(), riskFlagged: true };
+  if (/^0x[0-9a-f]{40}$/.test(q)) return { symbol: `${query.trim().slice(0, 6)}…`, address: query.trim(), riskFlagged: true };
   return undefined;
 }

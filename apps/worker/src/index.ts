@@ -1,5 +1,5 @@
 import { createDb } from "@flashmob/db";
-import { createFlashClient } from "@flashmob/flash";
+import { createFlashClient, PUBLIC_DEV_KEY } from "@flashmob/flash";
 import { parseMasterKey } from "@flashmob/signer";
 import { createBot } from "./bot";
 import { startListener } from "./listener";
@@ -19,6 +19,7 @@ const bot = createBot({
   token: required("BOT_TOKEN"),
   db,
   flash,
+  searchFlash: createFlashClient({ apiKey: process.env.FLASH_SEARCH_KEY || PUBLIC_DEV_KEY }),
   masterKey: parseMasterKey(process.env.WALLET_MASTER_KEY),
   feeBps: process.env.PLATFORM_FEE_BPS ?? "10",
   rpcUrl: process.env.BASE_RPC_URL,

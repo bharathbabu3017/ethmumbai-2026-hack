@@ -14,7 +14,15 @@ export function isAllowed(method: string, path: string, query: URLSearchParams) 
   return true;
 }
 
-/** The platform fee is set here, so the browser can't change it. */
-export function withPlatformFee(path: string, body: Record<string, unknown>, feeBps: string) {
-  return path === "quote" || path === "order" ? { ...body, flashIntegratorFeeBps: feeBps } : body;
+/** The platform fee and builder code are set here, so the browser can't change them. */
+export function withServerFields(path: string, body: Record<string, unknown>, { feeBps, builderCode }: { feeBps: string; builderCode?: string }) {
+  if (path === "quote") return { ...body, flashIntegratorFeeBps: feeBps };
+  if (path === "order") return { ...body, flashIntegratorFeeBps: feeBps, ...(builderCode ? { erc8021AttributionCode: builderCode } : {}) };
+  return body;
 }
+
+/**
+ * Flash limits /search on low-usage keys, so search alone uses a separate key.
+ * Everything that places or reads orders stays on our own key.
+ */
+export const keyFor = (path: string, apiKey: string, searchKey: string) => (path === "search" ? searchKey : apiKey);

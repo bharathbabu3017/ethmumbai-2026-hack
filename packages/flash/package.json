@@ -8,6 +8,7 @@
   "scripts": {
     "gen": "openapi-typescript ../../docs/flash/openapi.json -o src/schema.gen.ts",
     "typecheck": "tsc -p .",
+    "test": "tsx --test src/*.test.ts",
     "spike": "tsx --env-file-if-exists=../../.env scripts/spike.ts"
   },
   "dependencies": {

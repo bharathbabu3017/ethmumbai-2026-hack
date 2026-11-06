@@ -20,13 +20,14 @@ const typedData = JSON.stringify({
 let db: Db;
 let sent: { method: string; payload: any }[];
 let submits: any[];
+let quotes: any[];
 let received: string;
 let bot: ReturnType<typeof createBot>;
 let updateId = 0;
 
 const flash = {
   search: async () => { throw new FlashError(403, "SEARCH_NOT_ELIGIBLE", "Insufficient Flash usage"); },
-  quote: async () => ({
+  quote: async (body: any) => (quotes.push(body), {
     quoteId: "q1", recommendedSlippage: "0.15", from: { amount: "10" }, to: { amount: received }, fees: { estimatedFeeNotional: "0.01" },
     evm: { approveTx: null, permitTypedData: "", orderTypedData: typedData },
   }),
@@ -37,9 +38,9 @@ beforeEach(async () => {
   const pg = drizzle(new PGlite(), { schema });
   await migrate(pg, { migrationsFolder });
   db = pg as unknown as Db;
-  sent = []; submits = []; received = "0.005";
+  sent = []; submits = []; quotes = []; received = "0.005";
   bot = createBot({
-    token: "1:test", db, flash, masterKey: randomBytes(32), feeBps: "10",
+    token: "1:test", db, flash, searchFlash: flash, masterKey: randomBytes(32), feeBps: "10",
     botInfo: { id: 1, is_bot: true, first_name: "t", username: "t_bot" } as never,
   });
   bot.api.config.use(async (_prev, method, payload) => {
@@ -82,6 +83,8 @@ test("double-tapping Confirm places exactly one order, with the fee and a signat
   assert.equal(submits.length, 1);
   assert.equal(submits[0].flashIntegratorFeeBps, "10");
   assert.equal(submits[0].maxSlippage, undefined);
+  assert.deepEqual([quotes[0].forceMinimalAllowance, quotes[0].evmUsePermit2], [true, true]);
+  assert.equal(submits[0].forceMinimalAllowance, undefined);
   assert.match(submits[0].userSignature, /^0x/);
   assert.match(lastText(), /already used/);
 });
