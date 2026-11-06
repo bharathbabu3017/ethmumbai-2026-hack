@@ -514,7 +514,7 @@ export const setAgentStatus = (db: Db, id: string, status: "funding" | "running"
 export const removeAgent = (db: Db, id: string) => db.update(agents).set({ status: "stopped", removedAt: new Date() }).where(eq(agents.id, id));
 
 /** Which traders are agents, for badges and the Agents tab. */
-export const listAgentTraders = (db: Db) => db.select({ traderId: agents.traderId, status: agents.status, settings: agents.settings, removedAt: agents.removedAt }).from(agents);
+export const listAgentTraders = (db: Db) => db.select({ traderId: agents.traderId, status: agents.status, settings: agents.settings }).from(agents);
 
 /** Agents that might need a check, with what the runner needs to act for them. */
 export const activeAgents = (db: Db) =>

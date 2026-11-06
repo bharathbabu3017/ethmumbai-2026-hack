@@ -19,11 +19,9 @@ export interface DiscoverTrader {
   /** How this trader relates to whoever is looking. */
   viewer: "you" | "copying" | null;
   agent: boolean;
-  stopped?: boolean;
 }
 
 function TraderAction({ trader: t }: { trader: DiscoverTrader }) {
-  if (t.stopped) return <Link href={`/traders/${t.id}`} className="btn">View record</Link>;
   if (t.viewer === "you") return <Link href="/become-a-trader" className="btn">Your dashboard</Link>;
   if (t.viewer === "copying") return <Link href={`/traders/${t.id}`} className="btn">Copying</Link>;
   return <Link href={`/traders/${t.id}`} className="btn pri">Copy</Link>;
@@ -40,7 +38,7 @@ export function TraderCard({ trader: t }: { trader: DiscoverTrader }) {
       <Link href={`/traders/${t.id}`} className="row" style={{ gap: 10, flexWrap: "nowrap", minWidth: 0 }}>
         <Avatar name={t.displayName} size={40} />
         <span style={{ minWidth: 0 }}>
-          <span className="row" style={{ gap: 6, flexWrap: "nowrap", fontWeight: 600 }}><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.displayName}</span>{t.viewer === "you" && <YouTag />}{t.agent && <span className="agent-badge">AI agent</span>}{t.stopped && <span className="mut" style={{ fontSize: 12, fontWeight: 400 }}>Stopped</span>}</span>
+          <span className="row" style={{ gap: 6, flexWrap: "nowrap", fontWeight: 600 }}><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.displayName}</span>{t.viewer === "you" && <YouTag />}{t.agent && <span className="agent-badge">AI agent</span>}</span>
           {t.walletAddress && <span className="m mut" style={{ fontSize: 12 }}>{shortAddress(t.walletAddress)}</span>}
         </span>
       </Link>

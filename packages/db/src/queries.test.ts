@@ -382,6 +382,6 @@ test("a removed agent leaves the owner's list but keeps its public record", asyn
   await removeAgent(db, agent.id);
   assert.deepEqual(await listAgents(db, ownerId), []);
   assert.equal((await getAgentByTrader(db, agent.traderId))?.status, "stopped");
-  assert.ok((await listAgentTraders(db)).find((a) => a.traderId === agent.traderId)?.removedAt);
+  assert.equal((await listAgentTraders(db)).find((a) => a.traderId === agent.traderId)?.status, "stopped");
   assert.ok(!(await activeAgents(db)).some((a) => a.id === agent.id));
 });
