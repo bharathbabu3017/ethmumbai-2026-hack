@@ -1,8 +1,9 @@
-import { autoSpentLast24h, enqueueJob, getTradingWallet, isCopyOrder, listAutoCopiers, recordCopySkip, reserveCopy, type Db, type schema } from "@flashmob/db";
+import { autoSpentLast24h, claimAlert, enqueueJob, getTradingWallet, isCopyOrder, listAutoCopiers, recordCopySkip, reserveCopy, type Db, type schema } from "@flashmob/db";
 import {
   BASE_TOKENS, buildOrder, copyForm, decideCopy, USDC_BASE,
   type CopyableTrade, type CopySettings, type FlashClient, type TradeForm,
 } from "@flashmob/flash";
+import { card } from "./trades";
 
 export interface AutoCopy {
   /** The master switch. Nothing is copied automatically unless this is on. */
@@ -52,7 +53,7 @@ export async function autoCopy(db: Db, flash: FlashClient, auto: AutoCopy, send:
     const skip = async (reason: string) => {
       // The history is a nice-to-have, so a failed write must not stop other followers' copies.
       await recordCopySkip(db, { sourceOrderId: order.id, userId: copier.userId, reason }).catch((e) => console.error("Couldn't record a skip:", e));
-      if (copier.telegramId) await send(copier.telegramId, `Skipped copying ${trader.displayName}: ${reason}`);
+      if (copier.telegramId && (await claimAlert(db, copier.telegramId, `skip:${order.id}`))) await send(copier.telegramId, card("⏭", `Skipped copying ${trader.displayName}`, [], reason));
     };
     const wallet = await getTradingWallet(db, copier.userId);
     if (!wallet) {

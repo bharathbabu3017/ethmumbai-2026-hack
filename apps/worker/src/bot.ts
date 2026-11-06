@@ -1,9 +1,9 @@
 import { claimAction, createAction, getOrCreateTelegramAccount, getTradingWallet, linkTelegram, recordOrder, setCopyPaused, walletPnl, type Db } from "@flashmob/db";
-import { batchCancelMessage, buildOrder, cancelMessage, feeFields, FlashError, holdings, OPEN_STATUSES, prepareOrder, resolveBaseToken, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
+import { batchCancelMessage, buildOrder, cancelMessage, feeFields, FlashError, HIGH_COST_PERCENT, holdings, OPEN_STATUSES, orderCost, prepareOrder, resolveBaseToken, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
 import { sequentialize } from "@grammyjs/runner";
 import { Bot, InlineKeyboard, type BotConfig, type Context } from "grammy";
 import { signerFor, type PrivyAccess } from "./signers";
-import { portfolioMessage } from "./trades";
+import { card, esc, portfolioMessage } from "./trades";
 import { parseBracket, parseBuy, parseLimit, parseSell, parseSellAt, parseStopBuy, parseTimed, sellQty, type SellAmount } from "./parse";
 
 const CHAIN = "base";
@@ -102,8 +102,9 @@ export function createBot({ token, db, flash, searchFlash, feeBps, rpcUrl, privy
     }
     if (!wallet) return void (await ctx.reply(`Welcome to Flashmob.\n\n${NEEDS_WALLET}\n\n${HELP}`, { reply_markup: openAppKeyboard() }));
     await ctx.reply(
-      `Welcome back. Your trading wallet:\n\n${wallet.address}\n\n` +
-        `Send USDC on Base to this address, plus a little ETH for gas. Only keep what you want to trade with.\n\n${HELP}`,
+      `👋 <b>Welcome back</b>\nYour trading wallet:\n<code>${wallet.address}</code>\n\n` +
+        `Send USDC on Base to this address, plus a little ETH for gas. Only keep what you want to trade with.\n\n${esc(HELP)}`,
+      { parse_mode: "HTML" },
     );
   });
 
@@ -126,7 +127,7 @@ export function createBot({ token, db, flash, searchFlash, feeBps, rpcUrl, privy
     const { balances } = await flash.balances(wallet.address);
     if (!balances.length) return void (await ctx.reply(`Nothing here yet. Deposit to:\n${wallet.address}`));
     const { positions, realizedUsd } = await walletPnl(db, wallet.id);
-    await ctx.reply(portfolioMessage(holdings(balances, positions, realizedUsd)));
+    await ctx.reply(portfolioMessage(holdings(balances, positions, realizedUsd)), { parse_mode: "HTML" });
   });
 
   const riskNote = (flagged: boolean) => (flagged ? "\n\nWarning: this token is flagged as risky or isn't on our list. Check the address carefully." : "");
@@ -145,9 +146,14 @@ export function createBot({ token, db, flash, searchFlash, feeBps, rpcUrl, privy
       const market = form.type === "market";
       const payload: OrderPayload = { request, minReceived: market ? Number(quote.to.amount) * (1 - MAX_PRICE_MOVE) : undefined };
       const id = await createAction(db, user.id, "order", payload);
-      const slippage = quote.recommendedSlippage ? `\nMax slippage: ${(Number(quote.recommendedSlippage) * 100).toFixed(1)}%` : "";
-      const exits = form.stop ? `\nStop $${form.stop}, target $${form.target}` : "";
-      await ctx.reply(`${describe(asset.symbol, quote.to.amount)}${exits}\nEstimated fees: $${quote.fees.estimatedFeeNotional}${slippage}${riskNote(asset.riskFlagged)}\n\nThis expires in 2 minutes.`, { reply_markup: confirmKeyboard(id) });
+      const cost = orderCost(quote);
+      const text = card("🧾", describe(asset.symbol, quote.to.amount), [
+        ["Stop", form.stop && `$${form.stop}`],
+        ["Target", form.target && `$${form.target}`],
+        ["Total cost", cost && `$${cost.usd.toFixed(2)} (${cost.percent.toFixed(1)}%)`],
+        ["Max slippage", quote.recommendedSlippage && `${(Number(quote.recommendedSlippage) * 100).toFixed(1)}%`],
+      ], `${cost && cost.percent >= HIGH_COST_PERCENT ? "High cost for this size. A larger amount loses a smaller share.\n" : ""}${riskNote(asset.riskFlagged).trim()}${riskNote(asset.riskFlagged) ? "\n" : ""}This expires in 2 minutes.`);
+      await ctx.reply(text, { parse_mode: "HTML", reply_markup: confirmKeyboard(id) });
     } catch (e) {
       await ctx.reply(`Couldn't get a quote: ${friendly(e)}`);
     }
@@ -228,7 +234,8 @@ export function createBot({ token, db, flash, searchFlash, feeBps, rpcUrl, privy
     for (const o of orders) {
       const id = await createAction(db, user.id, "cancel", { orderId: o.orderId }, 3600);
       const price = o.limitNotionalPrice ? ` at $${o.limitNotionalPrice}` : "";
-      await ctx.reply(`${o.orderType} ${o.side} ${o.targetAsset.ticker}, ${o.qty}${price}`, {
+      await ctx.reply(card("🕓", `${o.orderType} ${o.side} ${o.targetAsset.ticker}`, [["Size", o.qty], ["Price", price.replace(" at ", "")]]), {
+        parse_mode: "HTML",
         reply_markup: new InlineKeyboard().text("Cancel order", `ok:${id}`),
       });
     }
@@ -269,7 +276,7 @@ export function createBot({ token, db, flash, searchFlash, feeBps, rpcUrl, privy
         }
         const { orderId } = await submitPrepared(flash, signer, request, quote);
         await recordOrder(db, { id: orderId, userId: user.id, walletId: wallet.id, request });
-        await ctx.reply(`Order placed.\nID: ${orderId}`);
+        await ctx.reply(card("✅", "Order placed", [], `You'll get a message when it fills. ID: ${orderId}`), { parse_mode: "HTML" });
       } catch (e) {
         await ctx.reply(`Order not confirmed: ${friendly(e)}\n\nCheck /orders and /balance before trying again.`);
       }

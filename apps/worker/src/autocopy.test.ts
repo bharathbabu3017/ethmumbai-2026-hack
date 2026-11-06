@@ -71,7 +71,10 @@ test("a trader's buy is copied at the follower's size, from their own wallet", a
   await handleOrder(db, flash, send, frame(), true, on);
   await drain();
   assert.deepEqual([submits.length, submits[0].qty, submits[0].funderAddress, submits[0].orderType], [1, "30", follower.address, "market"]);
-  assert.ok(sent.includes("Auto-copied Ana's WETH trade."));
+  // A market copy reports through its fill, so there's no extra message before it.
+  assert.ok(!sent.some((t) => /Auto-copy placed/.test(t)));
+  await handleOrder(db, flash, send, frame({ orderId: "placed-1", funderAddress: follower.address }), true, on);
+  assert.ok(sent.some((t) => /Auto-copied Ana: bought WETH/.test(t)));
 });
 
 test("a replayed frame never copies twice", async () => {
@@ -100,7 +103,7 @@ test("a skip tells the follower why", async () => {
   await handleOrder(db, flash, send, frame(), true, on);
   await drain();
   assert.equal(submits.length, 0);
-  assert.ok(sent.some((t) => /Skipped copying Ana: Not enough USDC/.test(t)));
+  assert.ok(sent.some((t) => /Skipped copying Ana[\s\S]*Not enough USDC/.test(t)));
   const [row] = await copyHistory(db, follower.userId);
   assert.equal(row?.kind, "skip");
   assert.match(row?.kind === "skip" ? row.reason : "", /Not enough USDC/);
@@ -153,7 +156,6 @@ test("with auto-sell on, the same share is sold automatically", async () => {
   await handleOrder(db, flash, send, sale, true, on);
   await drain();
   assert.deepEqual([submits.length, submits[0].side, submits[0].qty], [1, "sell", "0.01"]);
-  assert.ok(sent.some((t) => /Auto-sold: Sold 0\.01 WETH, 50% of your copy/.test(t)));
 });
 
 test("with auto-sell off, the follower gets a prompt and nothing sells", async () => {

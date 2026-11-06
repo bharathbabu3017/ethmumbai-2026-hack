@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { USDC_BASE } from "@flashmob/flash";
-import { orderFields, ownOrderAlert, tradeAlert, type OrderFrame } from "./trades";
+import { card, orderFields, ownOrderAlert, tradeAlert, type OrderFrame } from "./trades";
 
 const owner = { userId: "u", walletId: "w" };
 const frame = (over: Partial<OrderFrame> = {}): OrderFrame => ({
@@ -36,22 +36,22 @@ test("stop and target come from bracket legs, triggers, or the attached pair", (
 
 test("a new limit order alerts with its details", () => {
   const text = tradeAlert("Ana", row({ stopPrice: 1900, targetPrice: 2500 }), { isNew: true, statusChanged: true });
-  assert.equal(text, "🕓 Ana placed a limit buy of WETH\n$25 at $2,000\nStop $1,900 · Target $2,500");
+  assert.equal(text, "🕓 <b>Ana placed a limit buy of WETH</b>\n<pre>Size    $25\nPrice   $2,000\nStop    $1,900\nTarget  $2,500</pre>");
 });
 
 test("a market order alerts on its fill, not when placed", () => {
   assert.equal(tradeAlert("Ana", row({ orderType: "market", limitPrice: null }), { isNew: true, statusChanged: true }), null);
   const filled = row({ orderType: "market", status: "ORDER_STATUS_FILLED", filledQty: 2, filledUsd: 4000 });
-  assert.equal(tradeAlert("Ana", filled, { isNew: true, statusChanged: true }), "🟢 Ana bought WETH\n$4,000 at $2,000");
+  assert.equal(tradeAlert("Ana", filled, { isNew: true, statusChanged: true }), "🟢 <b>Ana bought WETH</b>\n<pre>Size   $4,000\nPrice  $2,000</pre>");
 });
 
 test("a sale alerts with its result", () => {
   const sold = row({ side: "sell", orderType: "market", status: "ORDER_STATUS_FILLED", filledQty: 1, filledUsd: 2200, realizedUsd: 200, soldCostUsd: 2000 });
-  assert.equal(tradeAlert("Ana", sold, { isNew: false, statusChanged: true }), "🔴 Ana sold WETH\n$2,200 at $2,200 · +10.0%");
+  assert.equal(tradeAlert("Ana", sold, { isNew: false, statusChanged: true }), "🔴 <b>Ana sold WETH</b>\n<pre>Size    $2,200\nPrice   $2,200\nResult  +10.0%</pre>");
 });
 
 test("a trader's cancel is relayed, but a discarded protective pair is not", () => {
-  assert.equal(tradeAlert("Ana", row({ status: "ORDER_STATUS_CANCELLED" }), { isNew: false, statusChanged: true }), "⚪ Ana cancelled their limit buy of WETH");
+  assert.equal(tradeAlert("Ana", row({ status: "ORDER_STATUS_CANCELLED" }), { isNew: false, statusChanged: true }), "⚪ <b>Ana cancelled their limit buy of WETH</b>");
   assert.equal(tradeAlert("Ana", row({ status: "ORDER_STATUS_CANCELLED", orderType: "bracket", entryOrderId: "e" }), { isNew: false, statusChanged: true }), null);
 });
 
@@ -62,9 +62,20 @@ test("a replayed frame with no change says nothing", () => {
 
 test("own alerts show the amounts and the result of a sale", () => {
   const bought = row({ filledQty: 3.215, filledUsd: 1.94 });
-  assert.equal(ownOrderAlert(frame({ status: "ORDER_STATUS_FILLED" }), bought), "✅ Your WETH buy filled\n3.215 WETH for $1.94 at $0.6034");
+  assert.equal(ownOrderAlert(frame({ status: "ORDER_STATUS_FILLED" }), bought), "✅ <b>Bought WETH</b>\n<pre>Amount  3.215 WETH\nPaid    $1.94\nPrice   $0.6034</pre>");
   const sold = row({ side: "sell", filledQty: 3.215, filledUsd: 1.88, realizedUsd: -0.06, soldCostUsd: 1.94 });
-  assert.equal(ownOrderAlert(frame({ side: "sell", status: "ORDER_STATUS_FILLED" }), sold), "✅ Your WETH sell filled\n3.215 WETH for $1.88 at $0.5848 · -3.1%");
+  assert.equal(ownOrderAlert(frame({ side: "sell", status: "ORDER_STATUS_FILLED" }), sold), "✅ <b>Sold WETH</b>\n<pre>Amount    3.215 WETH\nReceived  $1.88\nPrice     $0.5848\nResult    -3.1%</pre>");
+});
+
+test("names are escaped, so a trader can't break or inject into a message", () => {
+  assert.equal(card("🟢", "<b>Ana</b> & co"), "🟢 <b>&lt;b&gt;Ana&lt;/b&gt; &amp; co</b>");
+});
+
+test("an auto-copy's fill says who it copied, and a swap says what it became", () => {
+  const bought = row({ filledQty: 2, filledUsd: 4 });
+  assert.match(ownOrderAlert(frame({ status: "ORDER_STATUS_FILLED" }), bought, "Ana"), /🔁 <b>Auto-copied Ana: bought WETH<\/b>/);
+  const swap = frame({ side: "sell", status: "ORDER_STATUS_FILLED", contraAsset: { ticker: "cbBTC", address: "0xb", chain: "base" }, filled: { targetAmount: "1", contraAmount: "0.03" } });
+  assert.match(ownOrderAlert(swap, row({ side: "sell", filledQty: 1, filledUsd: 2000 })), /Swapped WETH for cbBTC[\s\S]*Received  0\.03 cbBTC/);
 });
 
 test("own order alerts explain why an order closed", () => {

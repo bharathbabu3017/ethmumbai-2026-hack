@@ -84,7 +84,21 @@ export function orderFields(o: OrderFrame, owner: { userId: string; walletId: st
   };
 }
 
-const usd = (n: number) => `$${n.toLocaleString("en-US", { maximumFractionDigits: n < 10 ? 4 : 2 })}`;
+const usd = (n: number) => (n > 0 && n < 0.01
+  ? `$${n.toLocaleString("en-US", { maximumSignificantDigits: 3, maximumFractionDigits: 20 })}`
+  : `$${n.toLocaleString("en-US", { maximumFractionDigits: n < 10 ? 4 : 2 })}`);
+
+export const esc = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+type Row = [string, string | null | undefined | false];
+
+/** A Telegram message: a bold title, then aligned figures so they read like a receipt. */
+export function card(icon: string, title: string, rows: Row[] = [], note?: string) {
+  const shown = rows.filter((r): r is [string, string] => !!r[1]);
+  const width = Math.max(0, ...shown.map(([label]) => label.length));
+  const body = shown.map(([label, value]) => `${label.padEnd(width + 2)}${value}`).join("\n");
+  return [`${icon} <b>${esc(title)}</b>`, body && `<pre>${esc(body)}</pre>`, note && esc(note)].filter(Boolean).join("\n");
+}
 
 interface TradeRow {
   status: string | null;
@@ -102,38 +116,36 @@ interface TradeRow {
   soldCostUsd: number;
 }
 
-const signedPct = (t: TradeRow) => {
-  if (t.soldCostUsd <= 0) return "";
+const resultOf = (t: TradeRow) => {
+  if (t.soldCostUsd <= 0) return null;
   const pct = (t.realizedUsd / t.soldCostUsd) * 100;
-  return ` · ${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
+  return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
 };
 
-const fillLine = (t: TradeRow) => (t.filledQty > 0 && t.filledUsd > 0 ? `${usd(t.filledUsd)} at ${usd(t.filledUsd / t.filledQty)}` : "");
+const fillRows = (t: TradeRow): Row[] => (t.filledQty > 0 && t.filledUsd > 0 ? [["Size", usd(t.filledUsd)], ["Price", usd(t.filledUsd / t.filledQty)]] : []);
+const exitRows = (t: TradeRow): Row[] => [["Stop", t.stopPrice ? usd(t.stopPrice) : null], ["Target", t.targetPrice ? usd(t.targetPrice) : null]];
 
-/** What followers should hear about this frame, if anything. */
-export function tradeAlert(trader: string, t: TradeRow, change: { isNew: boolean; statusChanged: boolean }) {
+/** What followers should hear about this frame, if anything. `other` is the token on the far side of a swap. */
+export function tradeAlert(trader: string, t: TradeRow, change: { isNew: boolean; statusChanged: boolean }, other?: string) {
   const token = t.tokenSymbol;
   const exitPair = t.orderType === "bracket" && t.entryOrderId;
   if (t.status === "ORDER_STATUS_FILLED" && change.statusChanged) {
-    if (t.side === "buy") return `🟢 ${trader} bought ${token}\n${fillLine(t)}`.trim();
-    return `🔴 ${trader} sold ${token}\n${fillLine(t)}${signedPct(t)}`.trim();
+    if (t.side === "buy") return card("🟢", `${trader} bought ${token}`, [...fillRows(t), ["Paid with", other], ...exitRows(t)]);
+    return card("🔴", other ? `${trader} swapped ${token} for ${other}` : `${trader} sold ${token}`, [...fillRows(t), ["Result", resultOf(t)]]);
   }
   if (!OPEN_STATUSES.has(t.status ?? "") && change.statusChanged) {
     if (exitPair) return null;
-    return t.filledQty > 0 ? `⚪ ${trader} cancelled the rest of their ${t.orderType} ${t.side} of ${token}` : `⚪ ${trader} cancelled their ${t.orderType} ${t.side} of ${token}`;
+    return card("⚪", t.filledQty > 0 ? `${trader} cancelled the rest of their ${t.orderType} ${t.side} of ${token}` : `${trader} cancelled their ${t.orderType} ${t.side} of ${token}`);
   }
   // A market order fills in moments, so its fill is the alert.
   if (change.isNew && t.orderType !== "market" && !exitPair) {
-    const size = t.side === "buy" ? `$${t.qty}` : `${t.qty} ${token}`;
-    const at = t.limitPrice ? ` at ${usd(t.limitPrice)}` : "";
-    const exits = [t.stopPrice && `Stop ${usd(t.stopPrice)}`, t.targetPrice && `Target ${usd(t.targetPrice)}`].filter(Boolean).join(" · ");
-    return `🕓 ${trader} placed a ${t.orderType} ${t.side} of ${token}\n${size}${at}${exits ? `\n${exits}` : ""}`;
+    return card("🕓", `${trader} placed a ${t.orderType} ${t.side} of ${token}`, [["Size", t.side === "buy" ? `$${t.qty}` : `${t.qty} ${token}`], ["Price", t.limitPrice ? usd(t.limitPrice) : null], ...exitRows(t)]);
   }
   return null;
 }
 
 export function mirrorAlert(trader: string, m: { percent: number; qty: number; tokenSymbol: string }) {
-  return `🔔 ${trader} sold ${m.percent.toFixed(0)}% of their ${m.tokenSymbol}\nSell the same share of your copy? That's ${Number(m.qty.toPrecision(4))} ${m.tokenSymbol}.\nOpen Flashmob to sell or keep it.`;
+  return card("🔔", `${trader} sold ${m.percent.toFixed(0)}% of their ${m.tokenSymbol}`, [["Your share", `${Number(m.qty.toPrecision(4))} ${m.tokenSymbol}`]], "Sell the same share of your copy? Open Flashmob to review it.");
 }
 
 const REASONS: Record<string, string> = {
@@ -147,20 +159,29 @@ const REASONS: Record<string, string> = {
   REASON_ORDER_EXPIRED: "it expired",
 };
 
-/** Tells someone what happened to their own order, with the numbers that matter. */
-export function ownOrderAlert(o: OrderFrame, t?: TradeRow) {
+/** Tells someone what happened to their own order. `copiedFrom` names the trader when auto-copy placed it. */
+export function ownOrderAlert(o: OrderFrame, t?: TradeRow, copiedFrom?: string) {
   const token = o.targetAsset.ticker;
+  const swap = o.contraAsset.ticker === "USDC" ? undefined : o.contraAsset.ticker;
   if (o.status === "ORDER_STATUS_FILLED") {
-    const qty = t && t.filledQty > 0 ? `${Number(t.filledQty.toPrecision(4))} ${token}` : token;
-    const detail = t ? `\n${qty} for ${fillLine(t)}${o.side === "sell" ? signedPct(t) : ""}` : "";
-    return `✅ Your ${token} ${o.side} filled${detail}`;
+    const sold = o.side === "sell";
+    const done = sold ? (swap ? `Swapped ${token} for ${swap}` : `Sold ${token}`) : `Bought ${token}`;
+    const title = copiedFrom ? `Auto-copied ${copiedFrom}: ${done.charAt(0).toLowerCase()}${done.slice(1)}` : done;
+    const amount = t && t.filledQty > 0 ? `${Number(t.filledQty.toPrecision(4))} ${token}` : null;
+    const contra = Number(o.filled?.contraAmount ?? 0);
+    return card(copiedFrom ? "🔁" : "✅", title, [
+      ["Amount", amount],
+      [sold ? "Received" : "Paid", swap ? (contra > 0 && `${Number(contra.toPrecision(4))} ${swap}`) : t?.filledUsd ? usd(t.filledUsd) : null],
+      ["Price", t && t.filledQty > 0 && t.filledUsd > 0 ? usd(t.filledUsd / t.filledQty) : null],
+      ["Result", sold && t ? resultOf(t) : null],
+    ]);
   }
   const why = o.closeReason ? REASONS[o.closeReason] ?? o.closeReason : undefined;
-  return `⚠️ Your ${o.orderType} ${o.side} of ${token} closed without filling${why ? `\nReason: ${why}` : ""}`;
+  return card("⚠️", `Your ${o.orderType} ${o.side} of ${token} didn't fill`, [], why && `Reason: ${why}`);
 }
 
 /** The /balance reply: what's held, what it's worth, and how it's doing. */
 export function portfolioMessage(p: ReturnType<typeof holdings>) {
-  const assets = p.rows.map((r) => `${r.symbol} $${r.valueUsd.toFixed(2)}${r.pnlUsd === null ? "" : ` (${signedUsd(r.pnlUsd)}, ${r.pnlPercent! >= 0 ? "+" : ""}${r.pnlPercent!.toFixed(1)}%)`}`);
-  return [`💼 Portfolio: $${p.totalUsd.toFixed(2)}`, "", ...assets, "", `Open profit/loss: ${signedUsd(p.openPnlUsd)}`, `Realized profit/loss: ${signedUsd(p.realizedUsd)}`].join("\n");
+  const assets: Row[] = p.rows.map((r) => [r.symbol, `$${r.valueUsd.toFixed(2)}${r.pnlUsd === null ? "" : `  ${signedUsd(r.pnlUsd)} (${r.pnlPercent! >= 0 ? "+" : ""}${r.pnlPercent!.toFixed(1)}%)`}`]);
+  return `${card("💼", `Portfolio: $${p.totalUsd.toFixed(2)}`, assets)}\n${card("📊", "Profit and loss", [["Open", signedUsd(p.openPnlUsd)], ["Realized", signedUsd(p.realizedUsd)]])}`;
 }

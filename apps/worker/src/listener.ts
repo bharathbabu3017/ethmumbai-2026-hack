@@ -1,4 +1,4 @@
-import { alertRecipients, applyOrderFrame, createMirrors, enqueueJob, findWallet, findWalletById, getCopySettings, getOrder, getTraderByUser, getUser, type Db } from "@flashmob/db";
+import { alertRecipients, applyOrderFrame, claimAlert, copyContext, createMirrors, enqueueJob, findWallet, findWalletById, getCopySettings, getOrder, getTraderByUser, getUser, type Db } from "@flashmob/db";
 import { FLASH_WS_URL, type CopySettings, type FlashClient } from "@flashmob/flash";
 import { autoCopy, type AutoCopy } from "./autocopy";
 import { mirrorAlert, OPEN_STATUSES, orderFields, ownOrderAlert, tradeAlert, type Levels, type OrderFrame } from "./trades";
@@ -22,29 +22,44 @@ async function attachedLevels(flash: FlashClient, o: OrderFrame): Promise<Levels
   return { stop: value(pair.stopLoss), target: value(pair.takeProfit) };
 }
 
+// The stream gives no USD price, so a fill paid in another token is valued from the order itself.
+async function withUsdPrice(flash: FlashClient, o: OrderFrame): Promise<OrderFrame> {
+  const needsPrice = o.contraAsset.ticker !== "USDC" && Number(o.filled?.targetAmount ?? 0) > 0 && !o.filled?.averageNotionalPrice;
+  if (!needsPrice) return o;
+  const found = await flash.getOrder(o.orderId, o.funderAddress).catch(() => undefined);
+  return found?.order.filled ? { ...o, filled: found.order.filled } : o;
+}
+
 const OPEN_OR_FILLED = (status: string) => OPEN_STATUSES.has(status) || status === "ORDER_STATUS_FILLED";
 
-export async function handleOrder(db: Db, flash: FlashClient, send: Send, o: OrderFrame, live: boolean, auto?: AutoCopy) {
-  const wallet = await findWallet(db, o.funderAddress);
+export async function handleOrder(db: Db, flash: FlashClient, send: Send, frame: OrderFrame, live: boolean, auto?: AutoCopy) {
+  const wallet = await findWallet(db, frame.funderAddress);
   if (!wallet) return;
+  const o = await withUsdPrice(flash, frame);
   const trader = await getTraderByUser(db, wallet.userId);
   const known = await getOrder(db, o.orderId);
   const levels = o.attachedBracket && known?.stopPrice == null ? await attachedLevels(flash, o) : undefined;
 
   const { order, previousStatus, seenBefore } = await applyOrderFrame(db, orderFields(o, { userId: wallet.userId, walletId: wallet.id }, !!trader, levels));
   if (!live) return; // a snapshot only seeds state, so reconnecting never re-alerts
-  const statusChanged = previousStatus !== o.status;
+  const closed = !OPEN_STATUSES.has(o.status);
+  // A fill that could only be valued on a later read still counts as the moment it happened.
+  const statusChanged = previousStatus !== o.status || (closed && known?.filledQty === 0 && order.filledQty > 0);
+  const other = o.contraAsset.ticker === "USDC" ? undefined : o.contraAsset.ticker;
+  const once = async (chatId: number, key: string, text: string, button?: AlertButton) => {
+    if (await claimAlert(db, chatId, key)) await send(chatId, text, button);
+  };
 
-  if (statusChanged && !OPEN_STATUSES.has(o.status)) {
+  if (statusChanged && closed) {
     const owner = await getUser(db, wallet.userId);
-    if (owner?.telegramId) await send(owner.telegramId, ownOrderAlert(o, order));
+    if (owner?.telegramId) await once(owner.telegramId, `own:${order.id}:${o.status}`, ownOrderAlert(o, order, await copyContext(db, order.id)));
   }
   if (!trader || !order.isPublic) return;
-  const text = tradeAlert(trader.displayName, order, { isNew: !seenBefore, statusChanged });
+  const text = tradeAlert(trader.displayName, order, { isNew: !seenBefore, statusChanged }, other);
   if (text) {
     const copyable = order.side === "buy" && OPEN_OR_FILLED(o.status);
     const button: AlertButton | undefined = copyable ? { label: "Copy", path: `/trades/${order.id}`, opens: "miniApp" } : undefined;
-    for (const chatId of await alertRecipients(db, trader.id)) await send(chatId, text, button);
+    for (const chatId of await alertRecipients(db, trader.id)) await once(chatId, `trade:${order.id}:${o.status}`, text, button);
   }
 
   if (auto && !seenBefore && order.side === "buy") {
@@ -52,7 +67,7 @@ export async function handleOrder(db: Db, flash: FlashClient, send: Send, o: Ord
   }
 
   // Once a sale is finished, followers who copied this trader get the chance to sell the same share.
-  if (order.side === "sell" && statusChanged && !OPEN_STATUSES.has(o.status)) {
+  if (order.side === "sell" && statusChanged && closed) {
     for (const mirror of await createMirrors(db, order)) {
       const follower = await getUser(db, mirror.userId);
       if (!follower) continue;
@@ -63,7 +78,7 @@ export async function handleOrder(db: Db, flash: FlashClient, send: Send, o: Ord
         continue;
       }
       if (!follower.telegramId) continue;
-      await send(follower.telegramId, mirrorAlert(trader.displayName, mirror), {
+      await once(follower.telegramId, `mirror:${mirror.id}`, mirrorAlert(trader.displayName, mirror), {
         label: "Review sale",
         path: "/portfolio",
         opens: wallet?.type === "external" ? "website" : "miniApp",

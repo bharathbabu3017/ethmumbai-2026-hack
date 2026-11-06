@@ -48,13 +48,13 @@ test("followers hear a trade placed, filled and sold, each once", async () => {
   await handleOrder(db, flash, send, filled, true);
   await handleOrder(db, flash, send, filled, true);
   await handleOrder(db, flash, send, frame({ orderId: "o2", orderType: "market", side: "sell", status: "ORDER_STATUS_FILLED", qty: "0.0125", filled: { targetAmount: "0.0125", contraAmount: "30" } }), true);
-  assert.deepEqual(toFollower(), ["🕓 Ana placed a limit buy of WETH\n$25 at $2,000", "🟢 Ana bought WETH\n$25 at $2,000", "🔴 Ana sold WETH\n$30 at $2,400 · +20.0%"]);
+  assert.deepEqual(toFollower(), ["🕓 <b>Ana placed a limit buy of WETH</b>\n<pre>Size   $25\nPrice  $2,000</pre>", "🟢 <b>Ana bought WETH</b>\n<pre>Size   $25\nPrice  $2,000</pre>", "🔴 <b>Ana sold WETH</b>\n<pre>Size    $30\nPrice   $2,400\nResult  +20.0%</pre>"]);
 });
 
 test("a trader's cancel reaches followers", async () => {
   await handleOrder(db, flash, send, frame(), true);
   await handleOrder(db, flash, send, frame({ status: "ORDER_STATUS_CANCELLED" }), true);
-  assert.equal(toFollower().at(-1), "⚪ Ana cancelled their limit buy of WETH");
+  assert.equal(toFollower().at(-1), "⚪ <b>Ana cancelled their limit buy of WETH</b>");
 });
 
 test("a reconnect snapshot updates state but sends nothing", async () => {
@@ -70,7 +70,7 @@ test("an attached stop and target are read once and kept", async () => {
   await handleOrder(db, flash, send, frame({ ...attached, status: "ORDER_STATUS_PARTIALLY_FILLED" }), true);
   const order = (await getOrder(db, "o1"))!;
   assert.deepEqual([order.stopPrice, order.targetPrice, legReads], [1900, 2500, 1]);
-  assert.match(toFollower()[0]!, /Stop \$1,900 · Target \$2,500/);
+  assert.match(toFollower()[0]!, /Stop    \$1,900\nTarget  \$2,500/);
 });
 
 test("orders from non-traders stay private and silent", async () => {
@@ -100,7 +100,7 @@ test("when a trader sells, a copier gets a prompt that opens the right place", a
 
   const prompts = sent.filter((m) => m.button?.label === "Review sale");
   assert.equal(prompts.length, 1);
-  assert.match(prompts[0]!.text, /Ana sold 50% of their WETH\nSell the same share of your copy\? That's 0\.01 WETH/);
+  assert.match(prompts[0]!.text, /Ana sold 50% of their WETH[\s\S]*Your share  0\.01 WETH[\s\S]*Sell the same share of your copy\?/);
   assert.equal(prompts[0]!.button!.opens, "miniApp");
 });
 
@@ -123,7 +123,7 @@ test("sync catches a fill the stream missed, and followers hear about it", async
   await syncOrders(db, syncFlash([rest()]), send);
   const wallet = (await findWallet(db, TRADER))!;
   assert.equal((await getPosition(db, wallet.id, "0xweth"))!.qty, 0.5);
-  assert.deepEqual(toFollower(), ["🟢 Ana bought WETH\n$1,000 at $2,000"]);
+  assert.deepEqual(toFollower(), ["🟢 <b>Ana bought WETH</b>\n<pre>Size   $1,000\nPrice  $2,000</pre>"]);
 });
 
 test("syncing the same order again changes nothing and stays quiet", async () => {
@@ -160,6 +160,29 @@ test("a buy paid with another token still records its cost, even if the first fr
   await syncOrders(db, syncFlash([frame({ orderType: "market", status: "ORDER_STATUS_FILLED", contraAsset, filled: { targetAmount: "0.5", contraAmount: "1500", averageNotionalPrice: "2000" } })]), send);
   const held = (await getPosition(db, wallet.id, "0xweth"))!;
   assert.deepEqual([held.qty, held.costUsd], [0.5, 1000]);
+});
+
+test("an alert is delivered once, even if the order is seen fresh again after a restart", async () => {
+  const filled = frame({ orderType: "market", status: "ORDER_STATUS_FILLED", filled: { targetAmount: "1", contraAmount: "2000" } });
+  await handleOrder(db, flash, send, filled, true);
+  await handleOrder(db, flash, send, frame({ orderType: "market", status: "ORDER_STATUS_ACCEPTED" }), true);
+  await handleOrder(db, flash, send, filled, true);
+  assert.equal(toFollower().filter((t) => t.includes("bought")).length, 1);
+});
+
+test("a swap out of a token still reaches copiers, valued from the order itself", async () => {
+  const priced = { targetAmount: "1", contraAmount: "0.05", averageNotionalPrice: "2400" };
+  const reads = { ...flash, getOrder: async () => ({ order: { filled: priced } }) } as unknown as FlashClient;
+  await handleOrder(db, flash, send, frame({ status: "ORDER_STATUS_FILLED", orderType: "market", filled: { targetAmount: "2", contraAmount: "4000" } }), true);
+  const copier = await approvedUser(db, 900);
+  await handleOrder(db, flash, send, frame({ orderId: "c1", funderAddress: copier.wallet.address, status: "ORDER_STATUS_FILLED", orderType: "market", filled: { targetAmount: "0.02", contraAmount: "40" } }), true);
+  const copy = (await reserveCopy(db, { sourceOrderId: "o1", userId: copier.user.id, walletId: copier.wallet.id, amountUsd: 40 }))!;
+  await confirmCopy(db, copy.id, copier.user.id, "c1");
+  const swap = frame({ orderId: "s1", orderType: "market", side: "sell", status: "ORDER_STATUS_FILLED", qty: "1", contraAsset: { ticker: "cbBTC", address: "0xbtc", chain: "base" }, filled: { targetAmount: "1", contraAmount: "0.05" } });
+  await handleOrder(db, reads, send, swap, true);
+  assert.equal((await getOrder(db, "s1"))!.filledUsd, 2400);
+  assert.equal(sent.filter((m) => m.chatId === 900 && m.button?.label === "Review sale").length, 1);
+  assert.ok(toFollower().some((t) => t.includes("swapped WETH for cbBTC")));
 });
 
 test("old orders found after a restart are recorded but never alert", async () => {

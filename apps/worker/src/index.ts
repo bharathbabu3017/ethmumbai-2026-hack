@@ -1,9 +1,9 @@
-import { createDb } from "@flashmob/db";
+import { pruneAlerts, createDb } from "@flashmob/db";
 import { createFlashClient, PUBLIC_DEV_KEY } from "@flashmob/flash";
 import { createPrivy } from "@flashmob/signer";
 import { run } from "@grammyjs/runner";
 import { createBot } from "./bot";
-import { InlineKeyboard } from "grammy";
+import { GrammyError, InlineKeyboard } from "grammy";
 import { startJobs } from "./jobs";
 import { startListener, type AlertButton } from "./listener";
 
@@ -66,8 +66,15 @@ const send = (chatId: number, text: string, button?: AlertButton) => {
   if (appUrl && button?.opens === "miniApp") keyboard.webApp(button.label, `${appUrl}/mini?next=${button.path}`);
   if (appUrl && button?.opens === "website") keyboard.url(button.label, `${appUrl}${button.path}`);
   const reply_markup = appUrl && button ? keyboard : undefined;
+  const deliver = () => bot.api.sendMessage(chatId, text, { reply_markup, parse_mode: "HTML", link_preview_options: { is_disabled: true } });
   const sent = sendQueue.then(async () => {
-    await bot.api.sendMessage(chatId, text, { reply_markup }).catch((e) => console.error("Could not send alert:", e instanceof Error ? e.message : "unknown"));
+    await deliver().catch(async (e) => {
+      // Telegram only says "retry after" when it refused the message, so a retry can't deliver it twice.
+      const wait = e instanceof GrammyError ? e.parameters.retry_after : undefined;
+      if (!wait) throw e;
+      await new Promise((r) => setTimeout(r, wait * 1000));
+      await deliver();
+    }).catch((e) => console.error("Could not send alert:", e instanceof Error ? e.message : "unknown"));
     await new Promise((r) => setTimeout(r, 40));
   });
   sendQueue = sent;
@@ -76,6 +83,7 @@ const send = (chatId: number, text: string, button?: AlertButton) => {
 // Nothing copies until a user taps Start. This is an emergency stop for every user at once.
 const autoCopyEnabled = process.env.AUTO_COPY_ENABLED !== "false";
 console.log(`Auto-copy is ${autoCopyEnabled ? "ON" : "off"}`);
+await pruneAlerts(db).catch(() => {});
 startListener(db, flash, send, apiKey, { enabled: autoCopyEnabled, searchFlash });
 startJobs({ db, flash, feeBps, rpcUrl: process.env.BASE_RPC_URL, privy, send });
 if (appUrl) await bot.api.setChatMenuButton({ menu_button: { type: "web_app", text: "Open app", web_app: { url: `${appUrl}/mini` } } });

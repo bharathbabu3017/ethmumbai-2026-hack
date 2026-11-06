@@ -131,6 +131,17 @@ export const copies = pgTable(
   (t) => [uniqueIndex("one_copy_per_wallet").on(t.sourceOrderId, t.walletId)],
 );
 
+// Every Telegram alert claims a row here before it's sent, so nothing is delivered twice, even across restarts.
+export const sentAlerts = pgTable(
+  "sent_alerts",
+  {
+    chatId: bigint("chat_id", { mode: "number" }).notNull(),
+    key: text("key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.chatId, t.key] })],
+);
+
 // Trades auto-copy didn't place, and why, so the follower can see them in their history.
 export const copySkips = pgTable(
   "copy_skips",

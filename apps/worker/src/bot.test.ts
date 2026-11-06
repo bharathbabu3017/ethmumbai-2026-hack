@@ -79,7 +79,7 @@ const lastText = () => sent.findLast((m) => m.method === "sendMessage")!.payload
 test("double-tapping Confirm places exactly one order, with the fee and a signature", async () => {
   await say("/buy WETH 10");
   assert.equal(submits.length, 0);
-  assert.match(lastText(), /Max slippage: 15\.0%/);
+  assert.match(lastText(), /Max slippage  15\.0%/);
   const data = confirmData();
   await tap(data);
   await tap(data);

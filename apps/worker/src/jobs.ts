@@ -1,6 +1,7 @@
-import { claimJobs, claimMirror, completeMirror, confirmCopy, finishJob, getPosition, getTradingWallet, getUser, mirrorExits, recordOrder, releaseCopy, releaseMirror, type Db } from "@flashmob/db";
+import { claimAlert, claimJobs, claimMirror, completeMirror, confirmCopy, finishJob, getPosition, getTradingWallet, getUser, mirrorExits, recordOrder, releaseCopy, releaseMirror, type Db } from "@flashmob/db";
 import { buildOrder, cancelMessage, feeFields, FlashError, mirrorPlan, OPEN_STATUSES, prepareOrder, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
 import { signerFor, type PrivyAccess } from "./signers";
+import { card } from "./trades";
 
 const POLL_MS = 1_000;
 const MAX_PRICE_MOVE = 0.02;
@@ -102,10 +103,10 @@ async function run(deps: JobDeps, job: Job) {
 
 const label = (job: Job) => (job.payload as { label?: string }).label;
 
-/** Auto-copy happens with nobody watching, so its outcome is sent to Telegram. */
+/** Auto-copy happens with nobody watching, so anything it can't report through a fill is sent to Telegram. */
 async function tell(deps: JobDeps, job: Job, text: string) {
   const user = await getUser(deps.db, job.userId);
-  if (user?.telegramId) await deps.send?.(user.telegramId, text);
+  if (user?.telegramId && (await claimAlert(deps.db, user.telegramId, `job:${job.id}`))) await deps.send?.(user.telegramId, text);
 }
 
 export async function runJob(deps: JobDeps, job: Job) {
@@ -113,12 +114,14 @@ export async function runJob(deps: JobDeps, job: Job) {
   try {
     const result = await run(deps, job);
     await finishJob(deps.db, job.id, { result });
-    if (automatic && !("skipped" in result)) await tell(deps, job, "summary" in result ? `Auto-sold: ${result.summary}` : `Auto-copied ${label(job)}.`);
+    // A market order's fill alert says it all. One that rests needs its own note, or it would look like nothing happened.
+    const request = (job.payload as { request?: OrderRequest }).request;
+    if (automatic && request && request.orderType !== "market" && !("skipped" in result)) await tell(deps, job, card("🕓", `Auto-copy placed: ${label(job)}`, [], "Your order is open. You'll hear when it fills."));
   } catch (e) {
     const known = e instanceof FlashError || (e instanceof Error && !/key|decrypt|auth/i.test(e.message));
     const error = known ? (e as Error).message : "Something went wrong. Check your orders before trying again.";
     await finishJob(deps.db, job.id, { error });
-    if (automatic) await tell(deps, job, `Auto-copy failed: ${error}`);
+    if (automatic) await tell(deps, job, card("⚠️", "Auto-copy failed", [], error));
   }
 }
 

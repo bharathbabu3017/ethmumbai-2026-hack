@@ -2,7 +2,7 @@ import { and, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-
 import { alias, type PgDatabase, type PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
 import { applyFill } from "./position";
-import { copies, copySettings, copySkips, follows, linkTokens, mirrors, orders, pendingActions, positions, traders, users, wallets, walletJobs } from "./schema";
+import { copies, copySettings, copySkips, follows, sentAlerts, linkTokens, mirrors, orders, pendingActions, positions, traders, users, wallets, walletJobs } from "./schema";
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -430,6 +430,31 @@ const MIRROR_RESERVATION_MINUTES = 5;
 const copyOrder = alias(orders, "copy_order");
 const sourceOrder = alias(orders, "source_order");
 const ownOrder = alias(orders, "own_order");
+
+/** Reserves an alert for a chat. Only the first caller for a key gets true, so nothing is sent twice. */
+export async function claimAlert(db: Db, chatId: number, key: string) {
+  const rows = await db.insert(sentAlerts).values({ chatId, key }).onConflictDoNothing().returning({ key: sentAlerts.key });
+  return rows.length > 0;
+}
+
+export const pruneAlerts = (db: Db) => db.delete(sentAlerts).where(sql`${sentAlerts.createdAt} < now() - interval '30 days'`);
+
+/** Whose trade an order was copied from, if it's a copy or a mirrored sale. */
+export async function copyContext(db: Db, orderId: string) {
+  const [copy] = await db
+    .select({ trader: traders.displayName })
+    .from(copies)
+    .innerJoin(sourceOrder, eq(copies.sourceOrderId, sourceOrder.id))
+    .innerJoin(traders, eq(sourceOrder.userId, traders.userId))
+    .where(and(eq(copies.orderId, orderId), eq(copies.auto, true)));
+  if (copy) return copy.trader;
+  const [mirror] = await db
+    .select({ trader: traders.displayName })
+    .from(mirrors)
+    .innerJoin(traders, eq(mirrors.traderUserId, traders.userId))
+    .where(eq(mirrors.orderId, orderId));
+  return mirror?.trader;
+}
 
 /** Copies of a trader's trades. Copiers stay anonymous here. */
 export const copiesOfTrader = (db: Db, traderUserId: string) =>
