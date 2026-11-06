@@ -1,12 +1,11 @@
 import { claimAction, createAction, getOrCreateTelegramUser, recordOrder, type Db } from "@flashmob/db";
-import { cancelMessage, FlashError, prepareOrder, submitPrepared, type FlashClient, type OrderRequest } from "@flashmob/flash";
+import { cancelMessage, FlashError, prepareOrder, resolveBaseToken, submitPrepared, USDC_BASE as USDC, type FlashClient, type OrderRequest } from "@flashmob/flash";
 import { createBotSigner, decryptKey, generateBotWallet } from "@flashmob/signer";
 import { Bot, InlineKeyboard, type BotConfig, type Context } from "grammy";
 import { base } from "viem/chains";
 import { parseBuy, parseLimit, parseSell, sellQty } from "./parse";
 
 const CHAIN = "base";
-const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const MAX_PRICE_MOVE = 0.02; // abort if a market order got this much worse between preview and confirm
 const EXPORT_VISIBLE_MS = 60_000;
 const OPEN_STATUSES = ["ORDER_STATUS_PENDING", "ORDER_STATUS_ACCEPTED", "ORDER_STATUS_PARTIALLY_FILLED"];
@@ -50,12 +49,6 @@ export function createBot({ token, db, flash, masterKey, feeBps, rpcUrl, botInfo
 
   const confirmKeyboard = (id: string) => new InlineKeyboard().text("Confirm", `ok:${id}`).text("Cancel", `no:${id}`);
 
-  async function resolveToken(query: string) {
-    const { assets } = await flash.search(query, { chain: CHAIN, limit: 10 });
-    const q = query.toLowerCase();
-    return assets.find((a) => a.symbol.toLowerCase() === q || a.address.toLowerCase() === q);
-  }
-
   const friendly = (e: unknown) => (e instanceof FlashError ? e.message : "Something went wrong");
 
   pm.command("start", async (ctx) => {
@@ -83,13 +76,13 @@ export function createBot({ token, db, flash, masterKey, feeBps, rpcUrl, botInfo
     await ctx.reply(`${describe(quote.to.amount)}\nEstimated fees: $${quote.fees.estimatedFeeNotional}${slippage}${warning}\n\nThis expires in 2 minutes.`, { reply_markup: confirmKeyboard(id) });
   }
 
-  const riskNote = (flagged: boolean) => (flagged ? "\n\nWarning: this token is flagged as risky." : "");
+  const riskNote = (flagged: boolean) => (flagged ? "\n\nWarning: this token is flagged as risky or isn't on our list. Check the address carefully." : "");
 
   pm.command("buy", async (ctx) => {
     const args = parseBuy(ctx.match);
     if (!args) return void (await ctx.reply("Usage: /buy WETH 10"));
     const { user, wallet } = await load(ctx.from);
-    const asset = await resolveToken(args.token);
+    const asset = await resolveBaseToken(flash, args.token);
     if (!asset) return void (await ctx.reply(`Couldn't find ${args.token} on Base.`));
     const request: OrderRequest = {
       targetChain: CHAIN, contraChain: CHAIN, targetAsset: asset.address, contraAsset: USDC,
@@ -103,7 +96,7 @@ export function createBot({ token, db, flash, masterKey, feeBps, rpcUrl, botInfo
     const args = parseLimit(ctx.match);
     if (!args) return void (await ctx.reply("Usage: /limit WETH 10 2000"));
     const { user, wallet } = await load(ctx.from);
-    const asset = await resolveToken(args.token);
+    const asset = await resolveBaseToken(flash, args.token);
     if (!asset) return void (await ctx.reply(`Couldn't find ${args.token} on Base.`));
     const request: OrderRequest = {
       targetChain: CHAIN, contraChain: CHAIN, targetAsset: asset.address, contraAsset: USDC,

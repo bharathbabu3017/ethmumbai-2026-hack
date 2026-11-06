@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { beforeEach, test } from "node:test";
 import { migrationsFolder, schema, type Db } from "@flashmob/db";
-import type { FlashClient } from "@flashmob/flash";
+import { FlashError, type FlashClient } from "@flashmob/flash";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
@@ -24,7 +24,7 @@ let bot: ReturnType<typeof createBot>;
 let updateId = 0;
 
 const flash = {
-  search: async () => ({ assets: [{ symbol: "WETH", address: "0xweth", riskFlagged: false }] }),
+  search: async () => { throw new FlashError(403, "SEARCH_NOT_ELIGIBLE", "Insufficient Flash usage"); },
   quote: async () => ({
     quoteId: "q1", recommendedSlippage: "0.15", from: { amount: "10" }, to: { amount: received }, fees: { estimatedFeeNotional: "0.01" },
     evm: { approveTx: null, permitTypedData: "", orderTypedData: typedData },
@@ -122,6 +122,11 @@ test("export needs a confirm tap and only shows the key once", async () => {
   const count = sent.filter((m) => /0x[0-9a-f]{64}/.test(m.payload.text ?? "")).length;
   await tap(data);
   assert.equal(sent.filter((m) => /0x[0-9a-f]{64}/.test(m.payload.text ?? "")).length, count);
+});
+
+test("an unlisted token is refused when search is unavailable", async () => {
+  await say("/buy NOTATOKEN 10");
+  assert.match(lastText(), /Couldn't find NOTATOKEN/);
 });
 
 test("parsing rejects bad input", () => {
