@@ -10,12 +10,15 @@ const MIN_FUNDED_USD = 1;
 
 function Step({ done, title, text, action }: { done: boolean; title: string; text: string; action?: ReactNode }) {
   return (
-    <div className="row" style={{ flexWrap: "nowrap", alignItems: "flex-start" }}>
+    <div className="row" style={{ flexWrap: "nowrap", alignItems: "stretch" }}>
       <span className={`check ${done ? "done" : ""}`} aria-label={done ? "Done" : "To do"}>{done ? "✓" : ""}</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 500 }}>{title}</div>
-        <div className="mut" style={{ fontSize: 13 }}>{text}</div>
-        {!done && action && <div style={{ marginTop: 8 }}>{action}</div>}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div>
+          <div style={{ fontWeight: 500 }}>{title}</div>
+          <div className="mut" style={{ fontSize: 13 }}>{text}</div>
+        </div>
+        {/* Sits at the bottom, so every step's button lines up across the row. */}
+        {!done && action && <div style={{ marginTop: "auto" }}>{action}</div>}
       </div>
     </div>
   );
@@ -48,7 +51,7 @@ export function GettingStarted({ signedIn }: { signedIn: boolean }) {
   return (
     <section className="panel" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div>
-        <h2 style={{ fontSize: 18 }}>Start copying in three steps</h2>
+        <h2 style={{ fontSize: 18 }}>Get started</h2>
         <p className="mut" style={{ margin: "4px 0 0" }}>Browsing needs no account. Sign in when you&apos;re ready to copy.</p>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 16 }}>
