@@ -2,52 +2,83 @@ import { leaderboard, listTrades } from "@flashmob/db";
 import Link from "next/link";
 import { CopyDiagram } from "@/components/copy-diagram";
 import { GettingStarted } from "@/components/getting-started";
-import { MarketStrip } from "@/components/market-strip";
 import { Nav } from "@/components/nav";
 import { SellPrompts } from "@/components/sell-prompts";
-import { TradeRow } from "@/components/trade-row";
-import { TraderCard } from "@/components/trader-card";
+import { StatusStrip } from "@/components/status-strip";
+import { TraderCard, TraderTable, type DiscoverTrader } from "@/components/trader-card";
 import { db } from "@/lib/db";
+import { tradeSize } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
+// Cards read better while there are few traders. After that, a ranked table does.
+const TABLE_FROM = 6;
+const TOP_TOKENS = 5;
+
 export default async function Home() {
-  const [traders, trades] = await Promise.all([leaderboard(db()), listTrades(db())]);
+  const [board, feed] = await Promise.all([leaderboard(db()), listTrades(db(), 300)]);
+
+  const traders: DiscoverTrader[] = board.map((t) => {
+    const theirs = feed.filter((r) => r.trader.id === t.id).map((r) => r.order);
+    const filled = theirs.filter((o) => o.filledQty > 0);
+    const curve = filled.filter((o) => o.soldCostUsd > 0).reverse().reduce<number[]>((sum, o) => [...sum, (sum.at(-1) ?? 0) + o.realizedUsd], []);
+    const recent = filled.slice(0, 2).map((o) => ({ id: o.id, text: `${o.side === "sell" ? "Sold" : "Bought"} ${o.tokenSymbol} ${tradeSize(o)}`, at: o.placedAt }));
+    return { ...t, curve, recent };
+  });
+
+  const bought = new Map<string, { symbol: string; address: string; buys: number; usd: number }>();
+  for (const { order: o } of feed) {
+    if (o.side !== "buy" || !o.filledUsd || !o.tokenAddress) continue;
+    const token = bought.get(o.tokenAddress) ?? { symbol: o.tokenSymbol ?? "", address: o.tokenAddress, buys: 0, usd: 0 };
+    bought.set(o.tokenAddress, { ...token, buys: token.buys + 1, usd: token.usd + o.filledUsd });
+  }
+  const tokens = [...bought.values()].sort((a, b) => b.usd - a.usd).slice(0, TOP_TOKENS);
+
   return (
     <>
       <Nav />
-      <div style={{ borderBottom: "1px solid var(--line)" }}><div className="wrap"><MarketStrip /></div></div>
-      <main className="wrap" style={{ paddingTop: 36, paddingBottom: 64, display: "flex", flexDirection: "column", gap: 40 }}>
-        <div className="cols" style={{ gap: 32 }}>
-          <section className="main">
-            <h1 className="big" style={{ marginBottom: 8 }}>Find a trader to copy</h1>
-            <p className="mut" style={{ margin: "0 0 24px", fontSize: 15, maxWidth: 560 }}>
-              Traders&apos; records come from their real orders on Flashmob. Subscribe to one for Telegram alerts, or copy their trades with your own stop and target.
-            </p>
-            {traders.length === 0 ? (
-              <div className="panel row" style={{ gap: 24 }}>
-                <div style={{ flex: "1 1 220px" }}>
-                  <h2 style={{ fontSize: 18, marginBottom: 6 }}>No traders yet</h2>
-                  <p className="mut" style={{ margin: "0 0 14px" }}>Traders appear here with their win rate and returns once they create a profile. You could be the first.</p>
-                  <Link href="/become-a-trader" className="btn pri">Become a trader</Link>
-                </div>
-                <div style={{ flex: "1 1 220px", maxWidth: 300 }}><CopyDiagram /></div>
-              </div>
-            ) : (
-              <div className="cards">
-                {traders.map((t, i) => <TraderCard key={t.id} rank={i + 1} trader={t} />)}
-              </div>
-            )}
-            {traders.length > 0 && <p className="mut" style={{ margin: "14px 0 0", fontSize: 13 }}>Want your trades here? <Link href="/become-a-trader" style={{ color: "var(--text)" }}>Become a trader</Link></p>}
-          </section>
-          <aside className="side" style={{ gap: 12 }}><SellPrompts /><GettingStarted /></aside>
+      <main className="wrap wide" style={{ paddingTop: 28, paddingBottom: 56, display: "flex", flexDirection: "column", gap: 20 }}>
+        <StatusStrip />
+        <SellPrompts />
+        <GettingStarted />
+        <div>
+          <h1 style={{ fontSize: 26 }}>Discover traders</h1>
+          <p className="mut" style={{ margin: "4px 0 0" }}>Ranked from real fills. Pick one and your wallet can copy their trades.</p>
         </div>
 
-        <section>
-          <h2 className="row" style={{ fontSize: 18, gap: 8, marginBottom: 14 }}><span className="pulse" aria-hidden="true" /> Latest trades</h2>
-          {trades.length === 0 && <p className="mut" style={{ margin: 0, paddingTop: 14, borderTop: "1px solid var(--line)" }}>Every trade by a Flashmob trader appears here as it happens.</p>}
-          {trades.map(({ order, trader }) => <TradeRow key={order.id} order={order} trader={trader} />)}
-        </section>
+        {traders.length === 0 ? (
+          <div className="panel row" style={{ gap: 24 }}>
+            <div style={{ flex: "1 1 220px" }}>
+              <h2 style={{ fontSize: 18, marginBottom: 6 }}>No traders yet</h2>
+              <p className="mut" style={{ margin: "0 0 14px" }}>Traders appear here with their real results once they create a profile. You could be the first.</p>
+              <Link href="/become-a-trader" className="btn pri">Become a trader</Link>
+            </div>
+            <div style={{ flex: "1 1 220px", maxWidth: 300 }}><CopyDiagram /></div>
+          </div>
+        ) : traders.length >= TABLE_FROM ? <TraderTable traders={traders} /> : (
+          <section aria-label="Traders" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 12 }}>
+            {traders.map((t) => <TraderCard key={t.id} trader={t} />)}
+            <article style={{ padding: 16, border: "1px dashed var(--line2)", borderRadius: 10, display: "flex", flexDirection: "column", gap: 10, justifyContent: "center" }}>
+              <h2 style={{ fontSize: 18 }}>Trade in public</h2>
+              <p className="mut" style={{ margin: 0 }}>Create a profile, and your real results appear here for others to copy.</p>
+              <Link href="/become-a-trader" className="btn">Become a trader</Link>
+            </article>
+          </section>
+        )}
+
+        {tokens.length > 0 && (
+          <section className="panel" aria-label="What traders are buying" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 6 }}>
+            <h2 style={{ fontSize: 15 }}>What traders are buying</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: "4px 32px" }}>
+              {tokens.map((t) => (
+                <Link key={t.address} href={`/trade?token=${t.address}`} className="between" style={{ alignItems: "center", minHeight: 44 }}>
+                  <span style={{ fontWeight: 500 }}>{t.symbol}</span>
+                  <span className="m mut" style={{ fontSize: 13 }}>{t.buys} {t.buys === 1 ? "buy" : "buys"}, ${t.usd.toFixed(2)}</span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
     </>
   );

@@ -18,6 +18,14 @@ export function tradeSize(o: { side: string | null; qty: string | null; tokenSym
   return `${Number(o.qty).toPrecision(4)} ${o.tokenSymbol}`;
 }
 
+export function ago(at: Date | string) {
+  const minutes = Math.floor((Date.now() - new Date(at).getTime()) / 60_000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`;
+  return `${Math.floor(minutes / 1440)}d ago`;
+}
+
 export const shortAddress = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 export const basescan = (a: string) => `https://basescan.org/address/${a}`;
 

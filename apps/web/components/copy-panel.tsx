@@ -9,12 +9,12 @@ import { flash } from "@/lib/flash";
 import { plainError, usd } from "@/lib/format";
 import { useWallet } from "@/lib/wallet";
 
-const PRESETS = ["25", "50", "100", "250"];
+const PRESETS = ["1", "2", "5", "10"];
 type Preview = { request: OrderRequest; quote: QuoteResponse; price: number };
 
 export function CopyPanel({ trade }: { trade: CopyableTrade & { id: string; tokenSymbol: string; tokenAddress: string } }) {
   const { address, login, getSigner, actions } = useWallet();
-  const [amount, setAmount] = useState("25");
+  const [amount, setAmount] = useState("1");
   const [stop, setStop] = useState(trade.stopPrice === null ? "" : String(trade.stopPrice));
   const [target, setTarget] = useState(trade.targetPrice === null ? "" : String(trade.targetPrice));
   const [preview, setPreview] = useState<Preview>();

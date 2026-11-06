@@ -1,37 +1,34 @@
 import { COPYABLE_TYPES } from "@flashmob/flash";
-import Link from "next/link";
-import { tradeSize, tradeStatus, usd } from "@/lib/format";
+import { CopyButton } from "@/components/copy-button";
+import { ago, pct, tradeSize, tradeStatus, usd } from "@/lib/format";
+
+export const TRADE_COLUMNS = "56px 90px 80px 80px 100px 90px minmax(90px,1fr) 84px";
 
 interface Props {
   order: {
-    id: string; side: string | null; orderType: string | null; tokenSymbol: string | null; qty: string | null; status: string | null;
-    limitPrice: number | null; stopPrice: number | null; targetPrice: number | null; filledQty: number; filledUsd: number; realizedUsd: number; soldCostUsd: number;
+    id: string; side: string | null; orderType: string | null; tokenSymbol: string | null; qty: string | null; status: string | null; placedAt: Date | null;
+    limitPrice: number | null; filledQty: number; filledUsd: number; realizedUsd: number; soldCostUsd: number;
   };
-  trader?: { id: string; displayName: string };
-  /** Shows a Copy button on trades that can still be copied. */
+  /** Shows a Copy button on trades that can be copied. */
   canCopy?: boolean;
 }
 
-export function TradeRow({ order: o, trader, canCopy }: Props) {
+export function TradeRow({ order: o, canCopy }: Props) {
   const status = tradeStatus(o.status, o.filledQty);
   const price = o.filledQty > 0 ? o.filledUsd / o.filledQty : o.limitPrice;
   const result = o.soldCostUsd > 0 ? (o.realizedUsd / o.soldCostUsd) * 100 : null;
-  const details = [o.orderType, price ? usd(price) : null, o.stopPrice ? `stop ${usd(o.stopPrice)}` : null, o.targetPrice ? `target ${usd(o.targetPrice)}` : null].filter(Boolean).join(" · ");
   return (
-    <article style={{ padding: "14px 0", borderTop: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: 4 }}>
-      <div className="between">
-        <Link href={`/trades/${o.id}`} className="row" style={{ gap: 8, fontWeight: 500 }}><span className={`badge ${o.side === "sell" ? "sell" : "buy"}`}>{o.side}</span>{o.tokenSymbol}<span className="m">{tradeSize(o)}</span></Link>
-        <span style={{ fontSize: 12, color: status.color }}>
-          {result !== null ? <span className={result >= 0 ? "up" : "dn"}>{result >= 0 ? "+" : ""}{result.toFixed(1)}% </span> : null}{status.label}
-        </span>
-      </div>
-      {trader && <Link href={`/traders/${trader.id}`} className="mut" style={{ fontSize: 13 }}>{trader.displayName}</Link>}
-      <div className="between" style={{ alignItems: "center" }}>
-        <span className="m mut" style={{ fontSize: 12 }}>{details}</span>
-        {canCopy && o.side === "buy" && COPYABLE_TYPES.includes(o.orderType ?? "") && status.label !== "Cancelled" && (
-          <Link href={`/trades/${o.id}`} className="btn" style={{ minHeight: 30, padding: "0 12px", fontSize: 13, flexShrink: 0 }}>Copy</Link>
-        )}
-      </div>
-    </article>
+    <div className="tr" style={{ gridTemplateColumns: TRADE_COLUMNS, minWidth: 720 }}>
+      <span className={`badge ${o.side === "sell" ? "sell" : "buy"}`} style={{ justifyContent: "center" }}>{o.side}</span>
+      <span style={{ fontWeight: 500 }}>{o.tokenSymbol}</span>
+      <span className="mut" style={{ textTransform: "capitalize" }}>{o.orderType}</span>
+      <span className="m">{tradeSize(o)}</span>
+      <span className="m">{price ? usd(price) : "-"}</span>
+      {result !== null ? <span className={`m ${result < 0 ? "dn" : "up"}`}>{pct(result)}</span> : <span style={{ fontSize: 13, color: status.color }}>{status.label}</span>}
+      <span className="mut" style={{ fontSize: 13 }}>{o.placedAt ? ago(o.placedAt) : ""}</span>
+      <span style={{ display: "flex", justifyContent: "flex-end" }}>
+        {canCopy && o.side === "buy" && COPYABLE_TYPES.includes(o.orderType ?? "") && status.label !== "Cancelled" && <CopyButton orderId={o.id} />}
+      </span>
+    </div>
   );
 }
