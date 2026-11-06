@@ -7,7 +7,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 const steps = [
   ["1. Pick a trader", "Compare traders by win rate, returns and past trades."],
-  ["2. Follow them", "Link Telegram and get a message every time they trade."],
+  ["2. Subscribe for alerts", "Link Telegram and get a message every time they trade."],
   ["3. Copy their trades", "Start auto-copy with your own limits, or copy single trades yourself."],
 ];
 
@@ -43,7 +43,7 @@ export default function Landing() {
         <div className="rise" style={{ flex: "999 1 480px", minWidth: 0 }}>
           <h1 className="hero">Copy crypto traders, trade by trade</h1>
           <p className="mut" style={{ margin: "22px 0 30px", fontSize: 18, maxWidth: 540 }}>
-            Follow traders with verified onchain records. Get a Telegram alert when they trade, then copy it automatically or in one tap, with your own limits.
+            Find traders with verified onchain records. Subscribe for a Telegram alert when they trade, then copy it automatically or in one tap, with your own limits.
           </p>
           <div className="row">
             <Link href="/home" className="btn pri">Browse traders</Link>

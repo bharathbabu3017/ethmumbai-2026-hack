@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import {
+  copyHistory,
   claimJobs, createTrader, findWallet, getOrCreateWalletUser, getOrder, reserveCopy, confirmCopy, saveCopySettings, schema, setCopyPaused, setFollow, type Db,
 } from "@flashmob/db";
 import { migrationsFolder } from "@flashmob/db/migrations";
@@ -100,6 +101,9 @@ test("a skip tells the follower why", async () => {
   await drain();
   assert.equal(submits.length, 0);
   assert.ok(sent.some((t) => /Skipped copying Ana: Not enough USDC/.test(t)));
+  const [row] = await copyHistory(db, follower.userId);
+  assert.equal(row?.kind, "skip");
+  assert.match(row?.kind === "skip" ? row.reason : "", /Not enough USDC/);
 });
 
 test("the daily limit holds across trades", async () => {

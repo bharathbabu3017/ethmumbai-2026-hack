@@ -93,7 +93,7 @@ export function createBot({ token, db, flash, searchFlash, feeBps, rpcUrl, privy
     if (ctx.match) {
       const result = await linkTelegram(db, ctx.match, user.id);
       const replies = {
-        linked: "Your Flashmob account is linked. You'll get alerts here for traders you follow.",
+        linked: "Your Flashmob account is linked. You'll get alerts here for traders you subscribe to.",
         invalid: "That link has expired or was already used. Create a new one on the website.",
         conflict: "Both accounts are already traders, so they can't be linked.",
       };

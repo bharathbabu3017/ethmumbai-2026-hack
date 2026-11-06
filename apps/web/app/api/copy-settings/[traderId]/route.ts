@@ -1,4 +1,4 @@
-import { autoSpentLast24h, getCopySettings, getTrader, getTradingWallet, getUser, saveCopySettings, setCopyPaused, setFollow } from "@flashmob/db";
+import { autoSpentLast24h, getCopySettings, getTrader, getTradingWallet, getUser, saveCopySettings, setCopyPaused } from "@flashmob/db";
 import { DEFAULT_COPY_SETTINGS, settingsError, USDC_BASE, type CopySettings } from "@flashmob/flash";
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
@@ -72,10 +72,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (problem) return fail(problem, 400);
   if (settings.enabled && !(await getTradingWallet(db(), session.userId))) return fail("Approve auto-copy first, so Flashmob can trade from your wallet.", 400);
   await saveCopySettings(db(), session.userId, traderId, settings);
-  // Starting auto-copy also follows the trader, and clears a pause, so one tap is all it takes.
-  if (settings.enabled) {
-    await setFollow(db(), session.userId, traderId, true);
-    await setCopyPaused(db(), session.userId, false);
-  }
+  // Starting auto-copy also clears a pause, so one tap is all it takes.
+  if (settings.enabled) await setCopyPaused(db(), session.userId, false);
   return NextResponse.json({ ok: true });
 }

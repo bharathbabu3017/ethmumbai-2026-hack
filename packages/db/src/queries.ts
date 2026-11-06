@@ -1,8 +1,8 @@
-import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { alias, type PgDatabase, type PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
 import { applyFill } from "./position";
-import { copies, copySettings, follows, linkTokens, mirrors, orders, pendingActions, positions, traders, users, wallets, walletJobs } from "./schema";
+import { copies, copySettings, copySkips, follows, linkTokens, mirrors, orders, pendingActions, positions, traders, users, wallets, walletJobs } from "./schema";
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -324,8 +324,14 @@ export async function confirmCopy(db: Db, id: string, userId: string, orderId: s
   return row;
 }
 
-export const releaseCopy = (db: Db, id: string, userId: string) =>
-  db.delete(copies).where(and(eq(copies.id, id), eq(copies.userId, userId), eq(copies.status, "pending")));
+export const recordCopySkip = (db: Db, skip: { sourceOrderId: string; userId: string; reason: string }) =>
+  db.insert(copySkips).values(skip).onConflictDoNothing();
+
+/** Frees a copy nothing was placed for. With a reason, it stays in the follower's history as skipped. */
+export async function releaseCopy(db: Db, id: string, userId: string, reason?: string) {
+  const [row] = await db.delete(copies).where(and(eq(copies.id, id), eq(copies.userId, userId), eq(copies.status, "pending"))).returning();
+  if (row && reason) await recordCopySkip(db, { sourceOrderId: row.sourceOrderId, userId, reason });
+}
 
 export const listFollowing = (db: Db, userId: string) =>
   db
@@ -401,6 +407,45 @@ const DUST = 1e-9;
 const MIRROR_RESERVATION_MINUTES = 5;
 const copyOrder = alias(orders, "copy_order");
 const sourceOrder = alias(orders, "source_order");
+const ownOrder = alias(orders, "own_order");
+
+/** Everything copied for a user, newest first: buys, sales that mirrored the trader, and skips with their reason. */
+export async function copyHistory(db: Db, userId: string) {
+  const fill = { orderStatus: ownOrder.status, filledUsd: ownOrder.filledUsd, filledQty: ownOrder.filledQty };
+  const who = { trader: traders.displayName, traderId: traders.id };
+  const [buys, sales, skips] = await Promise.all([
+    db
+      .select({ id: copies.id, sourceOrderId: copies.sourceOrderId, tokenSymbol: sourceOrder.tokenSymbol, amountUsd: copies.amountUsd, auto: copies.auto, createdAt: copies.createdAt, ...who, ...fill })
+      .from(copies)
+      .innerJoin(sourceOrder, eq(copies.sourceOrderId, sourceOrder.id))
+      .innerJoin(traders, eq(sourceOrder.userId, traders.userId))
+      .leftJoin(ownOrder, eq(copies.orderId, ownOrder.id))
+      .where(and(eq(copies.userId, userId), or(eq(copies.status, "placed"), eq(copies.auto, true))))
+      .orderBy(desc(copies.createdAt))
+      .limit(50),
+    db
+      .select({ id: mirrors.id, sourceOrderId: mirrors.sellOrderId, tokenSymbol: mirrors.tokenSymbol, percent: mirrors.percent, createdAt: mirrors.createdAt, ...who, ...fill })
+      .from(mirrors)
+      .innerJoin(traders, eq(mirrors.traderUserId, traders.userId))
+      .leftJoin(ownOrder, eq(mirrors.orderId, ownOrder.id))
+      .where(and(eq(mirrors.userId, userId), eq(mirrors.status, "placed")))
+      .orderBy(desc(mirrors.createdAt))
+      .limit(50),
+    db
+      .select({ id: copySkips.id, sourceOrderId: copySkips.sourceOrderId, tokenSymbol: sourceOrder.tokenSymbol, reason: copySkips.reason, createdAt: copySkips.createdAt, ...who })
+      .from(copySkips)
+      .innerJoin(sourceOrder, eq(copySkips.sourceOrderId, sourceOrder.id))
+      .innerJoin(traders, eq(sourceOrder.userId, traders.userId))
+      .where(eq(copySkips.userId, userId))
+      .orderBy(desc(copySkips.createdAt))
+      .limit(50),
+  ]);
+  return [
+    ...buys.map((r) => ({ ...r, kind: "buy" as const })),
+    ...sales.map((r) => ({ ...r, kind: "sell" as const })),
+    ...skips.map((r) => ({ ...r, kind: "skip" as const })),
+  ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 50);
+}
 
 /** What a wallet still holds from copying this trader in this token: never more than it actually holds. */
 async function copiedHoldings(db: Db, traderUserId: string, tokenAddress: string) {

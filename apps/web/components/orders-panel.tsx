@@ -10,7 +10,7 @@ import { useWallet } from "@/lib/wallet";
 const REFRESH_MS = 5_000;
 const empty = { margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" };
 
-function History({ reloadKey }: { reloadKey: number }) {
+export function OrderHistory({ reloadKey = 0 }: { reloadKey?: number }) {
   const { address } = useWallet();
   const [orders, setOrders] = useState<FlashOrder[]>();
   const [failed, setFailed] = useState(false);
@@ -95,7 +95,7 @@ export function OrdersPanel({ reloadKey, focus }: { reloadKey: number; focus?: O
         <>
           {/* Stays mounted so the pending count is right on every tab. */}
           <div hidden={tab !== "Pending orders"}><OpenOrders reloadKey={reloadKey} onCount={setPending} /></div>
-          {tab === "Order history" && <History reloadKey={reloadKey} />}
+          {tab === "Order history" && <OrderHistory reloadKey={reloadKey} />}
           {tab === "Balances" && <Balances reloadKey={reloadKey} />}
         </>
       )}

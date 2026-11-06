@@ -131,6 +131,19 @@ export const copies = pgTable(
   (t) => [uniqueIndex("one_copy_per_wallet").on(t.sourceOrderId, t.walletId)],
 );
 
+// Trades auto-copy didn't place, and why, so the follower can see them in their history.
+export const copySkips = pgTable(
+  "copy_skips",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sourceOrderId: text("source_order_id").notNull().references(() => orders.id),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    reason: text("reason").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("one_skip_per_user").on(t.sourceOrderId, t.userId)],
+);
+
 // Trades the worker places for someone who is away, such as auto-copy.
 export const walletJobs = pgTable(
   "wallet_jobs",

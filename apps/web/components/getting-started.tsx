@@ -48,7 +48,7 @@ export function GettingStarted() {
       <h2 style={{ fontSize: 16 }}>Start copying in 4 steps</h2>
       <Step done={connected} title="Connect a wallet" text="Your funds stay in your wallet until an order fills." action={<button className="btn pri" onClick={login}>Connect</button>} />
       <Step done={linked} title="Link Telegram" text="This is how you get trade alerts." action={connected ? <button className="btn" onClick={linkTelegram}>Link Telegram</button> : undefined} />
-      <Step done={following} title="Follow a trader" text="Get an alert every time they trade." />
+      <Step done={following} title="Subscribe to a trader" text="Get a Telegram alert every time they trade." />
       <Step done={copied} title="Copy a trade" text="Pick an amount and sign. Your stop and target come with it." />
       {error && <p role="alert" className="dn" style={{ margin: 0 }}>{error}</p>}
     </section>

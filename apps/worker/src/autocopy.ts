@@ -1,4 +1,4 @@
-import { autoSpentLast24h, enqueueJob, getTradingWallet, isCopyOrder, listAutoCopiers, reserveCopy, type Db, type schema } from "@flashmob/db";
+import { autoSpentLast24h, enqueueJob, getTradingWallet, isCopyOrder, listAutoCopiers, recordCopySkip, reserveCopy, type Db, type schema } from "@flashmob/db";
 import {
   BASE_TOKENS, buildOrder, copyForm, decideCopy, USDC_BASE,
   type CopyableTrade, type CopySettings, type FlashClient, type TradeForm,
@@ -49,10 +49,14 @@ export async function autoCopy(db: Db, flash: FlashClient, auto: AutoCopy, send:
 
   for (const copier of copiers) {
     if (copier.paused || copier.userId === trader.userId) continue;
-    const tell = (text: string) => (copier.telegramId ? send(copier.telegramId, text) : Promise.resolve());
+    const skip = async (reason: string) => {
+      // The history is a nice-to-have, so a failed write must not stop other followers' copies.
+      await recordCopySkip(db, { sourceOrderId: order.id, userId: copier.userId, reason }).catch((e) => console.error("Couldn't record a skip:", e));
+      if (copier.telegramId) await send(copier.telegramId, `Skipped copying ${trader.displayName}: ${reason}`);
+    };
     const wallet = await getTradingWallet(db, copier.userId);
     if (!wallet) {
-      await tell(`Skipped copying ${trader.displayName}: approve auto-copy in the app first.`);
+      await skip("approve auto-copy in the app first.");
       continue;
     }
 
@@ -65,7 +69,7 @@ export async function autoCopy(db: Db, flash: FlashClient, auto: AutoCopy, send:
       spentLast24hUsd: await autoSpentLast24h(db, copier.userId, trader.userId),
     });
     if ("skip" in decision) {
-      await tell(`Skipped copying ${trader.displayName}: ${decision.skip}`);
+      await skip(decision.skip);
       continue;
     }
 
@@ -73,7 +77,7 @@ export async function autoCopy(db: Db, flash: FlashClient, auto: AutoCopy, send:
     const form = copyForm(trade, { qty, stop: decision.stop, target: decision.target });
     const built = buildOrder({ ...form, maxSlippagePercent: decision.maxSlippagePercent, tokenAddress: order.tokenAddress, funder: wallet.address } as TradeForm);
     if ("error" in built) {
-      await tell(`Skipped copying ${trader.displayName}: ${built.error}`);
+      await skip(built.error);
       continue;
     }
 

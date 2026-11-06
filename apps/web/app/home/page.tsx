@@ -22,7 +22,7 @@ export default async function Home() {
           <section className="main">
             <h1 className="big" style={{ marginBottom: 8 }}>Find a trader to copy</h1>
             <p className="mut" style={{ margin: "0 0 24px", fontSize: 15, maxWidth: 560 }}>
-              Traders&apos; records come from their real orders on Flashmob. Follow one for Telegram alerts, or copy their trades with your own stop and target.
+              Traders&apos; records come from their real orders on Flashmob. Subscribe to one for Telegram alerts, or copy their trades with your own stop and target.
             </p>
             {traders.length === 0 ? (
               <div className="panel row" style={{ gap: 24 }}>

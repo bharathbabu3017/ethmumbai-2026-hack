@@ -2,10 +2,10 @@ import { isFollowing, leaderboard, listTraderTrades } from "@flashmob/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Avatar } from "@/components/avatar";
-import { FollowButton } from "@/components/follow-button";
 import { CopySettingsPanel } from "@/components/copy-settings";
 import { Nav } from "@/components/nav";
 import { ResultsCurve } from "@/components/results-curve";
+import { SubscribeButton } from "@/components/subscribe-button";
 import { TradeRow } from "@/components/trade-row";
 import { COPYABLE_TYPES } from "@flashmob/flash";
 import { db } from "@/lib/db";
@@ -27,7 +27,7 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
     ["Return on sold positions", ret === null ? "-" : pct(ret)],
     ["Win rate", trader.closed ? `${Math.round((trader.wins / trader.closed) * 100)}%` : "-"],
     ["Filled trades", String(trader.trades)],
-    ["Followers", String(trader.followers)],
+    ["Subscribers", String(trader.followers)],
   ];
   const sales = trades.filter((t) => t.soldCostUsd > 0).reverse();
   const curve = sales.reduce<number[]>((sum, t) => [...sum, (sum.at(-1) ?? 0) + t.realizedUsd], []);
@@ -68,9 +68,9 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
         <aside className="side" style={{ gap: 12 }}>
           {session?.userId !== trader.userId && <div className="panel"><CopySettingsPanel traderId={id} name={trader.displayName} /></div>}
           <div className="panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <h2 style={{ fontSize: 16 }}>Follow {trader.displayName}</h2>
-            <p className="mut" style={{ margin: 0 }}>Get a Telegram alert every time they trade.</p>
-            <FollowButton traderId={id} initial={following} />
+            <h2 style={{ fontSize: 16 }}>Telegram alerts</h2>
+            <p className="mut" style={{ margin: 0 }}>Get a message every time {trader.displayName} trades. Nothing is bought for you.</p>
+            <SubscribeButton traderId={id} initial={following} />
           </div>
           <div className="panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <h2 style={{ fontSize: 16 }}>Copy one trade</h2>

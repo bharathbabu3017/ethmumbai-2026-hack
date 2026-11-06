@@ -11,7 +11,7 @@ const THEME_SCRIPT = `try{var t=localStorage.getItem("theme");if(t!=="light"&&t!
 
 export const metadata: Metadata = {
   title: "Flashmob: copy crypto traders on the web and in Telegram",
-  description: "Follow crypto traders with verified onchain records, get Telegram alerts, and copy their trades in one tap or automatically.",
+  description: "Find crypto traders with verified onchain records, get Telegram alerts, and copy their trades in one tap or automatically.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

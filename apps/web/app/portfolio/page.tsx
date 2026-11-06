@@ -5,11 +5,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Nav } from "@/components/nav";
 import { OpenOrders } from "@/components/open-orders";
+import { OrderHistory } from "@/components/orders-panel";
 import { SellPrompts } from "@/components/sell-prompts";
 import { WalletAddress } from "@/components/wallet-address";
-import { AutoCopyList } from "@/components/auto-copy-list";
-import { Avatar } from "@/components/avatar";
-import { fetchMe, type Me } from "@/lib/account";
 import { flash } from "@/lib/flash";
 import { useWallet } from "@/lib/wallet";
 
@@ -17,11 +15,9 @@ export default function Portfolio() {
   const { address } = useWallet();
   const [balances, setBalances] = useState<FlashBalancesResponse["balances"]>([]);
   const [error, setError] = useState("");
-  const [me, setMe] = useState<Me>();
 
   useEffect(() => {
     if (address) flash.balances(address).then((b) => setBalances(b.balances)).catch((e) => setError(e.message));
-    fetchMe().then(setMe).catch(() => {});
   }, [address]);
 
   const total = balances.reduce((sum, b) => sum + Number(b.notional), 0);
@@ -39,40 +35,36 @@ export default function Portfolio() {
             </div>
             {error && <p role="alert" className="dn" style={{ margin: 0 }}>{error}</p>}
             <SellPrompts />
-            <section className="panel" style={{ maxWidth: 460 }}>
-              <h2 style={{ fontSize: 16, marginBottom: 10 }}>Add funds</h2>
-              <WalletAddress address={address} />
-            </section>
-            <section>
-              {balances.map((b) => (
-                <div key={b.chain + b.address + b.isNative} className="between" style={{ padding: "12px 0", borderTop: "1px solid var(--line)" }}>
-                  <span>{b.symbol} <span className="mut" style={{ fontSize: 12 }}>{b.chain}</span></span>
-                  <span className="m">${Number(b.notional).toFixed(2)}</span>
-                </div>
-              ))}
-              {!balances.length && <p className="mut" style={{ margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" }}>No balances yet.</p>}
-            </section>
-            <OpenOrders title="Pending orders" />
-            <AutoCopyList me={me} onChange={() => fetchMe().then(setMe).catch(() => {})} />
-            <section>
-              <h2 style={{ fontSize: 18, paddingBottom: 12 }}>Trades you copied</h2>
-              {me?.copies?.map((c) => (
-                <Link key={c.id} href={`/trades/${c.sourceOrderId}`} className="between" style={{ padding: "12px 0", borderTop: "1px solid var(--line)" }}>
-                  <span>{c.tokenSymbol} <span className="mut">from {c.trader}</span></span>
-                  <span className="m">${c.amountUsd}</span>
-                </Link>
-              ))}
-              {!me?.copies?.length && <p className="mut" style={{ margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" }}>Trades you copy appear here. <Link href="/home" style={{ color: "var(--text)" }}>Find a trader</Link></p>}
-            </section>
-            <section>
-              <h2 style={{ fontSize: 18, paddingBottom: 12 }}>Following</h2>
-              {me?.following?.map((t) => (
-                <Link key={t.id} href={`/traders/${t.id}`} className="row" style={{ padding: "10px 0", borderTop: "1px solid var(--line)", gap: 10 }}>
-                  <Avatar name={t.displayName} size={28} /> {t.displayName}
-                </Link>
-              ))}
-              {!me?.following?.length && <p className="mut" style={{ margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" }}>You aren&apos;t following anyone yet.</p>}
-            </section>
+            <div className="cols">
+              <div className="main" style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+                <section>
+                  <h2 style={{ fontSize: 18, paddingBottom: 12 }}>Balances</h2>
+                  {balances.map((b) => (
+                    <div key={b.chain + b.address + b.isNative} className="between" style={{ padding: "12px 0", borderTop: "1px solid var(--line)" }}>
+                      <span>{b.symbol} <span className="mut" style={{ fontSize: 12 }}>{b.chain}</span></span>
+                      <span className="m">${Number(b.notional).toFixed(2)}</span>
+                    </div>
+                  ))}
+                  {!balances.length && <p className="mut" style={{ margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" }}>No balances yet.</p>}
+                </section>
+                <OpenOrders title="Pending orders" />
+                <section>
+                  <h2 style={{ fontSize: 18, paddingBottom: 12 }}>Trade history</h2>
+                  <OrderHistory />
+                </section>
+              </div>
+              <aside className="side" style={{ gap: 12 }}>
+                <section className="panel">
+                  <h2 style={{ fontSize: 16, marginBottom: 10 }}>Add funds</h2>
+                  <WalletAddress address={address} />
+                </section>
+                <section className="panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <h2 style={{ fontSize: 16 }}>Copy trading</h2>
+                  <p className="mut" style={{ margin: 0 }}>See who you copy, change your settings, and check every copied trade.</p>
+                  <Link href="/copying" className="btn">Open copy trading</Link>
+                </section>
+              </aside>
+            </div>
           </>
         )}
       </main>

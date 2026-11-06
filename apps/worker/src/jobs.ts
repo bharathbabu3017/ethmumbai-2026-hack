@@ -36,7 +36,7 @@ async function run(deps: JobDeps, job: Job) {
     const { request: asked, minReceived, copyId } = payload as unknown as { request: OrderRequest; minReceived?: number; copyId?: string };
     const problem = unsafeReason(asked, wallet.address);
     if (problem) {
-      if (copyId) await releaseCopy(db, copyId, job.userId);
+      if (copyId) await releaseCopy(db, copyId, job.userId, problem);
       throw new Error(problem);
     }
     // These are always ours to set, whatever the request says.
@@ -50,7 +50,7 @@ async function run(deps: JobDeps, job: Job) {
       }
     } catch (e) {
       // Nothing was submitted, so a reservation can be freed. After submitting we can't be sure, so it stays.
-      if (copyId) await releaseCopy(db, copyId, job.userId);
+      if (copyId) await releaseCopy(db, copyId, job.userId, e instanceof Error ? e.message : "The order couldn't be placed.");
       throw e;
     }
     const { orderId } = await submitPrepared(flash, signer, request, quote);

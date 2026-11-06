@@ -12,7 +12,7 @@ export function TraderCard({ rank, trader: t }: Props) {
   const stats = [
     ["Win rate", t.closed ? `${Math.round((t.wins / t.closed) * 100)}%` : "-"],
     ["Trades", String(t.trades)],
-    ["Followers", String(t.followers)],
+    ["Subscribers", String(t.followers)],
   ];
   return (
     <Link href={`/traders/${t.id}`} className="panel card-link">
