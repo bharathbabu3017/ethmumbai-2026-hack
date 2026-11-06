@@ -1,4 +1,5 @@
 import { confirmCopy, getCopy, getOrder } from "@flashmob/db";
+import { rateLimited } from "@/lib/rate-limit";
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { readOrder } from "@/lib/orders";
@@ -8,6 +9,8 @@ const fail = (error: string, status: number) => NextResponse.json({ error }, { s
 
 /** A copy only counts once Flash confirms the order exists on this wallet, for this token. */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const limited = rateLimited(req, "copy");
+  if (limited) return limited;
   const session = await getSession();
   if (!session) return unauthorized();
   const { id } = await params;

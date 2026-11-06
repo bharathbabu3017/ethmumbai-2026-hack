@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildOrder, USDC_BY_CHAIN, type TradeForm } from "./build";
+import { createFlashClient, FlashError } from "./client";
 import { buildUpdate, cancelMessage, editableFields } from "./messages";
 
 const form = (over: Partial<TradeForm>): TradeForm => ({ side: "buy", type: "market", tokenAddress: "0xt", qty: "10", funder: "0xf", ...over });
@@ -119,4 +120,19 @@ test("only orders Flash can update offer an edit", () => {
 
 test("the cancel message keeps its em dash", () => {
   assert.match(cancelMessage("x"), /v1 — Cancel Order/);
+});
+
+test("a rate limit retries a few times, then gives up with a clear error", async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls++;
+    return new Response(JSON.stringify({ error: { code: "RATE_LIMITED", message: "Too many requests" } }), { status: 429, headers: { "RateLimit-Reset": "0" } });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(createFlashClient({ apiKey: "k" }).balances("0x1"), (e: unknown) => e instanceof FlashError && e.status === 429);
+    assert.equal(calls, 4);
+  } finally {
+    globalThis.fetch = original;
+  }
 });

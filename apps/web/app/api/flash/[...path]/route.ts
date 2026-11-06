@@ -1,6 +1,7 @@
 import { FLASH_BASE_URL, PUBLIC_DEV_KEY } from "@flashmob/flash";
 import { NextResponse, type NextRequest } from "next/server";
 import { isAllowed, keyFor, withServerFields } from "@/lib/proxy";
+import { bucketFor, rateLimited } from "@/lib/rate-limit";
 
 type Params = { params: Promise<{ path: string[] }> };
 
@@ -10,6 +11,8 @@ async function forward(req: NextRequest, { params }: Params) {
   if (!isAllowed(req.method, path, query)) {
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "Not found" } }, { status: 404 });
   }
+  const limited = rateLimited(req, bucketFor(req.method, path));
+  if (limited) return limited;
   const apiKey = process.env.FLASH_API_KEY;
   if (!apiKey) return NextResponse.json({ error: { code: "NOT_CONFIGURED", message: "Flash key missing" } }, { status: 503 });
 

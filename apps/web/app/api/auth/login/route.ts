@@ -1,4 +1,5 @@
 import { getOrCreateWalletUser } from "@flashmob/db";
+import { rateLimited } from "@/lib/rate-limit";
 import { NextResponse, type NextRequest } from "next/server";
 import { getAddress, isAddress, verifyMessage } from "viem";
 import { db } from "@/lib/db";
@@ -6,6 +7,8 @@ import { isValidLoginMessage } from "@/lib/login";
 import { startSession } from "@/lib/session";
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimited(req, "auth");
+  if (limited) return limited;
   const { address, message, signature } = await req.json();
   const host = req.headers.get("host") ?? "";
   if (typeof address !== "string" || !isAddress(address) || typeof message !== "string" || !isValidLoginMessage(message, host, address)) {

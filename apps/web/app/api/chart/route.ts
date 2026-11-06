@@ -1,8 +1,11 @@
+import { rateLimited } from "@/lib/rate-limit";
 import { NextResponse, type NextRequest } from "next/server";
 import { isTimeframe } from "@/lib/chart";
 import { getCandles, NoMarketData } from "@/lib/chart-data";
 
 export async function GET(req: NextRequest) {
+  const limited = rateLimited(req, "chart");
+  if (limited) return limited;
   const token = req.nextUrl.searchParams.get("token") ?? "";
   const timeframe = req.nextUrl.searchParams.get("timeframe");
   if (!/^0x[0-9a-fA-F]{40}$/.test(token) || !isTimeframe(timeframe)) return NextResponse.json({ error: "Invalid request" }, { status: 400 });

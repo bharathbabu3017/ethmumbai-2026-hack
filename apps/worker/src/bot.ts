@@ -1,6 +1,7 @@
 import { claimAction, createAction, getOrCreateTelegramUser, linkTelegram, recordOrder, type Db } from "@flashmob/db";
 import { batchCancelMessage, buildOrder, cancelMessage, FlashError, prepareOrder, resolveBaseToken, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
 import { createBotSigner, decryptKey, generateBotWallet } from "@flashmob/signer";
+import { sequentialize } from "@grammyjs/runner";
 import { Bot, InlineKeyboard, type BotConfig, type Context } from "grammy";
 import { base } from "viem/chains";
 import { parseBracket, parseBuy, parseLimit, parseSell, parseSellAt, parseStopBuy, parseTimed, sellQty, type SellAmount } from "./parse";
@@ -58,6 +59,8 @@ interface OrderPayload {
 
 export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rpcUrl, botInfo }: BotDeps) {
   const bot = new Bot(token, { botInfo });
+  // Updates run in parallel across people, but stay in order within one chat.
+  bot.use(sequentialize((ctx) => ctx.chat?.id.toString()));
   // Wallet details and keys must never appear in a group, so everything is private-chat only.
   const pm = bot.chatType("private");
 

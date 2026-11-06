@@ -1,6 +1,7 @@
 import { createDb } from "@flashmob/db";
 import { createFlashClient, PUBLIC_DEV_KEY } from "@flashmob/flash";
 import { parseMasterKey } from "@flashmob/signer";
+import { run } from "@grammyjs/runner";
 import { createBot } from "./bot";
 import { startListener } from "./listener";
 
@@ -54,4 +55,8 @@ const send = (chatId: number, text: string) => {
 startListener(db, flash, send, apiKey);
 
 console.log("Bot running");
-await bot.start();
+const runner = run(bot);
+const stop = () => void (runner.isRunning() && runner.stop());
+process.once("SIGINT", stop);
+process.once("SIGTERM", stop);
+await runner.task();

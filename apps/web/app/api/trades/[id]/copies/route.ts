@@ -1,4 +1,5 @@
 import { findWallet, getPosition, getTrade, reserveCopy } from "@flashmob/db";
+import { rateLimited } from "@/lib/rate-limit";
 import { NextResponse, type NextRequest } from "next/server";
 import { copyInputError, tradeBlock } from "@/lib/copy";
 import { db } from "@/lib/db";
@@ -10,6 +11,8 @@ const level = (v: unknown) => (v === null || v === undefined || v === "" ? null 
 
 /** Reserves a copy just before the wallet signs. The price and trade state are checked here, not trusted from the browser. */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const limited = rateLimited(req, "copy");
+  if (limited) return limited;
   const session = await getSession();
   if (!session) return unauthorized();
   const { id } = await params;

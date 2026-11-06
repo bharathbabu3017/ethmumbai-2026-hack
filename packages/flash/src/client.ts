@@ -22,6 +22,7 @@ export const PUBLIC_DEV_KEY = "dpka_513a2bd7_57a2_46d2_927b_2a3857fe271b";
 
 // Flash allows 5 requests per second on each endpoint, per key.
 const MIN_GAP_MS = 210;
+const MAX_RATE_LIMIT_RETRIES = 3;
 
 export class FlashError extends Error {
   constructor(
@@ -51,7 +52,7 @@ export function createFlashClient({ apiKey, baseUrl = FLASH_BASE_URL }: FlashCli
   }
 
   async function request<T>(bucket: string, method: string, path: string, body?: unknown): Promise<T> {
-    for (;;) {
+    for (let attempt = 0; ; attempt++) {
       await waitForSlot(bucket);
       const res = await fetch(`${baseUrl}${path}`, {
         method,
@@ -59,7 +60,7 @@ export function createFlashClient({ apiKey, baseUrl = FLASH_BASE_URL }: FlashCli
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       // A 429 was never processed, so it is the only failure safe to retry on order endpoints.
-      if (res.status === 429) {
+      if (res.status === 429 && attempt < MAX_RATE_LIMIT_RETRIES) {
         const reset = Number(res.headers.get("RateLimit-Reset") ?? 1);
         await new Promise((r) => setTimeout(r, Math.max(reset, 1) * 1000));
         continue;
