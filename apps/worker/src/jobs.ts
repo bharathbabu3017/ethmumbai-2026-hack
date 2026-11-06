@@ -1,5 +1,5 @@
 import { claimAlert, claimJobs, claimMirror, completeMirror, confirmCopy, finishJob, getPosition, getTradingWallet, getUser, mirrorExits, recordOrder, releaseCopy, releaseMirror, type Db } from "@flashmob/db";
-import { buildOrder, cancelMessage, feeFields, FlashError, mirrorPlan, OPEN_STATUSES, prepareOrder, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
+import { buildOrder, cancelMessage, feeFields, FlashError, HIGH_COST_PERCENT, mirrorPlan, OPEN_STATUSES, orderCost, prepareOrder, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
 import { signerFor, type PrivyAccess } from "./signers";
 import { card } from "./trades";
 
@@ -48,6 +48,11 @@ async function run(deps: JobDeps, job: Job) {
       quote = await prepareOrder(flash, wallet.address, request);
       if (minReceived !== undefined && Number(quote.to.amount) < minReceived * (1 - MAX_PRICE_MOVE)) {
         throw new Error("The price moved too much since your preview, so nothing was placed.");
+      }
+      // Nobody reviews an auto-copy, so one with unusually high costs is skipped. Sales are never blocked, because they're exits.
+      const cost = copyId && asked.orderType === "market" ? orderCost(quote) : null;
+      if (cost && cost.percent > HIGH_COST_PERCENT) {
+        throw new Error(`Trading costs were ${cost.percent.toFixed(1)}% on this copy, over the ${HIGH_COST_PERCENT}% limit. Nothing was placed.`);
       }
     } catch (e) {
       // Nothing was submitted, so a reservation can be freed. After submitting we can't be sure, so it stays.

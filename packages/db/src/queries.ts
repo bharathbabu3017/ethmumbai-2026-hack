@@ -164,6 +164,9 @@ export const getOrder = async (db: Db, id: string) => {
   return row;
 };
 
+/** Many orders in one round trip, for checks that run often. */
+export const getOrders = (db: Db, ids: string[]) => (ids.length ? db.select().from(orders).where(inArray(orders.id, ids)) : Promise.resolve([]));
+
 export const getUser = async (db: Db, id: string) => {
   const [user] = await db.select().from(users).where(eq(users.id, id));
   return user;

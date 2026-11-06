@@ -1,4 +1,4 @@
-import { alertRecipients, applyOrderFrame, claimAlert, copyContext, createMirrors, enqueueJob, findWallet, findWalletById, getCopySettings, getOrder, getTraderByUser, getUser, type Db } from "@flashmob/db";
+import { alertRecipients, applyOrderFrame, claimAlert, copyContext, createMirrors, enqueueJob, findWallet, findWalletById, getCopySettings, getOrder, getOrders, getTraderByUser, getUser, type Db } from "@flashmob/db";
 import { FLASH_WS_URL, type CopySettings, type FlashClient } from "@flashmob/flash";
 import { autoCopy, type AutoCopy } from "./autocopy";
 import { mirrorAlert, OPEN_STATUSES, orderFields, ownOrderAlert, tradeAlert, type Levels, type OrderFrame } from "./trades";
@@ -97,8 +97,10 @@ const ALERT_WINDOW_MS = 2 * 60_000;
  */
 export async function syncOrders(db: Db, flash: FlashClient, send: Send, auto?: AutoCopy, now = Date.now()) {
   const { orders } = await flash.listOrders({ pageSize: 50 });
+  // One query for all of them: a round trip per order would hold up live orders behind this check.
+  const stored = new Map((await getOrders(db, orders.map((o) => o.orderId))).map((o) => [o.id, o]));
   for (const order of [...orders].reverse()) {
-    const known = await getOrder(db, order.orderId);
+    const known = stored.get(order.orderId);
     // Flash's reads can trail the stream, and a closed order never reopens.
     if (known?.status && !OPEN_STATUSES.has(known.status) && OPEN_STATUSES.has(order.status)) continue;
     const filled = Number(order.filled?.targetAmount ?? 0);
@@ -158,9 +160,14 @@ export function startListener(db: Db, flash: FlashClient, send: Send, apiKey: st
   };
 
   connect();
+  // A slow sync is skipped rather than stacked, so checks can never build up ahead of a live order.
+  let syncing = false;
   setInterval(() => {
+    if (syncing) return;
+    syncing = true;
     queue = queue
       .then(() => syncOrders(db, flash, send, auto))
-      .catch((err) => console.error("Could not sync orders:", err instanceof Error ? err.message : "unknown"));
+      .catch((err) => console.error("Could not sync orders:", err instanceof Error ? err.message : "unknown"))
+      .finally(() => { syncing = false; });
   }, SYNC_MS);
 }

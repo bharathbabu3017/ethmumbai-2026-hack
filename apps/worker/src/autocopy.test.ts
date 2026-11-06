@@ -24,11 +24,12 @@ let sent: string[];
 let submits: any[];
 let cancels: string[];
 let usdc: string;
+let costly = false;
 let trader: { id: string };
 let follower: { userId: string; walletId: string; address: string };
 
 const flash = {
-  quote: async () => ({ quoteId: "q", from: { amount: "10", notional: "10" }, to: { amount: "0.005" }, fees: {}, evm: { approveTx: null, permitTypedData: "", orderTypedData: typedData } }),
+  quote: async () => ({ quoteId: "q", from: { amount: "10", notional: "10" }, to: { amount: "0.005", notional: costly ? "8" : "10" }, fees: {}, evm: { approveTx: null, permitTypedData: "", orderTypedData: typedData } }),
   balances: async () => ({ balances: [{ chain: "base", address: USDC_BASE, balance: usdc, isNative: false, symbol: "USDC" }] }),
   submitOrder: async (b: any) => (submits.push(b), { orderId: `placed-${submits.length}` }),
   getOrder: async () => ({ order: { attachedBracket: undefined, expiresAt: new Date(Date.now() + 3600_000).toISOString() } }),
@@ -51,7 +52,7 @@ beforeEach(async () => {
   const pg = drizzle(new PGlite(), { schema });
   await migrate(pg, { migrationsFolder });
   db = pg as unknown as Db;
-  sent = []; submits = []; cancels = []; usdc = "500";
+  sent = []; submits = []; cancels = []; usdc = "500"; costly = false;
   const userId = await getOrCreateWalletUser(db, "0xTrader");
   trader = (await createTrader(db, { userId, displayName: "Ana" }))!;
   const f = await approvedUser(db, CHAT);
@@ -95,6 +96,17 @@ test("nothing is copied when paused, disabled or from a reconnect snapshot", asy
   await handleOrder(db, flash, send, frame({ orderId: "c" }), false, on);
   await drain();
   assert.equal(submits.length, 0);
+});
+
+test("a copy with unusually high costs is skipped, and nothing is placed", async () => {
+  await save();
+  costly = true;
+  await handleOrder(db, flash, send, frame(), true, on);
+  await drain();
+  assert.equal(submits.length, 0);
+  assert.ok(sent.some((t) => /Trading costs were 20\.0% on this copy/.test(t)));
+  const [row] = await copyHistory(db, follower.userId);
+  assert.equal(row?.kind, "skip");
 });
 
 test("a skip tells the follower why", async () => {
