@@ -125,3 +125,15 @@ select.inp{font-family:var(--font-inter),sans-serif;appearance:auto}
 .pickcard.sel{border-color:var(--lime);background:var(--soft)}
 .pickcard:focus-visible{outline:2px solid var(--line2);outline-offset:2px}
 .agent-badge{flex:none;padding:1px 6px;border-radius:5px;font-size:11px;font-weight:500;letter-spacing:0;background:color-mix(in srgb,var(--blue) 16%,transparent);color:var(--blue)}
+.flow{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;position:relative}
+.flow-step{display:flex;gap:14px;align-items:center;padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:12px;animation:flowStep 8s ease infinite both}
+.flow-dot{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;border-radius:50%;background:var(--soft);font-size:13px;font-weight:600;animation:flowDot 8s ease infinite both}
+@keyframes flowStep{0%,21%{border-color:var(--lime);opacity:1}25%,100%{border-color:var(--line);opacity:.6}}
+@keyframes flowDot{0%,21%{background:var(--lime);color:var(--on-lime)}25%,100%{background:var(--soft);color:var(--text)}}
+@media (prefers-reduced-motion:reduce){.flow-step,.flow-dot{animation:none}}
+.land-link{padding:0 10px}
+.land-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.land-list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:8px}
+.tg-msg{padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;max-width:380px}
+.tg-msg pre{margin:6px 0 0;font:13px var(--font-mono),monospace;color:var(--mut)}
+@media (max-width:640px){.land-link{display:none}}
