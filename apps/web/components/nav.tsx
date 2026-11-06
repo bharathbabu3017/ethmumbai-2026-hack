@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
+import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { WalletMenu } from "@/components/wallet-menu";
 import { ensureSession, fetchMe, postJson } from "@/lib/account";
@@ -34,7 +35,7 @@ export function Nav() {
     <header className="topbar">
       <div className="wrap wide">
         <div className="row nav-left" style={{ gap: 28 }}>
-          <Link href="/home" style={{ fontSize: 16, fontWeight: 600 }}>Flashmob</Link>
+          <Logo href="/home" />
           <nav className="row nav-links" style={{ gap: 20 }}>
             {LINKS.map(([href, label]) => (
               <Link key={href} href={href} className={path === href ? undefined : "mut"}>{label}</Link>
