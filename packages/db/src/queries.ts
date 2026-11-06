@@ -1,7 +1,7 @@
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
-import { orders, pendingActions, users, wallets } from "./schema";
+import { calls, follows, linkTokens, orders, pendingActions, traders, users, wallets } from "./schema";
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -68,3 +68,160 @@ export async function claimAction(db: Db, id: string, userId: string) {
 export async function recordOrder(db: Db, order: typeof orders.$inferInsert) {
   await db.insert(orders).values(order).onConflictDoNothing();
 }
+
+export const findWallet = async (db: Db, address: string) => {
+  const [wallet] = await db.select().from(wallets).where(eq(sql`lower(${wallets.address})`, address.toLowerCase()));
+  return wallet;
+};
+
+/** Finds or creates the user behind a connected web wallet. */
+export async function getOrCreateWalletUser(db: Db, address: string) {
+  const existing = await findWallet(db, address);
+  if (existing) return existing.userId;
+  const [user] = await db.insert(users).values({}).returning();
+  if (!user) throw new Error("Could not create user");
+  const inserted = await db.insert(wallets).values({ userId: user.id, type: "external", address }).onConflictDoNothing().returning();
+  if (inserted[0]) return user.id;
+  await db.delete(users).where(eq(users.id, user.id)); // lost a race with another request
+  const winner = await findWallet(db, address);
+  if (!winner) throw new Error("Could not load wallet");
+  return winner.userId;
+}
+
+export async function createLinkToken(db: Db, token: string, userId: string, ttlSeconds = 600) {
+  await db.insert(linkTokens).values({ token, userId, expiresAt: new Date(Date.now() + ttlSeconds * 1000) });
+}
+
+/**
+ * Links a web account to a Telegram account using a one-time token. The Telegram user is kept,
+ * because bot wallet keys are encrypted to that user's id.
+ */
+export async function linkTelegram(db: Db, token: string, telegramUserId: string) {
+  return db.transaction(async (tx) => {
+    const [link] = await tx
+      .update(linkTokens)
+      .set({ usedAt: sql`now()` })
+      .where(and(eq(linkTokens.token, token), isNull(linkTokens.usedAt), gt(linkTokens.expiresAt, sql`now()`)))
+      .returning();
+    if (!link) return "invalid" as const;
+    const from = link.userId;
+    if (from === telegramUserId) return "linked" as const;
+
+    const [a] = await tx.select().from(traders).where(eq(traders.userId, from));
+    const [b] = await tx.select().from(traders).where(eq(traders.userId, telegramUserId));
+    if (a && b) return "conflict" as const;
+
+    await tx.update(wallets).set({ userId: telegramUserId }).where(eq(wallets.userId, from));
+    await tx.update(orders).set({ userId: telegramUserId }).where(eq(orders.userId, from));
+    await tx.update(traders).set({ userId: telegramUserId }).where(eq(traders.userId, from));
+    const moved = await tx.select().from(follows).where(eq(follows.followerId, from));
+    await tx.delete(follows).where(eq(follows.followerId, from));
+    if (moved.length) {
+      await tx.insert(follows).values(moved.map((f) => ({ ...f, followerId: telegramUserId }))).onConflictDoNothing();
+    }
+    await tx.update(linkTokens).set({ userId: telegramUserId }).where(eq(linkTokens.userId, from));
+    await tx.delete(pendingActions).where(eq(pendingActions.userId, from));
+    await tx.delete(users).where(eq(users.id, from));
+    return "linked" as const;
+  });
+}
+
+export const getTraderByUser = async (db: Db, userId: string) => {
+  const [trader] = await db.select().from(traders).where(eq(traders.userId, userId));
+  return trader;
+};
+
+export const getTrader = async (db: Db, id: string) => {
+  const [trader] = await db.select().from(traders).where(eq(traders.id, id));
+  return trader;
+};
+
+export async function createTrader(db: Db, values: typeof traders.$inferInsert) {
+  const [trader] = await db.insert(traders).values(values).onConflictDoNothing().returning();
+  return trader; // undefined means the name is taken or the user is already a trader
+}
+
+export async function createCall(db: Db, values: typeof calls.$inferInsert) {
+  const [call] = await db.insert(calls).values(values).onConflictDoNothing().returning();
+  return call;
+}
+
+export const listCalls = (db: Db, limit = 30) =>
+  db
+    .select({ call: calls, trader: { id: traders.id, displayName: traders.displayName } })
+    .from(calls)
+    .innerJoin(traders, eq(calls.traderId, traders.id))
+    .orderBy(desc(calls.createdAt))
+    .limit(limit);
+
+export const listTraderCalls = (db: Db, traderId: string) =>
+  db.select().from(calls).where(eq(calls.traderId, traderId)).orderBy(desc(calls.createdAt)).limit(50);
+
+export const getCallByOrder = async (db: Db, orderId: string) => {
+  const [call] = await db.select().from(calls).where(eq(calls.orderId, orderId));
+  return call;
+};
+
+export const getCallByBracket = async (db: Db, bracketOrderId: string) => {
+  const [call] = await db.select().from(calls).where(eq(calls.bracketOrderId, bracketOrderId));
+  return call;
+};
+
+/** Applies a change only if the status differs, so a replayed stream frame never alerts twice. */
+export async function moveCall(db: Db, id: string, change: Partial<typeof calls.$inferInsert> & { status: (typeof calls.$inferInsert)["status"] }) {
+  const [call] = await db.update(calls).set(change).where(and(eq(calls.id, id), ne(calls.status, change.status!))).returning();
+  return call;
+}
+
+export const updateCallFields = (db: Db, id: string, change: Partial<typeof calls.$inferInsert>) =>
+  db.update(calls).set(change).where(eq(calls.id, id));
+
+/** Claims calls that have not been announced yet. Each is returned once. */
+export const claimUnannouncedCalls = (db: Db) =>
+  db.update(calls).set({ alertedAt: sql`now()` }).where(isNull(calls.alertedAt)).returning();
+
+export async function setFollow(db: Db, followerId: string, traderId: string, on: boolean) {
+  if (on) await db.insert(follows).values({ followerId, traderId }).onConflictDoNothing();
+  else await db.delete(follows).where(and(eq(follows.followerId, followerId), eq(follows.traderId, traderId)));
+}
+
+export const isFollowing = async (db: Db, followerId: string, traderId: string) => {
+  const [row] = await db.select().from(follows).where(and(eq(follows.followerId, followerId), eq(follows.traderId, traderId)));
+  return !!row;
+};
+
+/** Telegram chat ids for a trader's followers who want alerts. */
+export async function alertRecipients(db: Db, traderId: string) {
+  const rows = await db
+    .select({ telegramId: users.telegramId })
+    .from(follows)
+    .innerJoin(users, eq(follows.followerId, users.id))
+    .where(and(eq(follows.traderId, traderId), eq(follows.alerts, true), isNotNull(users.telegramId)));
+  return rows.map((r) => r.telegramId!);
+}
+
+export async function upsertStreamOrder(db: Db, order: { id: string; userId: string; walletId: string; status: string; raw: unknown }) {
+  await db.insert(orders).values(order).onConflictDoUpdate({ target: orders.id, set: { status: order.status, raw: order.raw } });
+}
+
+const ranked = sql`${calls.status} in ('target_hit', 'stopped_out', 'closed')`;
+
+/** Every number here comes from calls closed by real fills. */
+export const leaderboard = (db: Db, traderIds?: string[]) =>
+  db
+    .select({
+      id: traders.id,
+      displayName: traders.displayName,
+      bio: traders.bio,
+      xHandle: traders.xHandle,
+      totalCalls: sql<number>`count(${calls.id})::int`,
+      closedCalls: sql<number>`(count(${calls.id}) filter (where ${ranked}))::int`,
+      wins: sql<number>`(count(${calls.id}) filter (where ${ranked} and ${calls.resultPct} > 0))::int`,
+      totalReturn: sql<number>`coalesce(sum(${calls.resultPct}) filter (where ${ranked}), 0)::float`,
+      followers: sql<number>`(select count(*) from ${follows} where ${follows.traderId} = ${traders.id})::int`,
+    })
+    .from(traders)
+    .leftJoin(calls, eq(calls.traderId, traders.id))
+    .where(traderIds ? inArray(traders.id, traderIds) : undefined)
+    .groupBy(traders.id)
+    .orderBy(sql`coalesce(sum(${calls.resultPct}) filter (where ${ranked}), 0) desc`);

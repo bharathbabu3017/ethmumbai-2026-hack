@@ -3,7 +3,10 @@ import { before, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { claimAction, createAction, getOrCreateTelegramUser, type Db } from "./queries";
+import {
+  alertRecipients, claimAction, claimUnannouncedCalls, createAction, createCall, createLinkToken, createTrader, findWallet, getBotWallet,
+  getOrCreateTelegramUser, getOrCreateWalletUser, getTraderByUser, leaderboard, linkTelegram, moveCall, setFollow, type Db,
+} from "./queries";
 import * as schema from "./schema";
 
 let db: Db;
@@ -42,4 +45,63 @@ test("an expired action cannot be claimed", async () => {
   const { user } = await getOrCreateTelegramUser(db, { id: 104 }, makeWallet);
   const id = await createAction(db, user.id, "buy", {}, -1);
   assert.equal(await claimAction(db, id, user.id), undefined);
+});
+
+const callValues = (traderId: string, orderId: string) => ({
+  traderId, orderId, funderAddress: "0xf", chain: "base", tokenSymbol: "WETH", tokenAddress: "0xw", entryType: "market", stopPrice: 90, targetPrice: 120,
+});
+
+test("linking moves the web wallet and trader onto the Telegram user, and the token works once", async () => {
+  const webId = await getOrCreateWalletUser(db, "0xAbC1");
+  await createTrader(db, { userId: webId, displayName: "linker" });
+  const tg = await getOrCreateTelegramUser(db, { id: 200 }, makeWallet);
+  await createLinkToken(db, "tok1", webId);
+  assert.equal(await linkTelegram(db, "tok1", tg.user.id), "linked");
+  assert.equal(await linkTelegram(db, "tok1", tg.user.id), "invalid");
+  assert.equal((await findWallet(db, "0xabc1"))!.userId, tg.user.id);
+  assert.ok(await getTraderByUser(db, tg.user.id));
+  assert.equal((await getBotWallet(db, tg.user.id))!.id, tg.wallet.id);
+});
+
+test("an expired link token does nothing", async () => {
+  const webId = await getOrCreateWalletUser(db, "0xAbC2");
+  const tg = await getOrCreateTelegramUser(db, { id: 201 }, makeWallet);
+  await createLinkToken(db, "tok2", webId, -1);
+  assert.equal(await linkTelegram(db, "tok2", tg.user.id), "invalid");
+  assert.equal((await findWallet(db, "0xabc2"))!.userId, webId);
+});
+
+test("a call is only announced once and a repeated status change is ignored", async () => {
+  const u = await getOrCreateWalletUser(db, "0xAbC3");
+  const t = (await createTrader(db, { userId: u, displayName: "caller" }))!;
+  const call = (await createCall(db, callValues(t.id, "o1")))!;
+  assert.equal(await createCall(db, callValues(t.id, "o1")), undefined);
+  assert.equal((await claimUnannouncedCalls(db)).filter((c) => c.id === call.id).length, 1);
+  assert.equal((await claimUnannouncedCalls(db)).filter((c) => c.id === call.id).length, 0);
+  assert.ok(await moveCall(db, call.id, { status: "live" }));
+  assert.equal(await moveCall(db, call.id, { status: "live" }), undefined);
+});
+
+test("alerts only go to followers with Telegram linked", async () => {
+  const u = await getOrCreateWalletUser(db, "0xAbC4");
+  const t = (await createTrader(db, { userId: u, displayName: "alerter" }))!;
+  const tg = await getOrCreateTelegramUser(db, { id: 300 }, makeWallet);
+  const webOnly = await getOrCreateWalletUser(db, "0xAbC5");
+  await setFollow(db, tg.user.id, t.id, true);
+  await setFollow(db, webOnly, t.id, true);
+  assert.deepEqual(await alertRecipients(db, t.id), [300]);
+  await setFollow(db, tg.user.id, t.id, false);
+  assert.deepEqual(await alertRecipients(db, t.id), []);
+});
+
+test("the leaderboard counts only closed calls", async () => {
+  const u = await getOrCreateWalletUser(db, "0xAbC6");
+  const t = (await createTrader(db, { userId: u, displayName: "ranked" }))!;
+  const a = (await createCall(db, callValues(t.id, "r1")))!;
+  const b = (await createCall(db, callValues(t.id, "r2")))!;
+  await createCall(db, callValues(t.id, "r3"));
+  await moveCall(db, a.id, { status: "target_hit", resultPct: 20 });
+  await moveCall(db, b.id, { status: "stopped_out", resultPct: -5 });
+  const [row] = await leaderboard(db, [t.id]);
+  assert.deepEqual([row!.totalCalls, row!.closedCalls, row!.wins, row!.totalReturn], [3, 2, 1, 15]);
 });

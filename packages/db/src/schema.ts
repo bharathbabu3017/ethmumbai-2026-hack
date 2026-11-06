@@ -1,9 +1,10 @@
 import { sql } from "drizzle-orm";
-import { bigint, index, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, doublePrecision, index, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 export const walletType = pgEnum("wallet_type", ["bot", "external"]);
 export const orderSource = pgEnum("order_source", ["manual", "copy"]);
 export const actionStatus = pgEnum("action_status", ["pending", "used"]);
+export const callStatus = pgEnum("call_status", ["waiting", "live", "cancelled", "target_hit", "stopped_out", "closed"]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -44,8 +45,63 @@ export const orders = pgTable(
     userId: uuid("user_id").notNull().references(() => users.id),
     walletId: uuid("wallet_id").notNull().references(() => wallets.id),
     source: orderSource("source").notNull().default("manual"),
-    request: jsonb("request").notNull(),
+    request: jsonb("request"),
+    status: text("status"),
+    raw: jsonb("raw"), // latest frame from the Flash orders stream
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("orders_user").on(t.userId)],
 );
+
+export const traders = pgTable("traders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().unique().references(() => users.id),
+  displayName: text("display_name").notNull().unique(),
+  bio: text("bio"),
+  xHandle: text("x_handle"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const calls = pgTable(
+  "calls",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    traderId: uuid("trader_id").notNull().references(() => traders.id),
+    orderId: text("order_id").notNull().unique(), // the entry order
+    bracketOrderId: text("bracket_order_id").unique(),
+    funderAddress: text("funder_address").notNull(),
+    chain: text("chain").notNull(),
+    tokenSymbol: text("token_symbol").notNull(),
+    tokenAddress: text("token_address").notNull(),
+    entryType: text("entry_type").notNull(),
+    entryPrice: doublePrecision("entry_price"), // null until a market entry fills
+    stopPrice: doublePrecision("stop_price").notNull(),
+    targetPrice: doublePrecision("target_price").notNull(),
+    exitPrice: doublePrecision("exit_price"),
+    resultPct: doublePrecision("result_pct"),
+    note: text("note"),
+    status: callStatus("status").notNull().default("waiting"),
+    alertedAt: timestamp("alerted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+  },
+  (t) => [index("calls_trader").on(t.traderId), index("calls_created").on(t.createdAt)],
+);
+
+export const follows = pgTable(
+  "follows",
+  {
+    followerId: uuid("follower_id").notNull().references(() => users.id),
+    traderId: uuid("trader_id").notNull().references(() => traders.id),
+    alerts: boolean("alerts").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.followerId, t.traderId] })],
+);
+
+export const linkTokens = pgTable("link_tokens", {
+  token: text("token").primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+});
