@@ -2,13 +2,14 @@
 
 import type { CopySettings } from "@flashmob/flash";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { AddFunds } from "@/components/add-funds";
 import { AutoCopySetup, TONES } from "@/components/auto-copy";
 import { Avatar } from "@/components/avatar";
 import { Nav } from "@/components/nav";
 import { SubscribeButton } from "@/components/subscribe-button";
 import { ensureSession, postJson } from "@/lib/account";
+import { useCached } from "@/lib/cached";
 import { copyStatus } from "@/lib/copy-status";
 import { plainError, tradeStatus } from "@/lib/format";
 import { useLiveOrders } from "@/lib/order-stream";
@@ -81,17 +82,13 @@ function HistoryRow({ e }: { e: Entry }) {
 
 export default function Copying() {
   const { address, login, getSigner } = useWallet();
-  const [data, setData] = useState<Data>();
+  const { data, refresh: load } = useCached<Data>(address ? `copying:${address}` : null, () => fetch("/api/copying").then((r) => (r.ok ? r.json() : undefined)));
   const [filter, setFilter] = useState<Filter>("All");
   const [editing, setEditing] = useState<Row>();
   const [funds, setFunds] = useState(false);
   const [busy, setBusy] = useState<string>();
   const [error, setError] = useState("");
 
-  const load = useCallback(() => {
-    if (address) fetch("/api/copying").then((r) => (r.ok ? r.json() : undefined)).then((r) => r && setData(r)).catch(() => {});
-  }, [address]);
-  useEffect(load, [load]);
   useLiveOrders(load);
 
   const act = async (key: string, fn: () => Promise<unknown>) => {
@@ -147,7 +144,7 @@ export default function Copying() {
         </div>
         {error && <p role="alert" className="dn" style={{ margin: 0 }}>{error}</p>}
 
-        {!address ? <div><button className="btn pri" onClick={login}>Connect to get started</button></div> : !data ? <p className="mut" style={{ margin: 0 }}>Loading…</p> : (
+        {!address ? <div><button className="btn pri" onClick={login}>Connect to get started</button></div> : !data ? <div className="sk" style={{ height: 240 }} /> : (
           <>
             {problem?.state && (
               <section className="between" style={{ flexWrap: "wrap", alignItems: "center", padding: "12px 16px", border: "1px solid var(--orange)", borderRadius: 10 }}>

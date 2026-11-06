@@ -1,4 +1,5 @@
 import type { FlashBalancesResponse } from "./client";
+import { USDC_BASE } from "./tokens";
 
 type Balance = FlashBalancesResponse["balances"][number];
 
@@ -19,6 +20,7 @@ export interface Holding {
   /** Only known for what was bought on Flashmob, so these are null for deposits and stablecoins. */
   pnlUsd: number | null;
   pnlPercent: number | null;
+  isCash: boolean;
 }
 
 const DUST_USD = 0.01;
@@ -34,7 +36,8 @@ export function holdings(balances: Balance[], positions: Held[], realizedUsd: nu
       const valueUsd = Number(b.notional);
       const held = b.chain === "base" && !b.isNative ? positions.find((p) => p.tokenAddress.toLowerCase() === b.address.toLowerCase()) : undefined;
       const tracked = held && held.qty > 0 ? Math.min(held.qty, qty) : 0;
-      const row = { key: b.chain + b.address + b.isNative, address: b.address, balance: b.balance, symbol: b.symbol, chain: b.chain, qty, valueUsd };
+      const isCash = b.isNative || b.address.toLowerCase() === USDC_BASE.toLowerCase();
+      const row = { key: b.chain + b.address + b.isNative, address: b.address, balance: b.balance, isCash, symbol: b.symbol, chain: b.chain, qty, valueUsd };
       if (!held || !tracked || !held.costUsd) return { ...row, pnlUsd: null, pnlPercent: null };
       const cost = held.costUsd * (tracked / held.qty);
       const pnlUsd = valueUsd * (tracked / qty) - cost;

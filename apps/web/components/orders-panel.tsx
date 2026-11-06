@@ -3,6 +3,7 @@
 import { holdings, OPEN_STATUSES, signedUsd, type FlashOrder, type Holding } from "@flashmob/flash";
 import { useCallback, useEffect, useState } from "react";
 import { OpenOrders } from "@/components/open-orders";
+import { useCached } from "@/lib/cached";
 import { flash } from "@/lib/flash";
 import { pct, tradeStatus, usd } from "@/lib/format";
 import { useLiveOrders } from "@/lib/order-stream";
@@ -51,17 +52,16 @@ export function OrderHistory({ reloadKey = 0 }: { reloadKey?: number }) {
 
 function Positions({ reloadKey, onSell }: { reloadKey: number; onSell?(holding: Holding): void }) {
   const { address } = useWallet();
-  const [rows, setRows] = useState<Holding[]>();
-  const load = useCallback(async () => {
-    if (!address) return;
+  const { data: rows, refresh } = useCached<Holding[]>(address ? `positions:${address}` : null, async () => {
     const [{ balances }, paid] = await Promise.all([
-      flash.balances(address),
+      flash.balances(address!),
       fetch("/api/portfolio").then((r) => (r.ok ? r.json() : { positions: [], realizedUsd: 0 })),
     ]);
-    setRows(holdings(balances, paid.positions, paid.realizedUsd).rows.filter((r) => r.chain === "base" && r.pnlUsd !== null));
-  }, [address]);
-  useEffect(() => void load().catch(() => setRows([])), [load, reloadKey]);
-  useLiveOrders(() => void load().catch(() => {}));
+    // Tokens stay listed while their cost is still being recorded, so a new position doesn't pop in and out.
+    return holdings(balances, paid.positions, paid.realizedUsd).rows.filter((r) => r.chain === "base" && !r.isCash);
+  });
+  useEffect(refresh, [refresh, reloadKey]);
+  useLiveOrders(refresh);
 
   if (!rows) return <p className="mut" style={empty}>Loading…</p>;
   if (!rows.length) return <p className="mut" style={empty}>Tokens you buy here appear with their profit or loss.</p>;
@@ -71,7 +71,7 @@ function Positions({ reloadKey, onSell }: { reloadKey: number; onSell?(holding: 
       <span className="row" style={{ gap: 16 }}>
         <span style={{ textAlign: "right" }}>
           <span className="m" style={{ display: "block" }}>${r.valueUsd.toFixed(2)}</span>
-          <span className={`m ${r.pnlUsd! < 0 ? "dn" : "up"}`} style={{ fontSize: 12 }}>{signedUsd(r.pnlUsd!)} ({pct(r.pnlPercent!)})</span>
+          {r.pnlUsd === null ? <span className="m mut" style={{ fontSize: 12 }}>-</span> : <span className={`m ${r.pnlUsd < 0 ? "dn" : "up"}`} style={{ fontSize: 12 }}>{signedUsd(r.pnlUsd)} ({pct(r.pnlPercent!)})</span>}
         </span>
         {onSell && <button className="btn" onClick={() => onSell(r)}>Sell</button>}
       </span>

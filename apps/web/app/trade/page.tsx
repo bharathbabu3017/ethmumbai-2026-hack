@@ -8,11 +8,13 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { Avatar } from "@/components/avatar";
+import { LevelInput } from "@/components/level-input";
 import { Nav } from "@/components/nav";
 import { OrderProgress } from "@/components/order-progress";
 import { OrdersPanel, type OrdersTab } from "@/components/orders-panel";
 import { PriceChart } from "@/components/price-chart";
 import { TokenPicker, type PickedToken } from "@/components/token-picker";
+import { useCached } from "@/lib/cached";
 import { flash } from "@/lib/flash";
 import { pct, plainError, usd } from "@/lib/format";
 import type { TokenStats } from "@/lib/token-stats";
@@ -66,7 +68,6 @@ function Trade() {
   const [direction, setDirection] = useState<"upper" | "lower">("upper");
   const [f, setF] = useState<Fields>(EMPTY);
   const [advanced, setAdvanced] = useState(false);
-  const [balances, setBalances] = useState<FlashBalancesResponse["balances"]>([]);
   const [preview, setPreview] = useState<{ request: OrderRequest; quote: QuoteResponse }>();
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
@@ -74,28 +75,17 @@ function Trade() {
   const [step, setStep] = useState<OrderStep>();
   const [tracked, setTracked] = useState<{ orderId: string; market: boolean; side: Side; symbol: string }>();
   const [focus, setFocus] = useState<OrdersTab>();
-  const [stats, setStats] = useState<TokenStats | null>(null);
-  const [traders, setTraders] = useState<TokenTrader[]>([]);
+  const { data: wallet, refresh: loadBalances } = useCached<FlashBalancesResponse["balances"]>(address ? `balances:${address}` : null, () => flash.balances(address!).then((b) => b.balances));
+  const balances = wallet ?? [];
+  const { data: market, refresh: loadMarket } = useCached<{ stats: TokenStats | null; traders: TokenTrader[] }>(`token:${token.address}`, () => fetch(`/api/token/${token.address}`).then((r) => r.json()));
+  const stats = market?.stats ?? null;
+  const traders = market?.traders ?? [];
 
-  const loadBalances = useCallback(() => {
-    if (address) flash.balances(address).then((b) => setBalances(b.balances)).catch(() => {});
-  }, [address]);
   useEffect(loadBalances, [loadBalances, placed]);
-
   useEffect(() => {
-    let stale = false;
-    const load = () => fetch(`/api/token/${token.address}`).then((r) => r.json()).then((r) => {
-      if (stale) return;
-      setStats(r.stats);
-      setTraders(r.traders ?? []);
-    }).catch(() => {});
-    void load();
-    const timer = setInterval(load, STATS_REFRESH_MS);
-    return () => {
-      stale = true;
-      clearInterval(timer);
-    };
-  }, [token.address]);
+    const timer = setInterval(loadMarket, STATS_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [loadMarket]);
 
   const change = () => {
     setPreview(undefined);
@@ -120,6 +110,7 @@ function Trade() {
   const spendBalance = balances.find((b) => b.address.toLowerCase() === spendAsset && b.chain === spendChain)?.balance;
   const spendSymbol = side === "buy" ? "USDC" : token.symbol;
 
+  const reference = (type === "limit" && Number(f.price)) || stats?.price || null;
   const attachable = side === "buy" && (type === "market" || type === "limit" || type === "twap") && payChain === "base";
   const needsTrigger = type === "stop" || type === "stop-loss" || type === "take-profit";
   const trailing = type === "trailing-stop" || type === "trailing-stop-limit";
@@ -182,7 +173,7 @@ function Trade() {
     ["24h change", change24h === null ? "-" : pct(change24h), change24h === null ? "" : change24h < 0 ? "dn" : "up"],
     ["24h volume", stats?.volume24h ? compactUsd(stats.volume24h) : "-", ""],
     ["Liquidity", stats?.liquidity ? compactUsd(stats.liquidity) : "-", ""],
-    ["You hold", `$${Number(held?.notional ?? 0).toFixed(2)}`, ""],
+    ["You hold", wallet ? `$${Number(held?.notional ?? 0).toFixed(2)}` : "-", ""],
   ];
 
   const stepLabel = step === "approving" ? `Approve ${spendSymbol} in your wallet` : step === "signing" ? "Sign in your wallet" : step === "submitting" ? "Placing your order" : "Check your wallet";
@@ -283,8 +274,8 @@ function Trade() {
 
           {type === "bracket" && (
             <div className="row" style={{ flexWrap: "nowrap" }}>
-              <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="bs">Stop loss (USD)</label><input id="bs" className="inp" inputMode="decimal" {...set("bracketStop")} /></div>
-              <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="bt">Take profit (USD)</label><input id="bt" className="inp" inputMode="decimal" {...set("bracketTarget")} /></div>
+              <LevelInput id="bs" label="Stop loss" direction="below" reference={reference} value={f.bracketStop} onChange={(v) => { setF({ ...f, bracketStop: v }); change(); }} />
+              <LevelInput id="bt" label="Take profit" direction="above" reference={reference} value={f.bracketTarget} onChange={(v) => { setF({ ...f, bracketTarget: v }); change(); }} />
             </div>
           )}
 
@@ -311,8 +302,8 @@ function Trade() {
 
           {attachable && (
             <div className="row" style={{ flexWrap: "nowrap" }}>
-              <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="stop">Stop loss, optional</label><input id="stop" className="inp" inputMode="decimal" {...set("stop")} /></div>
-              <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="target">Take profit, optional</label><input id="target" className="inp" inputMode="decimal" {...set("target")} /></div>
+              <LevelInput id="stop" label="Stop loss, optional" direction="below" reference={reference} value={f.stop} onChange={(v) => { setF({ ...f, stop: v }); change(); }} />
+              <LevelInput id="target" label="Take profit, optional" direction="above" reference={reference} value={f.target} onChange={(v) => { setF({ ...f, target: v }); change(); }} />
             </div>
           )}
 
@@ -357,10 +348,7 @@ function Trade() {
               {...tracked}
               funder={address}
               onResting={() => setFocus("Pending orders")}
-              onClosed={() => {
-                setFocus("Order history");
-                setPlaced((n) => n + 1);
-              }}
+              onClosed={() => setPlaced((n) => n + 1)}
             />
           )}
         </section>

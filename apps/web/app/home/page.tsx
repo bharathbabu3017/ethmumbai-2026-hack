@@ -1,4 +1,4 @@
-import { leaderboard, listTrades, listUserCopySettings } from "@flashmob/db";
+import { getUser, leaderboard, listTrades, listUserCopies, listUserCopySettings } from "@flashmob/db";
 import Link from "next/link";
 import { CopyDiagram } from "@/components/copy-diagram";
 import { GettingStarted } from "@/components/getting-started";
@@ -18,7 +18,9 @@ const TOP_TOKENS = 5;
 
 export default async function Home() {
   const [board, feed, session] = await Promise.all([leaderboard(db()), listTrades(db(), 300), getSession()]);
-  const settings = session ? await listUserCopySettings(db(), session.userId) : [];
+  const [settings, user, copied] = session
+    ? await Promise.all([listUserCopySettings(db(), session.userId), getUser(db(), session.userId), listUserCopies(db(), session.userId)])
+    : [[], undefined, []];
   const copying = new Set(settings.filter((s) => s.enabled).map((s) => s.traderId));
   const isTrader = board.some((t) => t.userId === session?.userId);
 
@@ -43,9 +45,9 @@ export default async function Home() {
     <>
       <Nav />
       <main className="wrap wide" style={{ paddingTop: 28, paddingBottom: 56, display: "flex", flexDirection: "column", gap: 20 }}>
-        <StatusStrip />
+        {copying.size > 0 && <StatusStrip copying={copying.size} paused={!!user?.copyPaused} />}
         <SellPrompts />
-        <GettingStarted />
+        {copying.size === 0 && copied.length === 0 && <GettingStarted />}
         <div>
           <h1 style={{ fontSize: 26 }}>Discover traders</h1>
           <p className="mut" style={{ margin: "4px 0 0" }}>Ranked from real fills. Pick one and your wallet can copy their trades.</p>

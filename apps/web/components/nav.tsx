@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { WalletMenu } from "@/components/wallet-menu";
+import { useCached } from "@/lib/cached";
 import { flash } from "@/lib/flash";
 import { useWallet } from "@/lib/wallet";
 
@@ -18,10 +19,8 @@ const LINKS = [
 export function Nav() {
   const path = usePathname();
   const { configured, ready, address, login } = useWallet();
-  const [total, setTotal] = useState<number>();
-  useEffect(() => {
-    if (address) flash.balances(address).then((r) => setTotal(r.balances.reduce((sum, b) => sum + Number(b.notional), 0))).catch(() => {});
-  }, [address, path]);
+  const { data: total, refresh } = useCached<number>(address ? `total:${address}` : null, () => flash.balances(address!).then((r) => r.balances.reduce((sum, b) => sum + Number(b.notional), 0)));
+  useEffect(refresh, [refresh, path]);
   return (
     <header className="topbar">
       <div className="wrap wide">
@@ -38,6 +37,8 @@ export function Nav() {
           <ThemeToggle />
           {address ? (
             <WalletMenu address={address} />
+          ) : configured && !ready ? (
+            <span className="btn" style={{ visibility: "hidden" }}>Connect</span>
           ) : (
             <button className="btn" onClick={login} disabled={!configured || !ready}>
               {configured ? "Connect" : "Wallet login not set up"}

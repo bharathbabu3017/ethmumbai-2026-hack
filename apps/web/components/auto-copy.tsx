@@ -1,10 +1,11 @@
 "use client";
 
 import { copySize, DEFAULT_COPY_SETTINGS, type CopyExits, type CopySettings, type CopySizing } from "@flashmob/flash";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AddFunds } from "@/components/add-funds";
 import { Drawer } from "@/components/drawer";
 import { ensureSession, postJson } from "@/lib/account";
+import { useCached } from "@/lib/cached";
 import { copyStatus } from "@/lib/copy-status";
 import { plainError } from "@/lib/format";
 import { useWallet } from "@/lib/wallet";
@@ -26,14 +27,10 @@ export const TONES = { on: "var(--up)", warn: "var(--orange)", off: "var(--mut)"
 
 function useCopyStatus(traderId: string) {
   const { address } = useWallet();
-  const [status, setStatus] = useState<Status>();
-  const load = useCallback(async () => {
+  const { data: status, refresh: load } = useCached<Status>(address ? `copy:${address}:${traderId}` : null, async () => {
     const res = await fetch(`/api/copy-settings/${traderId}`);
-    if (res.ok) setStatus(await res.json());
-  }, [traderId]);
-  useEffect(() => {
-    if (address) load().catch(() => {});
-  }, [address, load]);
+    return res.ok ? res.json() : undefined;
+  });
   return { status, load };
 }
 
@@ -41,10 +38,11 @@ function Field({ id, label, children }: { id: string; label: string; children: R
   return <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor={id}>{label}</label>{children}</div>;
 }
 
-function Picks({ label, values, value, onPick }: { label: string; values: number[]; value: number; onPick(v: number): void }) {
+function Picks({ id, label, values, value, onPick }: { id: string; label: string; values: number[]; value: number; onPick(v: number): void }) {
   return (
     <div>
-      <span className="lab">{label}</span>
+      <label className="lab" htmlFor={id}>{label}</label>
+      <input id={id} className="inp" inputMode="decimal" style={{ marginBottom: 8 }} value={String(value)} onChange={(e) => onPick(e.target.value as unknown as number)} />
       <div className="picks">
         {values.map((v) => <button key={v} className={`btn ${Number(value) === v ? "sel" : ""}`} onClick={() => onPick(v)}>${v}</button>)}
       </div>
@@ -70,9 +68,11 @@ export function AutoCopySetup({ traderId, name, onClose, onSaved }: { traderId: 
   const [more, setMore] = useState(false);
   const [step, setStep] = useState<"form" | "approving" | "saving" | "done">("form");
   const [error, setError] = useState("");
+  const touched = useRef(false);
 
+  // A background refresh must never overwrite what you're typing.
   useEffect(() => {
-    if (!status || step !== "form") return;
+    if (!status || step !== "form" || touched.current) return;
     setS(status.settings);
     setBlocked(status.settings.blockedTokens.join(", "));
   }, [status, step]);
@@ -80,8 +80,11 @@ export function AutoCopySetup({ traderId, name, onClose, onSaved }: { traderId: 
   if (!status) return <Drawer title={`Copy ${name}`} onClose={onClose}><p className="mut" style={{ margin: 0 }}>Loading…</p></Drawer>;
 
   const live = status.settings.enabled;
-  const set = <K extends keyof CopySettings>(key: K, value: CopySettings[K]) => setS({ ...s, [key]: value });
-  const text = (key: "percentOfBalance" | "amountUsd" | "dailyCapUsd" | "maxPerTradeUsd" | "maxEntryDriftPercent") => ({
+  const set = <K extends keyof CopySettings>(key: K, value: CopySettings[K]) => {
+    touched.current = true;
+    setS({ ...s, [key]: value });
+  };
+  const text = (key: "percentOfBalance" | "maxPerTradeUsd" | "maxEntryDriftPercent") => ({
     id: key, className: "inp", inputMode: "decimal" as const, value: String(s[key]),
     onChange: (e: { target: { value: string } }) => set(key, e.target.value as unknown as number),
   });
@@ -105,7 +108,7 @@ export function AutoCopySetup({ traderId, name, onClose, onSaved }: { traderId: 
       }
       setStep("saving");
       await postJson(`/api/copy-settings/${traderId}`, { ...s, enabled: true, blockedTokens: blocked.split(",") });
-      await load();
+      load();
       onSaved?.();
       if (live) onClose();
       else setStep("done");
@@ -152,9 +155,9 @@ export function AutoCopySetup({ traderId, name, onClose, onSaved }: { traderId: 
       </div>
 
       {s.sizing === "fixed"
-        ? <Picks label={`Per trade (you have $${status.usdc.toFixed(2)} USDC)`} values={AMOUNTS} value={s.amountUsd} onPick={(v) => set("amountUsd", v)} />
+        ? <Picks id="amountUsd" label={`Per trade, USD (you have $${status.usdc.toFixed(2)} USDC)`} values={AMOUNTS} value={s.amountUsd} onPick={(v) => set("amountUsd", v)} />
         : <Field id="percentOfBalance" label={`Percent of your $${status.usdc.toFixed(2)} USDC`}><input {...text("percentOfBalance")} /></Field>}
-      <Picks label="Daily limit" values={LIMITS} value={s.dailyCapUsd} onPick={(v) => set("dailyCapUsd", v)} />
+      <Picks id="dailyCapUsd" label="Daily limit, USD" values={LIMITS} value={s.dailyCapUsd} onPick={(v) => set("dailyCapUsd", v)} />
       <div>
         <span className="lab">When they sell</span>
         <div className="picks" style={{ gridTemplateColumns: "repeat(2,minmax(0,1fr))" }}>
@@ -177,12 +180,7 @@ export function AutoCopySetup({ traderId, name, onClose, onSaved }: { traderId: 
               <option value="percent">Percent of my USDC balance</option>
             </select>
           </div>
-          <div className="row" style={{ flexWrap: "nowrap" }}>
-            {s.sizing === "fixed"
-              ? <Field id="amountUsd" label="Custom amount (USD)"><input {...text("amountUsd")} /></Field>
-              : <Field id="maxPerTradeUsd" label="Max per trade (USD)"><input {...text("maxPerTradeUsd")} /></Field>}
-            <Field id="dailyCapUsd" label="Custom daily limit (USD)"><input {...text("dailyCapUsd")} /></Field>
-          </div>
+          {s.sizing === "percent" && <Field id="maxPerTradeUsd" label="Max per trade (USD)"><input {...text("maxPerTradeUsd")} /></Field>}
           <div>
             <label className="lab" htmlFor="exits">Stop loss and take profit</label>
             <select id="exits" className="inp" value={s.exits} onChange={(e) => set("exits", e.target.value as CopyExits)}>
@@ -201,7 +199,7 @@ export function AutoCopySetup({ traderId, name, onClose, onSaved }: { traderId: 
             <Field id="maxEntryDriftPercent" label="Skip if price moved (%)"><input {...text("maxEntryDriftPercent")} /></Field>
             <Field id="maxSlippagePercent" label="Max slippage (%)"><input {...optional("maxSlippagePercent")} placeholder="Default" /></Field>
           </div>
-          <Field id="blockedTokens" label="Never copy these tokens"><input id="blockedTokens" className="inp" value={blocked} placeholder="DEGEN, BRETT" onChange={(e) => setBlocked(e.target.value)} /></Field>
+          <Field id="blockedTokens" label="Never copy these tokens"><input id="blockedTokens" className="inp" value={blocked} placeholder="DEGEN, BRETT" onChange={(e) => { touched.current = true; setBlocked(e.target.value); }} /></Field>
           <Toggle label="Skip risky tokens" hint="Skips tokens that are flagged or can't be verified." on={s.skipRiskyTokens} onChange={(v) => set("skipRiskyTokens", v)} />
         </>
       )}
@@ -223,7 +221,7 @@ export function AutoCopyCard({ traderId, name }: { traderId: string; name: strin
   const [error, setError] = useState("");
 
   if (!address) return <><h2 style={{ fontSize: 16 }}>Auto-copy</h2><p className="mut" style={{ margin: 0 }}>Your wallet follows their trades within your limits.</p><button className="btn pri" onClick={login}>Connect to start</button></>;
-  if (!status) return <p className="mut" style={{ margin: 0 }}>Loading…</p>;
+  if (!status) return <div className="sk" style={{ height: 150 }} />;
 
   const state = copyStatus({ ...status, approved: !!status.tradingWallet });
   const s = status.settings;
@@ -235,7 +233,7 @@ export function AutoCopyCard({ traderId, name }: { traderId: string; name: strin
     try {
       await ensureSession(getSigner);
       await postJson(`/api/copy-settings/${traderId}`, { ...s, enabled: false });
-      await load();
+      load();
     } catch (e) {
       setError(plainError(e));
     } finally {
@@ -265,7 +263,7 @@ export function AutoCopyCard({ traderId, name }: { traderId: string; name: strin
         </>
       ) : <button className="btn pri" onClick={() => setSetup(true)}>Set up auto-copy</button>}
       {error && <p role="alert" className="dn" style={{ margin: 0, fontSize: 13 }}>{error}</p>}
-      {setup && <AutoCopySetup traderId={traderId} name={name} onClose={() => setSetup(false)} onSaved={() => void load()} />}
+      {setup && <AutoCopySetup traderId={traderId} name={name} onClose={() => setSetup(false)} onSaved={load} />}
       {funds && status.tradingWallet && <AddFunds address={status.tradingWallet} onClose={() => setFunds(false)} />}
     </>
   );

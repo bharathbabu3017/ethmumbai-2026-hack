@@ -105,3 +105,7 @@ select.inp{font-family:var(--font-inter),sans-serif;appearance:auto}
 .market-bar{border-bottom:1px solid var(--line)}
 .market-bar>div{padding-top:10px;padding-bottom:10px;display:flex;flex-wrap:wrap;gap:12px 32px;align-items:center}
 #token::placeholder{color:var(--text);font-weight:600}
+.sk{background:var(--soft);border-radius:8px;animation:pulse 1.6s ease infinite}
+.unit{all:unset;cursor:pointer;min-width:24px;height:20px;line-height:20px;text-align:center;border:1px solid var(--line2);border-radius:5px;font-size:12px;color:var(--text)}
+.unit:focus-visible{outline:2px solid var(--line2);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.sk{animation:none}}

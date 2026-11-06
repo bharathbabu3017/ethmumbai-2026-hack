@@ -45,9 +45,6 @@ export function GettingStarted() {
     }
   };
 
-  const copying = (me?.autoCopies?.some((r) => r.enabled) ?? false) || (me?.copies?.length ?? 0) > 0;
-  if (copying) return null;
-
   return (
     <section className="panel" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div>

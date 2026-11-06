@@ -3,6 +3,7 @@
 import { buildOrder, prepareOrder, USDC_BASE, type OrderRequest, type QuoteResponse, type TradeForm } from "@flashmob/flash";
 import Link from "next/link";
 import { useState } from "react";
+import { LevelInput } from "@/components/level-input";
 import { ensureSession, postJson } from "@/lib/account";
 import { canAttach, copyForm, copyInputError, copySummary, entryPrice, tradeBlock, type CopyableTrade } from "@flashmob/flash";
 import { flash } from "@/lib/flash";
@@ -98,8 +99,8 @@ export function CopyPanel({ trade, inDrawer }: { trade: CopyableTrade & { id: st
         </div>
       </div>
       {attachable && <div className="row" style={{ flexWrap: "nowrap" }}>
-        <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="stop">Stop loss (USD)</label><input id="stop" className="inp" inputMode="decimal" value={stop} onChange={edit(setStop)} /></div>
-        <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor="target">Take profit (USD)</label><input id="target" className="inp" inputMode="decimal" value={target} onChange={edit(setTarget)} /></div>
+          <LevelInput id="copy-stop" label="Stop loss" direction="below" reference={entry} value={stop} onChange={(v) => { setStop(v); setPreview(undefined); }} />
+          <LevelInput id="copy-target" label="Take profit" direction="above" reference={entry} value={target} onChange={(v) => { setTarget(v); setPreview(undefined); }} />
       </div>}
 
       {(!attachable || (!stop && !target)) && <p className="dn" style={{ margin: 0, fontSize: 13 }}>No stop or target set. You&apos;ll have to exit this position yourself.</p>}
