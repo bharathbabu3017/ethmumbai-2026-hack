@@ -25,7 +25,7 @@ export function StatusStrip({ copying, paused }: { copying: number; paused: bool
         <span className="mut">Portfolio <span className="m" style={{ color: "var(--text)" }}>{totals ? `$${totals.total.toFixed(2)}` : "-"}</span></span>
         <span className="mut">Open profit/loss {totals ? <span className={`m ${totals.open < 0 ? "dn" : "up"}`}>{signedUsd(totals.open)}</span> : <span className="m">-</span>}</span>
       </span>
-      <Link href="/copying" className="mut" style={{ fontSize: 13 }}>Manage copying</Link>
+      <Link href="/copying" className="mut" style={{ fontSize: 13 }}>Manage copy trading</Link>
     </section>
   );
 }

@@ -12,7 +12,7 @@ import { useWallet } from "@/lib/wallet";
 const LINKS = [
   ["/home", "Discover"],
   ["/trade", "Trade"],
-  ["/copying", "Copying"],
+  ["/copying", "Copy Trading"],
   ["/portfolio", "Portfolio"],
 ] as const;
 

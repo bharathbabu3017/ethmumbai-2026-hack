@@ -134,7 +134,7 @@ export default function Copying() {
       <main className="wrap wide" style={{ paddingTop: 28, paddingBottom: 56, display: "flex", flexDirection: "column", gap: 24 }}>
         <div className="between" style={{ flexWrap: "wrap", alignItems: "center" }}>
           <div>
-            <h1 style={{ fontSize: 26 }}>Copying</h1>
+            <h1 style={{ fontSize: 26 }}>Copy Trading</h1>
             <p className="mut" style={{ margin: "4px 0 0" }}>Everyone you copy or get alerts from, in one list.</p>
           </div>
           {data && (
