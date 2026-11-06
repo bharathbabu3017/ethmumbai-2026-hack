@@ -56,7 +56,7 @@ export default function Trade() {
   const toggle = <T extends string>(options: readonly T[], value: T, set: (v: T) => void) => (
     <div className="row" style={{ flexWrap: "nowrap", gap: 8 }}>
       {options.map((o) => (
-        <button key={o} className={`btn ${o === value ? "pri" : ""}`} style={{ flex: "1 1 0", textTransform: "capitalize" }} onClick={() => { set(o); setPreview(undefined); }}>{o}</button>
+        <button key={o} className={`btn ${o === value ? "on" : ""}`} style={{ flex: "1 1 0", textTransform: "capitalize" }} onClick={() => { set(o); setPreview(undefined); }}>{o}</button>
       ))}
     </div>
   );
@@ -65,9 +65,9 @@ export default function Trade() {
   return (
     <>
       <Nav />
-      <main className="wrap" style={{ maxWidth: 560, paddingTop: 28, paddingBottom: 48 }}>
-        <h1 style={{ fontSize: 32, marginBottom: 18 }}>Trade</h1>
-        <section className="card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+      <main className="wrap" style={{ maxWidth: 480, paddingTop: 44, paddingBottom: 64 }}>
+        <h1 className="big" style={{ marginBottom: 20 }}>Trade</h1>
+        <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {toggle(["buy", "sell"] as const, side, setSide)}
           {toggle(["market", "limit"] as const, type, setType)}
           <div><label className="lab" htmlFor="token">Token symbol or Base address</label><input id="token" className="inp" value={token} onChange={(e) => { setToken(e.target.value); setPreview(undefined); }} /></div>

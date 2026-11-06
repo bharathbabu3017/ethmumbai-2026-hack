@@ -1,97 +1,49 @@
 import Link from "next/link";
 
-const flow = [
-  ["Trader publishes", "Entry, stop and target, as one real order"],
-  ["Followers get the alert", "Straight to Telegram"],
-  ["Everyone copies", "One tap, or automatically within your limits"],
-];
 const steps = [
-  ["01", "A trader calls it", "Entry, stop and target go live as one real order. No vague signals."],
-  ["02", "Your phone lights up", "The call lands in Telegram, with updates when it fills, moves, cancels or closes."],
-  ["03", "You copy, protected", "Tap once, or let auto-copy handle it within your limits. The stop and target come with it."],
-];
-const orders = [
-  ["Limit", "Enter only at your price or better."], ["Stop loss", "Cap the downside automatically."],
-  ["Take profit", "Lock in gains at your target."], ["Bracket", "Stop and target together. One fires, the other cancels."],
-  ["TWAP", "Spread a large order over time."], ["Trailing stop", "A stop that follows the price up."],
-  ["Stop buy", "Enter on a breakout."], ["Cross-chain", "Market orders between chains."],
+  ["A trader calls it", "Entry, stop and target go live as one real order."],
+  ["You get the alert", "In Telegram, with updates when it fills, moves or closes."],
+  ["You copy, protected", "One tap, or automatic within your limits."],
 ];
 
 export default function Landing() {
   return (
-    <div style={{ overflow: "hidden", fontSize: 16 }}>
-      <header className="wrap between" style={{ padding: "18px 24px", alignItems: "center", flexWrap: "wrap" }}>
-        <Link href="/" className="h" style={{ fontSize: 24, fontWeight: 700 }}>Flashmob</Link>
-        <nav className="row" style={{ gap: 22, fontWeight: 500 }}>
-          <a href="#how">How it works</a>
-          <a href="#orders">Orders</a>
-          <Link href="/home" className="btn pri">Open app</Link>
-        </nav>
+    <div className="wrap">
+      <header className="between" style={{ padding: "22px 0", alignItems: "center" }}>
+        <Link href="/" style={{ fontSize: 16, fontWeight: 600 }}>Flashmob</Link>
+        <Link href="/home" className="btn">Open app</Link>
       </header>
 
-      <section className="wrap cols" style={{ padding: "56px 24px 64px", gap: 48, alignItems: "center" }}>
-        <div style={{ flex: "999 1 520px", minWidth: 0 }}>
-          <h1 className="hero">One call.<br /><span className="up">Everyone moves.</span></h1>
-          <p style={{ margin: "24px 0 30px", fontSize: 20, lineHeight: 1.5, color: "#C9D2DC", maxWidth: 560 }}>
-            Follow traders with records built from real fills. Get their calls in Telegram, then copy in one tap with the stop and target already attached.
-          </p>
-          <div className="row">
-            <Link href="/home" className="btn pri" style={{ minHeight: 50 }}>See the traders</Link>
-            <a href="https://t.me/flashmob_trade_bot" className="btn" style={{ minHeight: 50 }}>Add the Telegram bot</a>
+      <section style={{ padding: "clamp(72px,14vh,150px) 0 clamp(72px,12vh,130px)", maxWidth: 780 }}>
+        <h1 className="hero">One call.<br /><span className="mut">Everyone moves.</span></h1>
+        <p className="mut" style={{ margin: "26px 0 34px", fontSize: 18, maxWidth: 520 }}>
+          Copy traders whose records are built from real fills, with the stop and target already attached.
+        </p>
+        <div className="row">
+          <Link href="/home" className="btn pri">See the traders</Link>
+          <a href="https://t.me/flashmob_trade_bot" className="btn">Open in Telegram</a>
+        </div>
+      </section>
+
+      <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 40, paddingBottom: 110 }}>
+        {steps.map(([title, text]) => (
+          <div key={title} style={{ borderTop: "1px solid var(--line)", paddingTop: 18 }}>
+            <h2 style={{ fontSize: 17, marginBottom: 6 }}>{title}</h2>
+            <p className="mut" style={{ margin: 0, fontSize: 15 }}>{text}</p>
           </div>
-        </div>
-        <div style={{ flex: "1 1 400px", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-          {flow.map(([title, text], i) => (
-            <div key={title} className="card hit" style={{ padding: 18, marginLeft: i * 18, animationDelay: `${0.3 + i * 0.5}s` }}>
-              <div className="h" style={{ fontSize: 22, fontWeight: 700 }}>{title}</div>
-              <div className="mut" style={{ marginTop: 4, fontSize: 14 }}>{text}</div>
-            </div>
-          ))}
-        </div>
+        ))}
       </section>
 
-      <section id="how" className="wrap" style={{ paddingTop: 72, paddingBottom: 88 }}>
-        <h2 className="big" style={{ marginBottom: 32 }}>From call to copied in one tap</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(270px,1fr))", gap: 16 }}>
-          {steps.map(([n, title, text]) => (
-            <article key={n} className="card" style={{ padding: 26 }}>
-              <div className="m up">{n}</div>
-              <h3 style={{ margin: "34px 0 10px", fontSize: 26 }}>{title}</h3>
-              <p className="mut" style={{ margin: 0, lineHeight: 1.55 }}>{text}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section style={{ background: "var(--lime)", color: "var(--bg)" }}>
-        <div className="wrap" style={{ paddingTop: 72, paddingBottom: 72 }}>
-          <h2 style={{ fontSize: "clamp(40px,6vw,76px)", lineHeight: 1, letterSpacing: -2 }}>No screenshots.<br />Just fills.</h2>
-          <p style={{ margin: "20px 0 0", fontSize: 20, lineHeight: 1.5, maxWidth: 620 }}>
-            Every call is a real onchain order, so win rate, drawdown and returns come from what actually executed. You can even see how copiers did, not only the trader.
-          </p>
-        </div>
-      </section>
-
-      <section id="orders" className="wrap" style={{ paddingTop: 88, paddingBottom: 88 }}>
-        <h2 className="big" style={{ marginBottom: 10 }}>More than a market buy</h2>
-        <p className="mut" style={{ margin: "0 0 32px", fontSize: 18 }}>Advanced orders on every EVM chain Flash supports, executed by Definitive Flash.</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }}>
-          {orders.map(([name, text]) => (
-            <div key={name} className="card" style={{ padding: 18 }}>
-              <div className="h" style={{ fontSize: 20, fontWeight: 700 }}>{name}</div>
-              <div className="mut" style={{ marginTop: 6, fontSize: 14, lineHeight: 1.45 }}>{text}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="wrap" style={{ paddingBottom: 40, textAlign: "center", borderTop: "1px solid var(--line)", paddingTop: 72 }}>
-        <h2 style={{ fontSize: "clamp(40px,6vw,72px)", letterSpacing: -2, marginBottom: 24 }}>Don&apos;t trade alone.</h2>
-        <Link href="/home" className="btn pri">Open app</Link>
-        <p className="mut" style={{ margin: "44px auto 0", fontSize: 13, lineHeight: 1.5, maxWidth: 640 }}>
-          Trading crypto carries risk, including loss of your funds. Past results don&apos;t predict future returns. Copying a trader can produce different results from theirs.
+      <section style={{ paddingBottom: 110, maxWidth: 780 }}>
+        <h2 className="big">No screenshots. Just fills.</h2>
+        <p className="mut" style={{ margin: "12px 0 0", fontSize: 16, maxWidth: 560 }}>
+          Every call is a real onchain order, executed by Definitive Flash. Limit, stop, take profit, bracket, TWAP and more.
         </p>
       </section>
+
+      <footer className="mut" style={{ borderTop: "1px solid var(--line)", padding: "22px 0 34px", fontSize: 12, maxWidth: "none" }}>
+        Trading crypto carries risk, including loss of your funds. Past results don&apos;t predict future returns, and copying a trader can produce different results.
+      </footer>
     </div>
   );
 }

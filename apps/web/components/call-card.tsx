@@ -9,18 +9,16 @@ interface Props {
 export function CallCard({ call, trader }: Props) {
   const status = STATUS[call.status] ?? { label: call.status, color: "var(--mut)" };
   return (
-    <article className="card" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-      <div className="between" style={{ alignItems: "center" }}>
-        {trader ? <Link href={`/traders/${trader.id}`}><strong>{trader.displayName}</strong></Link> : <span />}
-        <span className="tag" style={{ color: status.color }}>{status.label}{call.resultPct !== null ? ` ${pct(call.resultPct)}` : ""}</span>
+    <article style={{ padding: "14px 0", borderTop: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: 4 }}>
+      <div className="between">
+        <span style={{ fontWeight: 500 }}>Long {call.tokenSymbol}</span>
+        <span style={{ fontSize: 12, color: status.color }}>{status.label}{call.resultPct !== null ? ` ${pct(call.resultPct)}` : ""}</span>
       </div>
-      <div className="h" style={{ fontSize: 18, fontWeight: 700 }}>Long {call.tokenSymbol} on {call.chain}</div>
-      <div className="m row" style={{ fontSize: 12 }}>
-        <span className="mut">Entry <span style={{ color: "var(--text)" }}>{call.entryPrice === null ? "Market" : usd(call.entryPrice)}</span></span>
-        <span className="mut">Stop <span className="dn">{usd(call.stopPrice)}</span></span>
-        <span className="mut">Target <span className="up">{usd(call.targetPrice)}</span></span>
+      {trader && <Link href={`/traders/${trader.id}`} className="mut" style={{ fontSize: 13 }}>{trader.displayName}</Link>}
+      <div className="m mut" style={{ fontSize: 12 }}>
+        {call.entryPrice === null ? "Market" : usd(call.entryPrice)} · stop {usd(call.stopPrice)} · target {usd(call.targetPrice)}
       </div>
-      {call.note && <p className="mut" style={{ margin: 0 }}>{call.note}</p>}
+      {call.note && <p className="mut" style={{ margin: "4px 0 0", fontSize: 13 }}>{call.note}</p>}
     </article>
   );
 }

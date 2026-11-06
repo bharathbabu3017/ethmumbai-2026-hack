@@ -72,14 +72,14 @@ export default function Publish() {
   return (
     <>
       <Nav />
-      <main className="wrap" style={{ maxWidth: 620, paddingTop: 28, paddingBottom: 48 }}>
-        <h1 style={{ fontSize: 32, marginBottom: 4 }}>Publish a call</h1>
-        <p className="mut" style={{ margin: "0 0 18px" }}>Your call is a real order. It goes live for followers once you sign it.</p>
+      <main className="wrap" style={{ maxWidth: 480, paddingTop: 44, paddingBottom: 64 }}>
+        <h1 className="big" style={{ marginBottom: 6 }}>Publish a call</h1>
+        <p className="mut" style={{ margin: "0 0 24px" }}>Your call is a real order. It goes live for followers once you sign it.</p>
 
         {!address ? (
           <button className="btn pri" onClick={login}>Connect a wallet to publish</button>
         ) : !me?.trader ? (
-          <section className="card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+          <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <h2 style={{ fontSize: 18 }}>Create your trader profile</h2>
             <div><label className="lab" htmlFor="name">Display name</label><input id="name" className="inp" value={profile.displayName} onChange={(e) => setProfile({ ...profile, displayName: e.target.value })} /></div>
             <div><label className="lab" htmlFor="bio">Bio</label><input id="bio" className="inp" value={profile.bio} onChange={(e) => setProfile({ ...profile, bio: e.target.value })} /></div>
@@ -88,11 +88,11 @@ export default function Publish() {
             {status && <p role="alert" className="dn" style={{ margin: 0 }}>{status}</p>}
           </section>
         ) : (
-          <section className="card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+          <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div><label className="lab" htmlFor="token">Token symbol or Base address</label><input id="token" className="inp" {...field("token")} /></div>
             <div className="row" style={{ flexWrap: "nowrap", gap: 8 }}>
               {(["market", "limit"] as const).map((t) => (
-                <button key={t} className={`btn ${form.type === t ? "pri" : ""}`} style={{ flex: "1 1 0", textTransform: "capitalize" }} onClick={() => { setForm({ ...form, type: t }); setPreview(undefined); }}>{t}</button>
+                <button key={t} className={`btn ${form.type === t ? "on" : ""}`} style={{ flex: "1 1 0", textTransform: "capitalize" }} onClick={() => { setForm({ ...form, type: t }); setPreview(undefined); }}>{t}</button>
               ))}
             </div>
             {form.type === "limit" && <div><label className="lab" htmlFor="entry">Entry price (USD)</label><input id="entry" className="inp" inputMode="decimal" {...field("entry")} /></div>}

@@ -27,7 +27,7 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
   return (
     <>
       <Nav />
-      <main className="wrap" style={{ paddingTop: 28, paddingBottom: 48, display: "flex", flexDirection: "column", gap: 20 }}>
+      <main className="wrap" style={{ paddingTop: 44, paddingBottom: 64, display: "flex", flexDirection: "column", gap: 36 }}>
         <section className="between" style={{ alignItems: "center", flexWrap: "wrap" }}>
           <div>
             <h1 style={{ fontSize: 32 }}>{trader.displayName}</h1>
@@ -36,16 +36,16 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
           </div>
           <FollowButton traderId={id} initial={following} />
         </section>
-        <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 12 }}>
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 20 }}>
           {stats.map(([label, value]) => (
-            <div key={label} className="card" style={{ padding: "14px 16px" }}>
-              <div className="mut" style={{ fontSize: 12, fontWeight: 600 }}>{label}</div>
-              <div className="m" style={{ fontSize: 24, marginTop: 6 }}>{value}</div>
+            <div key={label}>
+              <div className="mut" style={{ fontSize: 12 }}>{label}</div>
+              <div className="m" style={{ fontSize: 22, marginTop: 4 }}>{value}</div>
             </div>
           ))}
         </section>
-        <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <h2 style={{ fontSize: 18 }}>Calls</h2>
+        <section>
+          <h2 style={{ fontSize: 18, marginBottom: 14 }}>Calls</h2>
           {calls.length === 0 && <p className="mut" style={{ margin: 0 }}>No calls yet.</p>}
           {calls.map((call) => <CallCard key={call.id} call={call} />)}
         </section>

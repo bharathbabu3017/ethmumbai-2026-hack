@@ -54,38 +54,38 @@ export default function Portfolio() {
   return (
     <>
       <Nav />
-      <main className="wrap" style={{ paddingTop: 26, paddingBottom: 48, display: "flex", flexDirection: "column", gap: 18 }}>
+      <main className="wrap" style={{ paddingTop: 44, paddingBottom: 64, display: "flex", flexDirection: "column", gap: 32 }}>
         {!address ? (
           <p className="mut">Connect a wallet to see your balances and orders.</p>
         ) : (
           <>
             <div>
-              <div className="mut" style={{ fontSize: 12, fontWeight: 600 }}>Total value</div>
+              <div className="mut" style={{ fontSize: 12 }}>Total value</div>
               <div className="m" style={{ fontSize: 36, marginTop: 4 }}>${total.toFixed(2)}</div>
             </div>
             {error && <p role="alert" className="dn" style={{ margin: 0 }}>{error}</p>}
-            <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12 }}>
+            <section>
               {balances.map((b) => (
-                <div key={b.chain + b.address + b.isNative} className="card" style={{ padding: "12px 14px" }}>
-                  <div className="between"><strong>{b.symbol}</strong><span className="mut" style={{ fontSize: 12 }}>{b.chain}</span></div>
-                  <div className="m" style={{ marginTop: 6 }}>${Number(b.notional).toFixed(2)}</div>
+                <div key={b.chain + b.address + b.isNative} className="between" style={{ padding: "12px 0", borderTop: "1px solid var(--line)" }}>
+                  <span>{b.symbol} <span className="mut" style={{ fontSize: 12 }}>{b.chain}</span></span>
+                  <span className="m">${Number(b.notional).toFixed(2)}</span>
                 </div>
               ))}
-              {!balances.length && <p className="mut">No balances yet.</p>}
+              {!balances.length && <p className="mut" style={{ margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" }}>No balances yet.</p>}
             </section>
-            <section className="card" style={{ overflow: "hidden" }}>
-              <div className="between" style={{ padding: "12px 18px", alignItems: "center" }}>
+            <section>
+              <div className="between" style={{ paddingBottom: 12, alignItems: "center" }}>
                 <h2 style={{ fontSize: 18 }}>Open orders</h2>
                 {orders.length > 0 && <button className="btn warn" onClick={cancelAll}>Cancel all</button>}
               </div>
               {orders.map((o) => (
-                <div key={o.orderId} className="between" style={{ padding: "12px 18px", borderTop: "1px solid var(--line)", alignItems: "center" }}>
+                <div key={o.orderId} className="between" style={{ padding: "12px 0", borderTop: "1px solid var(--line)", alignItems: "center" }}>
                   <span><strong>{o.side} {o.targetAsset.ticker}</strong> <span className="mut">{o.orderType}</span></span>
                   <span className="m">{o.qty}{o.limitNotionalPrice ? ` at $${o.limitNotionalPrice}` : ""}</span>
                   <button className="btn warn" onClick={() => cancel(o.orderId)}>Cancel</button>
                 </div>
               ))}
-              {!orders.length && <p className="mut" style={{ padding: "0 18px 16px", margin: 0 }}>No open orders.</p>}
+              {!orders.length && <p className="mut" style={{ margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" }}>No open orders.</p>}
             </section>
           </>
         )}

@@ -17,19 +17,19 @@ export function Nav() {
   return (
     <header className="topbar">
       <div className="wrap">
-        <div className="row" style={{ gap: 28 }}>
-          <Link href="/" className="h" style={{ fontSize: 20, fontWeight: 700 }}>Flashmob</Link>
-          <nav className="row" style={{ gap: 20, fontWeight: 500 }}>
+        <div className="row nav-left" style={{ gap: 28 }}>
+          <Link href="/" style={{ fontSize: 16, fontWeight: 600 }}>Flashmob</Link>
+          <nav className="row nav-links" style={{ gap: 20 }}>
             {LINKS.map(([href, label]) => (
-              <Link key={href} href={href} style={path === href ? { color: "var(--lime)" } : undefined}>{label}</Link>
+              <Link key={href} href={href} className={path === href ? undefined : "mut"}>{label}</Link>
             ))}
           </nav>
         </div>
         {address ? (
           <button className="btn m" onClick={logout} title="Disconnect">{address.slice(0, 6)}…{address.slice(-4)}</button>
         ) : (
-          <button className="btn pri" onClick={login} disabled={!configured || !ready}>
-            {configured ? "Connect wallet" : "Wallet login not set up"}
+          <button className="btn" onClick={login} disabled={!configured || !ready}>
+            {configured ? "Connect" : "Wallet login not set up"}
           </button>
         )}
       </div>
