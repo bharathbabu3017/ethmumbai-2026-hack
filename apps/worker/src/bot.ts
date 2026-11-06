@@ -1,8 +1,9 @@
-import { claimAction, createAction, getOrCreateTelegramAccount, getTradingWallet, linkTelegram, recordOrder, setCopyPaused, type Db } from "@flashmob/db";
-import { batchCancelMessage, buildOrder, cancelMessage, feeFields, FlashError, OPEN_STATUSES, prepareOrder, resolveBaseToken, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
+import { claimAction, createAction, getOrCreateTelegramAccount, getTradingWallet, linkTelegram, recordOrder, setCopyPaused, walletPnl, type Db } from "@flashmob/db";
+import { batchCancelMessage, buildOrder, cancelMessage, feeFields, FlashError, holdings, OPEN_STATUSES, prepareOrder, resolveBaseToken, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
 import { sequentialize } from "@grammyjs/runner";
 import { Bot, InlineKeyboard, type BotConfig, type Context } from "grammy";
 import { signerFor, type PrivyAccess } from "./signers";
+import { portfolioMessage } from "./trades";
 import { parseBracket, parseBuy, parseLimit, parseSell, parseSellAt, parseStopBuy, parseTimed, sellQty, type SellAmount } from "./parse";
 
 const CHAIN = "base";
@@ -124,7 +125,8 @@ export function createBot({ token, db, flash, searchFlash, feeBps, rpcUrl, privy
     const { wallet } = await load(ctx.from);
     const { balances } = await flash.balances(wallet.address);
     if (!balances.length) return void (await ctx.reply(`Nothing here yet. Deposit to:\n${wallet.address}`));
-    await ctx.reply(balances.map((b) => `${b.symbol} on ${b.chain}: ${b.balance} ($${Number(b.notional).toFixed(2)})`).join("\n"));
+    const { positions, realizedUsd } = await walletPnl(db, wallet.id);
+    await ctx.reply(portfolioMessage(holdings(balances, positions, realizedUsd)));
   });
 
   const riskNote = (flagged: boolean) => (flagged ? "\n\nWarning: this token is flagged as risky or isn't on our list. Check the address carefully." : "");

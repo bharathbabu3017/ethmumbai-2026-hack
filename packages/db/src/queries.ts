@@ -253,6 +253,15 @@ export const getTrade = async (db: Db, orderId: string) => {
   return row;
 };
 
+/** What a wallet paid for what it holds, and what it has made or lost on everything it sold. */
+export async function walletPnl(db: Db, walletId: string) {
+  const [held, [sold]] = await Promise.all([
+    db.select({ tokenAddress: positions.tokenAddress, qty: positions.qty, costUsd: positions.costUsd }).from(positions).where(eq(positions.walletId, walletId)),
+    db.select({ usd: sql<number>`coalesce(sum(${orders.realizedUsd}), 0)::float` }).from(orders).where(eq(orders.walletId, walletId)),
+  ]);
+  return { positions: held, realizedUsd: sold?.usd ?? 0 };
+}
+
 export const getPosition = async (db: Db, walletId: string, tokenAddress: string) => {
   const [row] = await db.select().from(positions).where(and(eq(positions.walletId, walletId), eq(positions.tokenAddress, tokenAddress)));
   return row;

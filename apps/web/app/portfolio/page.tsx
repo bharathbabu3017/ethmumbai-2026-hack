@@ -1,26 +1,36 @@
 "use client";
 
-import type { FlashBalancesResponse } from "@flashmob/flash";
+import { holdings, signedUsd, type FlashBalancesResponse, type Held } from "@flashmob/flash";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Nav } from "@/components/nav";
 import { OpenOrders } from "@/components/open-orders";
 import { OrderHistory } from "@/components/orders-panel";
 import { SellPrompts } from "@/components/sell-prompts";
 import { WalletAddress } from "@/components/wallet-address";
 import { flash } from "@/lib/flash";
+import { pct } from "@/lib/format";
+import { useLiveOrders } from "@/lib/order-stream";
 import { useWallet } from "@/lib/wallet";
+
+const pnlClass = (n: number) => (n < 0 ? "dn" : "up");
 
 export default function Portfolio() {
   const { address } = useWallet();
   const [balances, setBalances] = useState<FlashBalancesResponse["balances"]>([]);
+  const [paid, setPaid] = useState<{ positions: Held[]; realizedUsd: number }>({ positions: [], realizedUsd: 0 });
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (address) flash.balances(address).then((b) => setBalances(b.balances)).catch((e) => setError(e.message));
+  const load = useCallback(() => {
+    if (!address) return;
+    flash.balances(address).then((b) => setBalances(b.balances)).catch((e) => setError(e.message));
+    fetch("/api/portfolio").then((r) => (r.ok ? r.json() : undefined)).then((r) => r && setPaid(r)).catch(() => {});
   }, [address]);
+  useEffect(load, [load]);
+  useLiveOrders(load);
 
-  const total = balances.reduce((sum, b) => sum + Number(b.notional), 0);
+  const { rows, totalUsd, openPnlUsd, realizedUsd } = holdings(balances, paid.positions, paid.realizedUsd);
+  const stats = [["Open profit/loss", openPnlUsd], ["Realized profit/loss", realizedUsd]] as const;
   return (
     <>
       <Nav />
@@ -29,23 +39,37 @@ export default function Portfolio() {
           <p className="mut">Connect a wallet to see your balances and orders.</p>
         ) : (
           <>
-            <div>
-              <div className="mut" style={{ fontSize: 12 }}>Total value</div>
-              <div className="m" style={{ fontSize: 36, marginTop: 4 }}>${total.toFixed(2)}</div>
+            <div className="row" style={{ gap: 40, alignItems: "flex-end" }}>
+              <div>
+                <div className="stat-label">Total value</div>
+                <div className="m" style={{ fontSize: 36, marginTop: 4 }}>${totalUsd.toFixed(2)}</div>
+              </div>
+              {stats.map(([label, value]) => (
+                <div key={label}>
+                  <div className="stat-label">{label}</div>
+                  <div className={`m ${pnlClass(value)}`} style={{ fontSize: 22, marginTop: 4 }}>{signedUsd(value)}</div>
+                </div>
+              ))}
             </div>
             {error && <p role="alert" className="dn" style={{ margin: 0 }}>{error}</p>}
             <SellPrompts />
             <div className="cols">
               <div className="main" style={{ display: "flex", flexDirection: "column", gap: 32 }}>
                 <section>
-                  <h2 style={{ fontSize: 18, paddingBottom: 12 }}>Balances</h2>
-                  {balances.map((b) => (
-                    <div key={b.chain + b.address + b.isNative} className="between" style={{ padding: "12px 0", borderTop: "1px solid var(--line)" }}>
-                      <span>{b.symbol} <span className="mut" style={{ fontSize: 12 }}>{b.chain}</span></span>
-                      <span className="m">${Number(b.notional).toFixed(2)}</span>
+                  <h2 style={{ fontSize: 18, paddingBottom: 12 }}>Assets</h2>
+                  {rows.map((r) => (
+                    <div key={r.key} className="between" style={{ padding: "12px 0", borderTop: "1px solid var(--line)", alignItems: "center" }}>
+                      <span>
+                        {r.symbol} <span className="mut" style={{ fontSize: 12 }}>{r.chain}</span>
+                        <span className="m mut" style={{ display: "block", fontSize: 12 }}>{r.qty.toPrecision(4)}</span>
+                      </span>
+                      <span style={{ textAlign: "right" }}>
+                        <span className="m" style={{ display: "block" }}>${r.valueUsd.toFixed(2)}</span>
+                        {r.pnlUsd !== null && <span className={`m ${pnlClass(r.pnlUsd)}`} style={{ fontSize: 12 }}>{signedUsd(r.pnlUsd)} ({pct(r.pnlPercent!)})</span>}
+                      </span>
                     </div>
                   ))}
-                  {!balances.length && <p className="mut" style={{ margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" }}>No balances yet.</p>}
+                  {!rows.length && <p className="mut" style={{ margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" }}>No assets yet.</p>}
                 </section>
                 <OpenOrders title="Pending orders" />
                 <section>

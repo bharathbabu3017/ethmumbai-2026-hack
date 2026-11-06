@@ -1,5 +1,5 @@
 import type { OrderFields } from "@flashmob/db";
-import { OPEN_STATUSES as OPEN_ORDER_STATUSES, USDC_BASE } from "@flashmob/flash";
+import { OPEN_STATUSES as OPEN_ORDER_STATUSES, signedUsd, USDC_BASE, type holdings } from "@flashmob/flash";
 
 export const OPEN_STATUSES = new Set(OPEN_ORDER_STATUSES);
 
@@ -152,4 +152,10 @@ export function ownOrderAlert(o: OrderFrame, t?: TradeRow) {
   }
   const why = o.closeReason ? REASONS[o.closeReason] ?? o.closeReason : undefined;
   return `⚠️ Your ${o.orderType} ${o.side} of ${token} closed without filling${why ? `\nReason: ${why}` : ""}`;
+}
+
+/** The /balance reply: what's held, what it's worth, and how it's doing. */
+export function portfolioMessage(p: ReturnType<typeof holdings>) {
+  const assets = p.rows.map((r) => `${r.symbol} $${r.valueUsd.toFixed(2)}${r.pnlUsd === null ? "" : ` (${signedUsd(r.pnlUsd)}, ${r.pnlPercent! >= 0 ? "+" : ""}${r.pnlPercent!.toFixed(1)}%)`}`);
+  return [`💼 Portfolio: $${p.totalUsd.toFixed(2)}`, "", ...assets, "", `Open profit/loss: ${signedUsd(p.openPnlUsd)}`, `Realized profit/loss: ${signedUsd(p.realizedUsd)}`].join("\n");
 }

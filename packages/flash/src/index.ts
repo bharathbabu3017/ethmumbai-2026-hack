@@ -2,6 +2,7 @@ export * from "./build";
 export * from "./client";
 export * from "./copy";
 export * from "./execute";
+export * from "./holdings";
 export * from "./messages";
 export * from "./mirror";
 export * from "./tokens";
