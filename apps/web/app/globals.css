@@ -98,3 +98,10 @@ select.inp{font-family:var(--font-inter),sans-serif;appearance:auto}
 .table .head{font-size:12px;color:var(--mut)}
 .drawer-back{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.55)}
 .drawer{position:fixed;top:0;right:0;bottom:0;z-index:41;width:min(440px,100%);padding:20px;background:var(--panel);border-left:1px solid var(--line2);overflow-y:auto;display:flex;flex-direction:column;gap:14px}
+.seg{display:flex;gap:4px;padding:4px;background:var(--bg);border-radius:8px}
+.seg button{all:unset;flex:1 1 0;text-align:center;min-height:40px;line-height:40px;border-radius:6px;color:var(--mut);font-weight:600;cursor:pointer;text-transform:capitalize}
+.seg button.on{background:var(--lime);color:var(--on-lime)}
+.seg button:focus-visible{outline:2px solid var(--line2);outline-offset:2px}
+.market-bar{border-bottom:1px solid var(--line)}
+.market-bar>div{padding-top:10px;padding-bottom:10px;display:flex;flex-wrap:wrap;gap:12px 32px;align-items:center}
+#token::placeholder{color:var(--text);font-weight:600}

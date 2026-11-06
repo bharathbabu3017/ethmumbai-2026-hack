@@ -10,6 +10,8 @@ export interface Held {
 
 export interface Holding {
   key: string;
+  address: string;
+  balance: string;
   symbol: string;
   chain: string;
   qty: number;
@@ -32,7 +34,7 @@ export function holdings(balances: Balance[], positions: Held[], realizedUsd: nu
       const valueUsd = Number(b.notional);
       const held = b.chain === "base" && !b.isNative ? positions.find((p) => p.tokenAddress.toLowerCase() === b.address.toLowerCase()) : undefined;
       const tracked = held && held.qty > 0 ? Math.min(held.qty, qty) : 0;
-      const row = { key: b.chain + b.address + b.isNative, symbol: b.symbol, chain: b.chain, qty, valueUsd };
+      const row = { key: b.chain + b.address + b.isNative, address: b.address, balance: b.balance, symbol: b.symbol, chain: b.chain, qty, valueUsd };
       if (!held || !tracked || !held.costUsd) return { ...row, pnlUsd: null, pnlPercent: null };
       const cost = held.costUsd * (tracked / held.qty);
       const pnlUsd = valueUsd * (tracked / qty) - cost;

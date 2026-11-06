@@ -262,6 +262,18 @@ export async function walletPnl(db: Db, walletId: string) {
   return { positions: held, realizedUsd: sold?.usd ?? 0 };
 }
 
+/** The latest public buy of a token by each trader. */
+export async function tokenTraders(db: Db, tokenAddress: string) {
+  const rows = await db
+    .select({ orderId: orders.id, traderId: traders.id, displayName: traders.displayName, filledUsd: orders.filledUsd, filledQty: orders.filledQty, placedAt: orders.placedAt })
+    .from(orders)
+    .innerJoin(traders, eq(orders.userId, traders.userId))
+    .where(and(eq(orders.isPublic, true), eq(orders.side, "buy"), gt(orders.filledUsd, 0), sql`lower(${orders.tokenAddress}) = ${tokenAddress.toLowerCase()}`))
+    .orderBy(desc(orders.placedAt))
+    .limit(20);
+  return [...new Map(rows.reverse().map((r) => [r.traderId, r])).values()].reverse().slice(0, 5);
+}
+
 export const getPosition = async (db: Db, walletId: string, tokenAddress: string) => {
   const [row] = await db.select().from(positions).where(and(eq(positions.walletId, walletId), eq(positions.tokenAddress, tokenAddress)));
   return row;

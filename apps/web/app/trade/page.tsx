@@ -2,20 +2,32 @@
 
 import {
   BASE_TOKENS, buildOrder, ORDER_TYPES, prepareOrder, USDC_BY_CHAIN,
-  type FlashBalancesResponse, type OrderRequest, type OrderStep, type OrderTypeName, type PayChain, type QuoteResponse, type Side,
+  type FlashBalancesResponse, type Holding, type OrderRequest, type OrderStep, type OrderTypeName, type PayChain, type QuoteResponse, type Side,
 } from "@flashmob/flash";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
+import { Avatar } from "@/components/avatar";
 import { Nav } from "@/components/nav";
 import { OrderProgress } from "@/components/order-progress";
 import { OrdersPanel, type OrdersTab } from "@/components/orders-panel";
 import { PriceChart } from "@/components/price-chart";
 import { TokenPicker, type PickedToken } from "@/components/token-picker";
 import { flash } from "@/lib/flash";
-import { plainError } from "@/lib/format";
+import { pct, plainError, usd } from "@/lib/format";
+import type { TokenStats } from "@/lib/token-stats";
 import { useWallet } from "@/lib/wallet";
 
 const QUOTE_REFRESH_MS = 15_000;
+const STATS_REFRESH_MS = 30_000;
+const compactUsd = (n: number) => `$${Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n)}`;
+
+interface TokenTrader {
+  traderId: string;
+  displayName: string;
+  filledUsd: number;
+  filledQty: number;
+}
 const CHAIN_NAMES: Record<PayChain, string> = { base: "Base", ethereum: "Ethereum", arbitrum: "Arbitrum", optimism: "Optimism", polygon: "Polygon" };
 const EMPTY = { qty: "", price: "", trigger: "", stop: "", target: "", bracketStop: "", bracketTarget: "", bracketStopLimit: "", bracketTargetLimit: "", startInMinutes: "", durationMinutes: "60", slices: "", trailPercent: "5", activationPrice: "", expiryDays: "", maxImpactPercent: "" };
 type Fields = typeof EMPTY;
@@ -54,11 +66,28 @@ function Trade() {
   const [step, setStep] = useState<OrderStep>();
   const [tracked, setTracked] = useState<{ orderId: string; market: boolean; side: Side; symbol: string }>();
   const [focus, setFocus] = useState<OrdersTab>();
+  const [stats, setStats] = useState<TokenStats | null>(null);
+  const [traders, setTraders] = useState<TokenTrader[]>([]);
 
   const loadBalances = useCallback(() => {
     if (address) flash.balances(address).then((b) => setBalances(b.balances)).catch(() => {});
   }, [address]);
   useEffect(loadBalances, [loadBalances, placed]);
+
+  useEffect(() => {
+    let stale = false;
+    const load = () => fetch(`/api/token/${token.address}`).then((r) => r.json()).then((r) => {
+      if (stale) return;
+      setStats(r.stats);
+      setTraders(r.traders ?? []);
+    }).catch(() => {});
+    void load();
+    const timer = setInterval(load, STATS_REFRESH_MS);
+    return () => {
+      stale = true;
+      clearInterval(timer);
+    };
+  }, [token.address]);
 
   const change = () => {
     setPreview(undefined);
@@ -130,6 +159,24 @@ function Trade() {
     setPlaced((n) => n + 1);
   });
 
+  const sellAll = (h: Holding) => {
+    setToken({ symbol: h.symbol, address: h.address, riskFlagged: false });
+    setSide("sell");
+    setType("market");
+    setPayChain("base");
+    setF({ ...EMPTY, qty: h.balance });
+    change();
+  };
+
+  const held = balances.find((b) => b.chain === "base" && b.address.toLowerCase() === token.address.toLowerCase());
+  const change24h = stats?.change24h ?? null;
+  const barStats: [string, string, string][] = [
+    ["24h change", change24h === null ? "-" : pct(change24h), change24h === null ? "" : change24h < 0 ? "dn" : "up"],
+    ["24h volume", stats?.volume24h ? compactUsd(stats.volume24h) : "-", ""],
+    ["Liquidity", stats?.liquidity ? compactUsd(stats.liquidity) : "-", ""],
+    ["You hold", `$${Number(held?.notional ?? 0).toFixed(2)}`, ""],
+  ];
+
   const stepLabel = step === "approving" ? `Approve ${spendSymbol} in your wallet` : step === "signing" ? "Sign in your wallet" : step === "submitting" ? "Placing your order" : "Check your wallet";
   const actionLabel = type === "market" ? `${side === "buy" ? "Buy" : "Sell"} ${token.symbol}` : `Place ${ORDER_TYPES[type].label.toLowerCase()} order`;
 
@@ -140,10 +187,21 @@ function Trade() {
   return (
     <>
       <Nav />
-      <main className="wrap cols" style={{ paddingTop: 36, paddingBottom: 64 }}>
-        <section className="main" style={{ display: "flex", flexDirection: "column", gap: 36 }}>
-          <div>
-            <h1 className="big" style={{ marginBottom: 16 }}>{token.symbol}</h1>
+      <section className="market-bar" aria-label="Market">
+        <div className="wrap wide">
+          <div style={{ width: 220 }}><TokenPicker value={token} onChange={(t) => { setToken(t); change(); }} /></div>
+          <h1 className="m" style={{ fontSize: 24, fontWeight: 500 }}>{stats ? usd(stats.price) : "-"}</h1>
+          {barStats.map(([label, value, tone]) => (
+            <div key={label}>
+              <div className="stat-label">{label}</div>
+              <div className={`m ${tone}`}>{value}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+      <main className="wrap wide cols" style={{ paddingTop: 16, paddingBottom: 48, gap: 16 }}>
+        <section className="main" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="panel" style={{ padding: 12 }}>
             <PriceChart key={token.address} token={token.address} height={420} levels={[
               { label: "Limit", price: Number(f.price) || null, tone: "entry" },
               { label: "Trigger", price: needsTrigger ? Number(f.trigger) || null : null, tone: "entry" },
@@ -151,17 +209,16 @@ function Trade() {
               { label: "Target", price: Number(type === "bracket" ? f.bracketTarget : attachable ? f.target : 0) || null, tone: "target" },
             ]} />
           </div>
-          <OrdersPanel reloadKey={placed} focus={focus} />
+          <div className="panel"><OrdersPanel reloadKey={placed} focus={focus} onSell={sellAll} /></div>
         </section>
 
-        <section className="side" style={{ gap: 14 }}>
-          <div className="row" style={{ flexWrap: "nowrap", gap: 8 }}>
+        <aside className="side" style={{ gap: 16 }}>
+        <section className="panel" aria-label="Order" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div className="seg">
             {(["buy", "sell"] as const).map((s) => (
-              <button key={s} className={`btn ${s === side ? "on" : ""}`} style={{ flex: "1 1 0", textTransform: "capitalize" }} onClick={() => pickSide(s)}>{s}</button>
+              <button key={s} className={s === side ? "on" : ""} onClick={() => pickSide(s)}>{s}</button>
             ))}
           </div>
-
-          <TokenPicker value={token} onChange={(t) => { setToken(t); change(); }} />
 
           <div>
             <label className="lab" htmlFor="type">Order type</label>
@@ -299,6 +356,21 @@ function Trade() {
             />
           )}
         </section>
+        {traders.length > 0 && (
+          <section className="panel" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <h2 style={{ fontSize: 15 }}>Traders on {token.symbol}</h2>
+            {traders.map((t) => (
+              <div key={t.traderId} className="between" style={{ alignItems: "center" }}>
+                <Link href={`/traders/${t.traderId}`} className="row" style={{ gap: 10, flexWrap: "nowrap", minWidth: 0 }}>
+                  <Avatar name={t.displayName} size={32} />
+                  <span><span style={{ display: "block", fontWeight: 500 }}>{t.displayName}</span><span className="mut" style={{ fontSize: 12 }}>Bought ${t.filledUsd.toFixed(2)} at {usd(t.filledUsd / t.filledQty)}</span></span>
+                </Link>
+                <Link href={`/traders/${t.traderId}`} className="btn">View</Link>
+              </div>
+            ))}
+          </section>
+        )}
+        </aside>
       </main>
     </>
   );

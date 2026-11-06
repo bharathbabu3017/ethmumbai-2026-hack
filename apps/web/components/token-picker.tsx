@@ -66,7 +66,7 @@ export function TokenPicker({ value, onChange }: { value: PickedToken; onChange(
 
   return (
     <div ref={box} style={{ position: "relative" }}>
-      <label className="lab" htmlFor="token">Token on Base</label>
+      <label className="lab" htmlFor="token">Token on Base (type to search)</label>
       <input
         id="token"
         className="inp"

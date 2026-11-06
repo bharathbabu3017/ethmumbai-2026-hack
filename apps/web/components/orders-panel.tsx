@@ -1,10 +1,10 @@
 "use client";
 
-import { OPEN_STATUSES, type FlashBalancesResponse, type FlashOrder } from "@flashmob/flash";
+import { holdings, OPEN_STATUSES, signedUsd, type FlashOrder, type Holding } from "@flashmob/flash";
 import { useCallback, useEffect, useState } from "react";
 import { OpenOrders } from "@/components/open-orders";
 import { flash } from "@/lib/flash";
-import { tradeStatus, usd } from "@/lib/format";
+import { pct, tradeStatus, usd } from "@/lib/format";
 import { useLiveOrders } from "@/lib/order-stream";
 import { useWallet } from "@/lib/wallet";
 
@@ -49,30 +49,43 @@ export function OrderHistory({ reloadKey = 0 }: { reloadKey?: number }) {
   });
 }
 
-function Balances({ reloadKey }: { reloadKey: number }) {
+function Positions({ reloadKey, onSell }: { reloadKey: number; onSell?(holding: Holding): void }) {
   const { address } = useWallet();
-  const [balances, setBalances] = useState<FlashBalancesResponse["balances"]>();
-  useEffect(() => {
-    if (address) flash.balances(address).then((r) => setBalances(r.balances)).catch(() => setBalances([]));
-  }, [address, reloadKey]);
+  const [rows, setRows] = useState<Holding[]>();
+  const load = useCallback(async () => {
+    if (!address) return;
+    const [{ balances }, paid] = await Promise.all([
+      flash.balances(address),
+      fetch("/api/portfolio").then((r) => (r.ok ? r.json() : { positions: [], realizedUsd: 0 })),
+    ]);
+    setRows(holdings(balances, paid.positions, paid.realizedUsd).rows.filter((r) => r.chain === "base" && r.pnlUsd !== null));
+  }, [address]);
+  useEffect(() => void load().catch(() => setRows([])), [load, reloadKey]);
+  useLiveOrders(() => void load().catch(() => {}));
 
-  if (!balances) return <p className="mut" style={empty}>Loading…</p>;
-  if (!balances.length) return <p className="mut" style={empty}>No balances yet. Send USDC to your wallet on Base to start.</p>;
-  return balances.map((b) => (
-    <div key={b.chain + b.address + b.isNative} className="between" style={{ padding: "12px 0", borderTop: "1px solid var(--line)" }}>
-      <span>{b.symbol} <span className="mut" style={{ fontSize: 12 }}>{b.chain}</span></span>
-      <span className="m">{Number(b.balance).toPrecision(5)} <span className="mut">${Number(b.notional).toFixed(2)}</span></span>
+  if (!rows) return <p className="mut" style={empty}>Loading…</p>;
+  if (!rows.length) return <p className="mut" style={empty}>Tokens you buy here appear with their profit or loss.</p>;
+  return rows.map((r) => (
+    <div key={r.key} className="between" style={{ padding: "10px 0", borderTop: "1px solid var(--line)", alignItems: "center" }}>
+      <span><span style={{ fontWeight: 500 }}>{r.symbol}</span> <span className="m mut" style={{ fontSize: 12 }}>{r.qty.toPrecision(4)}</span></span>
+      <span className="row" style={{ gap: 16 }}>
+        <span style={{ textAlign: "right" }}>
+          <span className="m" style={{ display: "block" }}>${r.valueUsd.toFixed(2)}</span>
+          <span className={`m ${r.pnlUsd! < 0 ? "dn" : "up"}`} style={{ fontSize: 12 }}>{signedUsd(r.pnlUsd!)} ({pct(r.pnlPercent!)})</span>
+        </span>
+        {onSell && <button className="btn" onClick={() => onSell(r)}>Sell</button>}
+      </span>
     </div>
   ));
 }
 
-const TABS = ["Pending orders", "Order history", "Balances"] as const;
+const TABS = ["Positions", "Pending orders", "Order history"] as const;
 
 export type OrdersTab = (typeof TABS)[number];
 
-export function OrdersPanel({ reloadKey, focus }: { reloadKey: number; focus?: OrdersTab }) {
+export function OrdersPanel({ reloadKey, focus, onSell }: { reloadKey: number; focus?: OrdersTab; onSell?(holding: Holding): void }) {
   const { address } = useWallet();
-  const [tab, setTab] = useState<(typeof TABS)[number]>("Pending orders");
+  const [tab, setTab] = useState<(typeof TABS)[number]>("Positions");
   const [pending, setPending] = useState(0);
   useEffect(() => {
     if (focus) setTab(focus);
@@ -94,7 +107,7 @@ export function OrdersPanel({ reloadKey, focus }: { reloadKey: number; focus?: O
           {/* Stays mounted so the pending count is right on every tab. */}
           <div hidden={tab !== "Pending orders"}><OpenOrders reloadKey={reloadKey} onCount={setPending} /></div>
           {tab === "Order history" && <OrderHistory reloadKey={reloadKey} />}
-          {tab === "Balances" && <Balances reloadKey={reloadKey} />}
+          {tab === "Positions" && <Positions reloadKey={reloadKey} onSell={onSell} />}
         </>
       )}
     </section>
