@@ -4,6 +4,7 @@ import { bigint, boolean, doublePrecision, index, jsonb, pgEnum, pgTable, primar
 export const walletType = pgEnum("wallet_type", ["bot", "external"]);
 export const orderSource = pgEnum("order_source", ["manual", "copy"]);
 export const actionStatus = pgEnum("action_status", ["pending", "used"]);
+export const jobStatus = pgEnum("job_status", ["queued", "running", "done", "failed"]);
 export const copyStatus = pgEnum("copy_status", ["pending", "placed"]);
 
 export const users = pgTable("users", {
@@ -124,4 +125,21 @@ export const copies = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("one_copy_per_wallet").on(t.sourceOrderId, t.walletId)],
+);
+
+// Actions on a Telegram wallet requested from the Mini App. Only the worker holds the keys, so it runs these.
+export const walletJobs = pgTable(
+  "wallet_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    walletId: uuid("wallet_id").notNull().references(() => wallets.id),
+    kind: text("kind").notNull(),
+    payload: jsonb("payload").notNull(),
+    status: jobStatus("status").notNull().default("queued"),
+    result: jsonb("result"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("wallet_jobs_status").on(t.status, t.createdAt)],
 );

@@ -1,6 +1,6 @@
 "use client";
 
-import { buildOrder, prepareOrder, submitPrepared, USDC_BASE, type OrderRequest, type QuoteResponse, type TradeForm } from "@flashmob/flash";
+import { buildOrder, prepareOrder, USDC_BASE, type OrderRequest, type QuoteResponse, type TradeForm } from "@flashmob/flash";
 import Link from "next/link";
 import { useState } from "react";
 import { ensureSession, postJson } from "@/lib/account";
@@ -13,7 +13,7 @@ const PRESETS = ["25", "50", "100", "250"];
 type Preview = { request: OrderRequest; quote: QuoteResponse; price: number };
 
 export function CopyPanel({ trade }: { trade: CopyableTrade & { id: string; tokenSymbol: string; tokenAddress: string } }) {
-  const { address, login, getSigner } = useWallet();
+  const { address, login, getSigner, actions, miniApp } = useWallet();
   const [amount, setAmount] = useState("25");
   const [stop, setStop] = useState(trade.stopPrice === null ? "" : String(trade.stopPrice));
   const [target, setTarget] = useState(trade.targetPrice === null ? "" : String(trade.targetPrice));
@@ -61,12 +61,12 @@ export function CopyPanel({ trade }: { trade: CopyableTrade & { id: string; toke
     const { copyId } = await postJson<{ copyId: string }>(`/api/trades/${trade.id}/copies`, { amountUsd: amount, ...levels });
     let orderId: string;
     try {
-      ({ orderId } = await submitPrepared(flash, await getSigner(), preview.request, preview.quote));
+      ({ orderId } = await actions.place(preview.request, preview.quote));
     } catch (e) {
       // Only a declined signature is certain to have placed nothing. Otherwise the reservation stays and blocks a duplicate.
-      const declined = e instanceof Error && /reject|denied|cancel/i.test(e.message);
+      const declined = e instanceof Error && /reject|denied|cancel|nothing was placed/i.test(e.message);
       if (declined) await fetch(`/api/copies/${copyId}`, { method: "DELETE" });
-      throw new Error(declined ? "You declined in your wallet. Nothing was placed." : "We couldn't confirm the order. Check Portfolio before trying again.");
+      throw new Error(declined ? (miniApp ? (e as Error).message : "You declined in your wallet. Nothing was placed.") : "We couldn't confirm the order. Check Portfolio before trying again.");
     }
     await postJson(`/api/copies/${copyId}/confirm`, { orderId }).catch(() => {
       throw new Error(`Your order was placed (${orderId}), but we couldn't record the copy yet. Don't copy again. Check Portfolio.`);
@@ -111,14 +111,14 @@ export function CopyPanel({ trade }: { trade: CopyableTrade & { id: string; toke
           <div className="between"><span className="mut">You get about</span><span className="m">{Number(preview.quote.to.amount).toFixed(6)} {trade.tokenSymbol}</span></div>
           <div className="between"><span className="mut">Estimated fees</span><span className="m">${preview.quote.fees.estimatedFeeNotional}</span></div>
           {preview.quote.recommendedSlippage && <div className="between"><span className="mut">Max slippage</span><span className="m">{(Number(preview.quote.recommendedSlippage) * 100).toFixed(1)}%</span></div>}
-          <p className="mut" style={{ margin: "6px 0 0", fontSize: 13 }}>This spends real funds. Your wallet may ask you to approve tokens and sign more than once. Keep the tokens in your wallet so any stop and target can execute.</p>
+          <p className="mut" style={{ margin: "6px 0 0", fontSize: 13 }}>This spends real funds. {miniApp ? "" : "Your wallet may ask you to approve tokens and sign more than once. "}Keep the tokens in your wallet so any stop and target can execute.</p>
         </div>
       )}
 
       {!address
         ? <button className="btn pri" onClick={login}>Connect a wallet to copy</button>
         : preview
-          ? <button className="btn pri" disabled={busy} onClick={confirm}>{busy ? "Check your wallet" : "Confirm in wallet"}</button>
+          ? <button className="btn pri" disabled={busy} onClick={confirm}>{busy ? (miniApp ? "Placing order" : "Check your wallet") : miniApp ? "Confirm copy" : "Confirm in wallet"}</button>
           : <button className="btn pri" disabled={busy} onClick={review}>{busy ? "Getting quote" : "Review copy"}</button>}
       {error && <p role="alert" className="dn" style={{ margin: 0 }}>{error}</p>}
     </div>

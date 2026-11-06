@@ -12,5 +12,5 @@ export async function GET() {
     listFollowing(db(), session.userId),
     listUserCopies(db(), session.userId),
   ]);
-  return NextResponse.json({ address: session.address, trader: trader ?? null, telegramLinked: !!user?.telegramId, following, copies });
+  return NextResponse.json({ address: session.address, walletType: session.walletType, trader: trader ?? null, telegramLinked: !!user?.telegramId, following, copies });
 }

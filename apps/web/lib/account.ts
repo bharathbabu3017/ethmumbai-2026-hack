@@ -1,10 +1,11 @@
 "use client";
 
 import { loginMessage } from "./login";
-import type { BrowserSigner } from "./wallet";
+
 
 export interface Me {
   address: string | null;
+  walletType?: "bot" | "external";
   trader?: { id: string; displayName: string } | null;
   telegramLinked?: boolean;
   following?: { id: string; displayName: string }[];
@@ -21,7 +22,7 @@ export async function postJson<T>(url: string, body: unknown = {}): Promise<T> {
 }
 
 /** Asks the wallet for a free sign-in signature, unless this wallet already has a session. */
-export async function ensureSession(getSigner: (chain?: string) => Promise<BrowserSigner>) {
+export async function ensureSession(getSigner: () => Promise<{ address: string; signMessage(message: string): Promise<string> }>) {
   const signer = await getSigner();
   const me = await fetchMe();
   if (me.address?.toLowerCase() === signer.address.toLowerCase()) return me;

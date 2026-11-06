@@ -5,7 +5,7 @@ import { OPEN_STATUSES, orderFields, ownOrderAlert, tradeAlert, type Levels, typ
 const WS_URL = "wss://flash.definitive.fi/v1/ws";
 const HEARTBEAT_TIMEOUT_MS = 10_000;
 
-export type Send = (chatId: number, text: string) => Promise<void>;
+export type Send = (chatId: number, text: string, copyOrderId?: string) => Promise<void>;
 
 // The stream leaves out an attached pair's prices, so they are read once from the order itself.
 async function attachedLevels(flash: FlashClient, o: OrderFrame): Promise<Levels | undefined> {
@@ -14,6 +14,8 @@ async function attachedLevels(flash: FlashClient, o: OrderFrame): Promise<Levels
   const value = (leg?: { notionalPrice?: string; crossPrice?: string } | null) => Number(leg?.notionalPrice ?? leg?.crossPrice) || null;
   return { stop: value(pair.stopLoss), target: value(pair.takeProfit) };
 }
+
+const OPEN_OR_FILLED = (status: string) => OPEN_STATUSES.has(status) || status === "ORDER_STATUS_FILLED";
 
 export async function handleOrder(db: Db, flash: FlashClient, send: Send, o: OrderFrame, live: boolean) {
   const wallet = await findWallet(db, o.funderAddress);
@@ -33,7 +35,8 @@ export async function handleOrder(db: Db, flash: FlashClient, send: Send, o: Ord
   if (!trader || !order.isPublic) return;
   const text = tradeAlert(trader.displayName, order, { isNew: !seenBefore, statusChanged });
   if (!text) return;
-  for (const chatId of await alertRecipients(db, trader.id)) await send(chatId, text);
+  const copyable = order.side === "buy" && OPEN_OR_FILLED(o.status);
+  for (const chatId of await alertRecipients(db, trader.id)) await send(chatId, text, copyable ? order.id : undefined);
 }
 
 export function startListener(db: Db, flash: FlashClient, send: Send, apiKey: string) {

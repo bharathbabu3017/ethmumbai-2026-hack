@@ -1,6 +1,6 @@
 "use client";
 
-import { batchCancelMessage, buildUpdate, cancelMessage, editableFields, type FlashOrder } from "@flashmob/flash";
+import { editableFields, type FlashOrder } from "@flashmob/flash";
 import { useCallback, useEffect, useState } from "react";
 import { OPEN_STATUSES } from "@/lib/copy";
 import { flash } from "@/lib/flash";
@@ -22,7 +22,7 @@ function describe(o: FlashOrder) {
 }
 
 export function OpenOrders({ reloadKey = 0, title, onCount }: { reloadKey?: number; title?: string; onCount?(count: number): void }) {
-  const { address, getSigner } = useWallet();
+  const { address, actions } = useWallet();
   const [orders, setOrders] = useState<FlashOrder[]>([]);
   const [editing, setEditing] = useState<string>();
   const [values, setValues] = useState<Record<string, string>>({});
@@ -53,18 +53,8 @@ export function OpenOrders({ reloadKey = 0, title, onCount }: { reloadKey?: numb
     }
   };
 
-  const cancel = (id: string) => run(async () => {
-    const signer = await getSigner();
-    const message = cancelMessage(id);
-    await flash.cancelOrder(id, { cancelMessage: message, userSignature: await signer.signMessage(message) });
-  });
-
-  const cancelAll = () => run(async () => {
-    const signer = await getSigner();
-    const orderIds = orders.slice(0, 25).map((o) => o.orderId);
-    const message = batchCancelMessage(orderIds);
-    await flash.cancelOrders({ orderIds, cancelMessage: message, userSignature: await signer.signMessage(message) });
-  });
+  const cancel = (id: string) => run(() => actions.cancel(id));
+  const cancelAll = () => run(() => actions.cancelMany(orders.slice(0, 25).map((o) => o.orderId)));
 
   const startEdit = (o: FlashOrder) => {
     setEditing(o.orderId);
@@ -72,9 +62,7 @@ export function OpenOrders({ reloadKey = 0, title, onCount }: { reloadKey?: numb
   };
 
   const saveEdit = (o: FlashOrder) => run(async () => {
-    const signer = await getSigner();
-    const { message, body } = buildUpdate(o.orderId, o, values, new Date().toISOString());
-    await flash.updateOrder(o.orderId, { ...body, updateMessage: message, userSignature: await signer.signMessage(message) });
+    await actions.update(o.orderId, o, values);
     setEditing(undefined);
   });
 

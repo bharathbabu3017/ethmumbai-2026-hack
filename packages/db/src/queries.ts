@@ -2,7 +2,7 @@ import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm"
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
 import { applyFill } from "./position";
-import { copies, follows, linkTokens, orders, pendingActions, positions, traders, users, wallets } from "./schema";
+import { copies, follows, linkTokens, orders, pendingActions, positions, traders, users, wallets, walletJobs } from "./schema";
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -116,6 +116,7 @@ export async function linkTelegram(db: Db, token: string, telegramUserId: string
     await tx.update(orders).set({ userId: telegramUserId }).where(eq(orders.userId, from));
     await tx.update(traders).set({ userId: telegramUserId }).where(eq(traders.userId, from));
     await tx.update(copies).set({ userId: telegramUserId }).where(eq(copies.userId, from));
+    await tx.update(walletJobs).set({ userId: telegramUserId }).where(eq(walletJobs.userId, from));
     const moved = await tx.select().from(follows).where(eq(follows.followerId, from));
     await tx.delete(follows).where(eq(follows.followerId, from));
     if (moved.length) {
@@ -355,3 +356,44 @@ export const findWalletById = async (db: Db, id: string) => {
   const [wallet] = await db.select().from(wallets).where(eq(wallets.id, id));
   return wallet;
 };
+
+export const getUserByTelegram = async (db: Db, telegramId: number) => {
+  const [user] = await db.select().from(users).where(eq(users.telegramId, telegramId));
+  return user;
+};
+
+export async function enqueueJob(db: Db, values: { userId: string; walletId: string; kind: string; payload: unknown }) {
+  const [job] = await db.insert(walletJobs).values(values).returning({ id: walletJobs.id });
+  return job!.id;
+}
+
+export const getJob = async (db: Db, id: string, userId: string) => {
+  const [job] = await db.select().from(walletJobs).where(and(eq(walletJobs.id, id), eq(walletJobs.userId, userId)));
+  return job;
+};
+
+const JOB_MAX_AGE_SECONDS = 60;
+
+/** Takes queued jobs for one worker. Each job is only ever claimed once, and an old one is never run late. */
+export async function claimJobs(db: Db, limit = 10) {
+  await db
+    .update(walletJobs)
+    .set({ status: "failed", error: "This request timed out. Nothing was placed." })
+    .where(and(eq(walletJobs.status, "queued"), sql`${walletJobs.createdAt} < now() - make_interval(secs => ${JOB_MAX_AGE_SECONDS})`));
+  return db
+    .update(walletJobs)
+    .set({ status: "running" })
+    .where(
+      inArray(
+        walletJobs.id,
+        db.select({ id: walletJobs.id }).from(walletJobs).where(eq(walletJobs.status, "queued")).orderBy(walletJobs.createdAt).limit(limit).for("update", { skipLocked: true }),
+      ),
+    )
+    .returning();
+}
+
+export const finishJob = (db: Db, id: string, outcome: { result: unknown } | { error: string }) =>
+  db
+    .update(walletJobs)
+    .set("error" in outcome ? { status: "failed", error: outcome.error } : { status: "done", result: outcome.result })
+    .where(eq(walletJobs.id, id));

@@ -13,7 +13,7 @@ const LINKS = [
 
 export function Nav() {
   const path = usePathname();
-  const { configured, ready, address, login, logout } = useWallet();
+  const { configured, ready, address, miniApp, login, logout } = useWallet();
   return (
     <header className="topbar">
       <div className="wrap">
@@ -28,7 +28,7 @@ export function Nav() {
         <div className="row" style={{ gap: 8 }}>
           <ThemeToggle />
           {address ? (
-            <button className="btn m" onClick={logout} title="Disconnect">{address.slice(0, 6)}…{address.slice(-4)}</button>
+            <button className="btn m" onClick={logout} title={miniApp ? "Your Telegram wallet" : "Disconnect"}>{address.slice(0, 6)}…{address.slice(-4)}</button>
           ) : (
             <button className="btn" onClick={login} disabled={!configured || !ready}>
               {configured ? "Connect" : "Wallet login not set up"}

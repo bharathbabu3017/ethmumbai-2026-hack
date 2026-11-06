@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  BASE_TOKENS, buildOrder, ORDER_TYPES, prepareOrder, submitPrepared, USDC_BY_CHAIN,
+  BASE_TOKENS, buildOrder, ORDER_TYPES, prepareOrder, USDC_BY_CHAIN,
   type FlashBalancesResponse, type OrderRequest, type OrderTypeName, type PayChain, type QuoteResponse, type Side,
 } from "@flashmob/flash";
 import { useSearchParams } from "next/navigation";
@@ -35,7 +35,7 @@ export default function TradePage() {
 }
 
 function Trade() {
-  const { address, getSigner } = useWallet();
+  const { address, actions, miniApp } = useWallet();
   const linked = useSearchParams().get("token")?.toLowerCase();
   const [side, setSide] = useState<Side>("buy");
   const [type, setType] = useState<OrderTypeName>("market");
@@ -114,7 +114,7 @@ function Trade() {
 
   const confirm = run(async () => {
     if (!preview) return;
-    const { orderId } = await submitPrepared(flash, await getSigner(spendChain), preview.request, preview.quote);
+    const { orderId } = await actions.place(preview.request, preview.quote, spendChain);
     setPreview(undefined);
     setF({ ...f, qty: "" });
     setPlaced((n) => n + 1);
@@ -161,7 +161,7 @@ function Trade() {
             <p className="mut" style={{ margin: "6px 0 0", fontSize: 12 }}>{HINTS[type]}</p>
           </div>
 
-          {type === "market" && (
+          {type === "market" && !miniApp && (
             <div>
               <label className="lab" htmlFor="pay">{side === "buy" ? "Pay with USDC on" : "Receive USDC on"}</label>
               <select id="pay" className="inp" value={payChain} onChange={(e) => { setPayChain(e.target.value as PayChain); change(); }}>
@@ -270,7 +270,7 @@ function Trade() {
           )}
 
           {preview
-            ? <button className="btn pri" disabled={busy} onClick={confirm}>{busy ? "Check your wallet" : "Confirm in wallet"}</button>
+            ? <button className="btn pri" disabled={busy} onClick={confirm}>{busy ? (miniApp ? "Placing order" : "Check your wallet") : miniApp ? "Place order" : "Confirm in wallet"}</button>
             : <button className="btn pri" disabled={busy || !address} onClick={review}>{address ? (busy ? "Getting quote" : "Review order") : "Connect a wallet to trade"}</button>}
           {status && <p role="status" style={{ margin: 0 }}>{status}</p>}
         </section>

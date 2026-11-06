@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import {
-  alertRecipients, applyOrderFrame, recordOrder, claimAction, confirmCopy, countCopies, createAction, createLinkToken, createTrader, findWallet, getBotWallet,
+  alertRecipients, applyOrderFrame, claimJobs, enqueueJob, finishJob, getJob, recordOrder, claimAction, confirmCopy, countCopies, createAction, createLinkToken, createTrader, findWallet, getBotWallet,
   getOrCreateTelegramUser, getOrCreateWalletUser, getPosition, getTrade, getTraderByUser, leaderboard, linkTelegram, listTrades, releaseCopy, reserveCopy,
   setFollow, type Db, type OrderFields,
 } from "./queries";
@@ -200,4 +200,29 @@ test("someone else can't confirm or release your copy", async () => {
   assert.equal(await confirmCopy(db, copy.id, other, "order-c4"), undefined);
   await releaseCopy(db, copy.id, other);
   assert.ok(await confirmCopy(db, copy.id, userId, "order-c4"));
+});
+
+test("a job is claimed once, even by competing workers", async () => {
+  const w = await wallet("0xE1");
+  const id = await enqueueJob(db, { ...w, kind: "cancel", payload: {} });
+  const [a, b] = await Promise.all([claimJobs(db), claimJobs(db)]);
+  assert.equal([...a, ...b].filter((j) => j.id === id).length, 1);
+  assert.equal((await claimJobs(db)).filter((j) => j.id === id).length, 0);
+});
+
+test("an old job fails instead of running late", async () => {
+  const w = await wallet("0xE2");
+  const id = await enqueueJob(db, { ...w, kind: "order", payload: {} });
+  await db.execute(sql`update wallet_jobs set created_at = now() - interval '5 minutes' where id = ${id}`);
+  assert.equal((await claimJobs(db)).filter((j) => j.id === id).length, 0);
+  assert.match((await getJob(db, id, w.userId))!.error!, /timed out/);
+});
+
+test("a job is only visible to its owner, and records its outcome", async () => {
+  const w = await wallet("0xE3");
+  const other = await wallet("0xE4");
+  const id = await enqueueJob(db, { ...w, kind: "order", payload: {} });
+  assert.equal(await getJob(db, id, other.userId), undefined);
+  await finishJob(db, id, { result: { orderId: "o" } });
+  assert.deepEqual((await getJob(db, id, w.userId))!.result, { orderId: "o" });
 });
