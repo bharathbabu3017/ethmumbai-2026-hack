@@ -4,9 +4,10 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import {
-  alertRecipients, claimAction, claimUnannouncedCalls, createAction, createCall, createLinkToken, createTrader, findWallet, getBotWallet,
+  alertRecipients, claimAction, confirmCopy, countCopies, findWallet as walletOf, releaseCopy, reserveCopy, claimUnannouncedCalls, createAction, createCall, createLinkToken, createTrader, findWallet, getBotWallet,
   getOrCreateTelegramUser, getOrCreateWalletUser, getTraderByUser, leaderboard, linkTelegram, moveCall, setFollow, type Db,
 } from "./queries";
+import { sql } from "drizzle-orm";
 import * as schema from "./schema";
 
 let db: Db;
@@ -104,4 +105,50 @@ test("the leaderboard counts only closed calls", async () => {
   await moveCall(db, b.id, { status: "stopped_out", resultPct: -5 });
   const [row] = await leaderboard(db, [t.id]);
   assert.deepEqual([row!.totalCalls, row!.closedCalls, row!.wins, row!.totalReturn], [3, 2, 1, 15]);
+});
+
+async function copySetup(n: number) {
+  const trader = await getOrCreateWalletUser(db, `0xCa${n}`);
+  const t = (await createTrader(db, { userId: trader, displayName: `copied${n}` }))!;
+  const call = (await createCall(db, callValues(t.id, `c${n}`)))!;
+  const userId = await getOrCreateWalletUser(db, `0xCb${n}`);
+  const wallet = (await walletOf(db, `0xCb${n}`))!;
+  return { call, userId, values: { callId: call.id, userId, walletId: wallet.id, amountUsd: 10, stopPrice: 90, targetPrice: 120 } };
+}
+
+test("one wallet can only hold one reservation for a call", async () => {
+  const { values } = await copySetup(1);
+  const results = await Promise.all([1, 2, 3].map(() => reserveCopy(db, values)));
+  assert.equal(results.filter(Boolean).length, 1);
+});
+
+test("a placed copy can never be reserved again, and it counts once", async () => {
+  const { call, userId, values } = await copySetup(2);
+  const copy = (await reserveCopy(db, values))!;
+  assert.ok(await confirmCopy(db, copy.id, userId, "order-c2"));
+  assert.equal(await confirmCopy(db, copy.id, userId, "order-c2b"), undefined);
+  assert.equal(await reserveCopy(db, values), undefined);
+  await db.execute(sql`update copies set created_at = now() - interval '1 hour' where id = ${copy.id}`);
+  assert.equal(await reserveCopy(db, values), undefined);
+  assert.equal(await countCopies(db, call.id), 1);
+});
+
+test("a released or abandoned reservation can be tried again", async () => {
+  const { userId, values } = await copySetup(3);
+  const first = (await reserveCopy(db, values))!;
+  await releaseCopy(db, first.id, userId);
+  const second = (await reserveCopy(db, values))!;
+  assert.ok(second);
+  assert.equal(await reserveCopy(db, values), undefined);
+  await db.execute(sql`update copies set created_at = now() - interval '1 hour' where id = ${second.id}`);
+  assert.ok(await reserveCopy(db, values));
+});
+
+test("someone else can't confirm or release your copy", async () => {
+  const { userId, values } = await copySetup(4);
+  const other = await getOrCreateWalletUser(db, "0xCc4");
+  const copy = (await reserveCopy(db, values))!;
+  assert.equal(await confirmCopy(db, copy.id, other, "order-c4"), undefined);
+  await releaseCopy(db, copy.id, other);
+  assert.ok(await confirmCopy(db, copy.id, userId, "order-c4"));
 });

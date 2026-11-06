@@ -1,18 +1,9 @@
 import { createCall, getTraderByUser } from "@flashmob/db";
-import { createFlashClient, USDC_BASE, type FlashOrder } from "@flashmob/flash";
+import { USDC_BASE } from "@flashmob/flash";
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
+import { readOrder } from "@/lib/orders";
 import { getSession, unauthorized } from "@/lib/session";
-
-// Reads can trail a placement by a second or two.
-async function readOrder(orderId: string, funder: string): Promise<FlashOrder | undefined> {
-  const flash = createFlashClient({ apiKey: process.env.FLASH_API_KEY ?? "" });
-  for (let i = 0; i < 6; i++) {
-    const found = await flash.getOrder(orderId, funder).catch(() => undefined);
-    if (found) return found.order;
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-}
 
 /** Every detail of a call comes from Flash's record of the order, so a call can't claim something the order doesn't say. */
 export async function POST(req: NextRequest) {

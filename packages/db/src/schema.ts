@@ -4,6 +4,7 @@ import { bigint, boolean, doublePrecision, index, jsonb, pgEnum, pgTable, primar
 export const walletType = pgEnum("wallet_type", ["bot", "external"]);
 export const orderSource = pgEnum("order_source", ["manual", "copy"]);
 export const actionStatus = pgEnum("action_status", ["pending", "used"]);
+export const copyStatus = pgEnum("copy_status", ["pending", "placed"]);
 export const callStatus = pgEnum("call_status", ["waiting", "live", "cancelled", "target_hit", "stopped_out", "closed"]);
 
 export const users = pgTable("users", {
@@ -105,3 +106,21 @@ export const linkTokens = pgTable("link_tokens", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   usedAt: timestamp("used_at", { withTimezone: true }),
 });
+
+// A pending row reserves the copy before it is signed, so a call can't be copied twice by one wallet.
+export const copies = pgTable(
+  "copies",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    callId: uuid("call_id").notNull().references(() => calls.id),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    walletId: uuid("wallet_id").notNull().references(() => wallets.id),
+    orderId: text("order_id").unique(),
+    amountUsd: doublePrecision("amount_usd").notNull(),
+    stopPrice: doublePrecision("stop_price").notNull(),
+    targetPrice: doublePrecision("target_price").notNull(),
+    status: copyStatus("status").notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("one_copy_per_wallet").on(t.callId, t.walletId)],
+);

@@ -15,6 +15,13 @@
       "when": 1793945699214,
       "tag": "0001_tired_darkstar",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793950538000,
+      "tag": "0002_powerful_mister_sinister",
+      "breakpoints": true
     }
   ]
 }

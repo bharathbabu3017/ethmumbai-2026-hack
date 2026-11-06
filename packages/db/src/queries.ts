@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
-import { calls, follows, linkTokens, orders, pendingActions, traders, users, wallets } from "./schema";
+import { calls, copies, follows, linkTokens, orders, pendingActions, traders, users, wallets } from "./schema";
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -114,6 +114,7 @@ export async function linkTelegram(db: Db, token: string, telegramUserId: string
     await tx.update(wallets).set({ userId: telegramUserId }).where(eq(wallets.userId, from));
     await tx.update(orders).set({ userId: telegramUserId }).where(eq(orders.userId, from));
     await tx.update(traders).set({ userId: telegramUserId }).where(eq(traders.userId, from));
+    await tx.update(copies).set({ userId: telegramUserId }).where(eq(copies.userId, from));
     const moved = await tx.select().from(follows).where(eq(follows.followerId, from));
     await tx.delete(follows).where(eq(follows.followerId, from));
     if (moved.length) {
@@ -235,3 +236,58 @@ export const getUser = async (db: Db, id: string) => {
   const [user] = await db.select().from(users).where(eq(users.id, id));
   return user;
 };
+
+export const getCall = async (db: Db, id: string) => {
+  const [row] = await db
+    .select({ call: calls, trader: { id: traders.id, displayName: traders.displayName, userId: traders.userId } })
+    .from(calls)
+    .innerJoin(traders, eq(calls.traderId, traders.id))
+    .where(eq(calls.id, id));
+  return row;
+};
+
+export const countCopies = async (db: Db, callId: string) => {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(copies)
+    .where(and(eq(copies.callId, callId), eq(copies.status, "placed")));
+  return row?.n ?? 0;
+};
+
+export const getUserCopy = async (db: Db, callId: string, userId: string) => {
+  const [row] = await db.select().from(copies).where(and(eq(copies.callId, callId), eq(copies.userId, userId), eq(copies.status, "placed")));
+  return row;
+};
+
+const RESERVATION_MINUTES = 5;
+
+/** Reserves a copy. Returns nothing if this wallet already copied the call or has a recent reservation. */
+export async function reserveCopy(db: Db, values: typeof copies.$inferInsert) {
+  const [row] = await db
+    .insert(copies)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [copies.callId, copies.walletId],
+      set: { amountUsd: values.amountUsd, stopPrice: values.stopPrice, targetPrice: values.targetPrice, createdAt: sql`now()` },
+      setWhere: sql`${copies.status} = 'pending' and ${copies.createdAt} < now() - make_interval(mins => ${RESERVATION_MINUTES})`,
+    })
+    .returning();
+  return row;
+}
+
+export const getCopy = async (db: Db, id: string, userId: string) => {
+  const [row] = await db.select().from(copies).where(and(eq(copies.id, id), eq(copies.userId, userId)));
+  return row;
+};
+
+export async function confirmCopy(db: Db, id: string, userId: string, orderId: string) {
+  const [row] = await db
+    .update(copies)
+    .set({ orderId, status: "placed" })
+    .where(and(eq(copies.id, id), eq(copies.userId, userId), eq(copies.status, "pending")))
+    .returning();
+  return row;
+}
+
+export const releaseCopy = (db: Db, id: string, userId: string) =>
+  db.delete(copies).where(and(eq(copies.id, id), eq(copies.userId, userId), eq(copies.status, "pending")));

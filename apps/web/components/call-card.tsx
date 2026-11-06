@@ -2,7 +2,7 @@ import Link from "next/link";
 import { pct, STATUS, usd } from "@/lib/format";
 
 interface Props {
-  call: { tokenSymbol: string; chain: string; entryPrice: number | null; stopPrice: number; targetPrice: number; status: string; resultPct: number | null; note: string | null };
+  call: { id: string; tokenSymbol: string; chain: string; entryPrice: number | null; stopPrice: number; targetPrice: number; status: string; resultPct: number | null; note: string | null };
   trader?: { id: string; displayName: string };
 }
 
@@ -11,7 +11,7 @@ export function CallCard({ call, trader }: Props) {
   return (
     <article style={{ padding: "14px 0", borderTop: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: 4 }}>
       <div className="between">
-        <span style={{ fontWeight: 500 }}>Long {call.tokenSymbol}</span>
+        <Link href={`/calls/${call.id}`} style={{ fontWeight: 500 }}>Long {call.tokenSymbol}</Link>
         <span style={{ fontSize: 12, color: status.color }}>{status.label}{call.resultPct !== null ? ` ${pct(call.resultPct)}` : ""}</span>
       </div>
       {trader && <Link href={`/traders/${trader.id}`} className="mut" style={{ fontSize: 13 }}>{trader.displayName}</Link>}
