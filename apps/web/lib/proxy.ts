@@ -22,9 +22,3 @@ export function withServerFields(path: string, body: Record<string, unknown>, { 
   const { flashIntegratorFeeBps: _ignored, erc8021AttributionCode: _alsoIgnored, ...clean } = body;
   return { ...clean, ...feeFields(feeBps), ...(path === "order" && builderCode ? { erc8021AttributionCode: builderCode } : {}) };
 }
-
-/**
- * Flash limits /search on low-usage keys, so search alone uses a separate key.
- * Everything that places or reads orders stays on our own key.
- */
-export const keyFor = (path: string, apiKey: string, searchKey: string) => (path === "search" ? searchKey : apiKey);

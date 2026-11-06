@@ -1,4 +1,4 @@
-import { agentSettingsError, askModel, BASE_TOKENS, checkDecision, createFlashClient, PUBLIC_DEV_KEY, type AgentSettings, type AgentToken } from "@flashmob/flash";
+import { agentSettingsError, askModel, BASE_TOKENS, checkDecision, createFlashClient, type AgentSettings, type AgentToken } from "@flashmob/flash";
 import { NextResponse, type NextRequest } from "next/server";
 import { rateLimited } from "@/lib/rate-limit";
 import { getSession, sameOrigin, unauthorized } from "@/lib/session";
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   const problem = agentSettingsError(settings);
   if (problem) return fail(problem, 400);
 
-  const flash = createFlashClient({ apiKey: process.env.FLASH_SEARCH_KEY || PUBLIC_DEV_KEY });
+  const flash = createFlashClient({ apiKey: process.env.FLASH_API_KEY ?? "" });
   const tokens: AgentToken[] = [];
   for (const address of settings.tokens) {
     const asset = (await flash.search(address, { chain: "base", limit: 1 }).catch(() => ({ assets: [] }))).assets[0];
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     if (asset && Number(asset.price) > 0) {
       tokens.push({ symbol: asset.symbol ?? listed?.symbol ?? address, address, price: Number(asset.price), change24h: Number(asset.priceChange24h ?? 0) * 100, volume24h: Number(asset.volume24h ?? 0), liquidity: Number(asset.liquidity ?? 0), heldQty: 0 });
     }
-    await new Promise((r) => setTimeout(r, 550)); // this key allows 2 searches a second
+    await new Promise((r) => setTimeout(r, 550)); // Flash allows 2 searches a second
   }
   if (!tokens.length) return fail("Couldn't read prices for those tokens.", 502);
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isAllowed, keyFor, withServerFields } from "./proxy";
+import { isAllowed, withServerFields } from "./proxy";
 
 const id = "6bdb29aa-0000-4000-8000-000000000000";
 const q = (s = "") => new URLSearchParams(s);
@@ -32,7 +32,3 @@ test("with no fee set, the browser still can't add one", () => {
   assert.equal(withServerFields("order", {}, { feeBps: "0" }).flashIntegratorFeeBps, undefined);
 });
 
-test("only search uses the search key", () => {
-  assert.equal(keyFor("search", "mine", "public"), "public");
-  for (const path of ["quote", "order", "orders", "balances/0x1"]) assert.equal(keyFor(path, "mine", "public"), "mine");
-});

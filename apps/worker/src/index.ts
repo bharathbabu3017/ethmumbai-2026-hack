@@ -1,5 +1,5 @@
 import { pruneAlerts, createDb } from "@flashmob/db";
-import { askModel, createFlashClient, PUBLIC_DEV_KEY } from "@flashmob/flash";
+import { askModel, createFlashClient } from "@flashmob/flash";
 import { createPrivy } from "@flashmob/signer";
 import { run } from "@grammyjs/runner";
 import { createBot } from "./bot";
@@ -18,7 +18,6 @@ const db = createDb(required("DATABASE_URL"));
 const apiKey = required("FLASH_API_KEY");
 
 const flash = createFlashClient({ apiKey });
-const searchFlash = createFlashClient({ apiKey: process.env.FLASH_SEARCH_KEY || PUBLIC_DEV_KEY });
 
 const feeBps = process.env.PLATFORM_FEE_BPS ?? "0";
 
@@ -35,7 +34,7 @@ const bot = createBot({
   token: required("BOT_TOKEN"),
   db,
   flash,
-  searchFlash,
+  searchFlash: flash,
   feeBps,
   rpcUrl: process.env.BASE_RPC_URL,
   privy,
@@ -85,10 +84,10 @@ const send = (chatId: number, text: string, button?: AlertButton) => {
 const autoCopyEnabled = process.env.AUTO_COPY_ENABLED !== "false";
 console.log(`Auto-copy is ${autoCopyEnabled ? "ON" : "off"}`);
 await pruneAlerts(db).catch(() => {});
-startListener(db, flash, send, apiKey, { enabled: autoCopyEnabled, searchFlash });
+startListener(db, flash, send, apiKey, { enabled: autoCopyEnabled, searchFlash: flash });
 startJobs({ db, flash, feeBps, rpcUrl: process.env.BASE_RPC_URL, privy, send });
 const modelKey = process.env.MODEL_API_KEY;
-if (modelKey) startAgents({ db, flash, searchFlash, ask: (settings, context) => askModel(modelKey, settings, context) });
+if (modelKey) startAgents({ db, flash, searchFlash: flash, ask: (settings, context) => askModel(modelKey, settings, context) });
 console.log(`Agents are ${modelKey ? "ON" : "off (no MODEL_API_KEY)"}`);
 if (appUrl) await bot.api.setChatMenuButton({ menu_button: { type: "web_app", text: "Open app", web_app: { url: `${appUrl}/mini` } } });
 

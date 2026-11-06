@@ -1,4 +1,4 @@
-import { BASE_TOKENS, createFlashClient, PUBLIC_DEV_KEY } from "@flashmob/flash";
+import { BASE_TOKENS, createFlashClient } from "@flashmob/flash";
 
 const FRESH_MS = 5 * 60_000;
 
@@ -7,12 +7,12 @@ type Asset = Awaited<ReturnType<ReturnType<typeof createFlashClient>["search"]>>
 const shared = globalThis as unknown as { popularTokens?: { at: number; assets: Asset[] }; popularLoading?: Promise<Asset[]> };
 
 async function load() {
-  const flash = createFlashClient({ apiKey: process.env.FLASH_SEARCH_KEY || PUBLIC_DEV_KEY });
+  const flash = createFlashClient({ apiKey: process.env.FLASH_API_KEY ?? "" });
   const assets: Asset[] = [];
   for (const token of BASE_TOKENS) {
     const found = await flash.search(token.address, { chain: "base", limit: 1 }).catch(() => undefined);
     if (found?.assets[0]) assets.push(found.assets[0]);
-    await new Promise((r) => setTimeout(r, 550)); // this key allows 2 searches a second
+    await new Promise((r) => setTimeout(r, 550)); // Flash allows 2 searches a second
   }
   if (assets.length) shared.popularTokens = { at: Date.now(), assets };
   return assets;

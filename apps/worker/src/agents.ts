@@ -3,7 +3,7 @@ import { buildOrder, checkDecision, OPEN_STATUSES, USDC_BASE, type AgentContext,
 
 const TICK_MS = 60_000;
 const MIN_FUNDS_USD = 1;
-const SEARCH_GAP_MS = 550; // the search key allows 2 searches a second
+const SEARCH_GAP_MS = 550; // Flash allows 2 searches a second
 
 export interface AgentDeps {
   db: Db;
