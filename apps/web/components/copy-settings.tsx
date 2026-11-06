@@ -87,7 +87,7 @@ export function CopySettingsPanel({ traderId, name }: { traderId: string; name: 
   if (!status) return <p className="mut" style={{ margin: 0 }}>Loading…</p>;
 
   const live = status.settings.enabled;
-  const state = copyStatus({ ...status, enabled: live, amountUsd: Number(status.settings.amountUsd), dailyCapUsd: Number(status.settings.dailyCapUsd) });
+  const state = copyStatus({ ...status, approved: !!status.tradingWallet });
   const perTrade = status.settings.sizing === "fixed" ? `$${status.settings.amountUsd} per trade` : `${status.settings.percentOfBalance}% of balance per trade`;
 
   const form = (
@@ -160,6 +160,7 @@ export function CopySettingsPanel({ traderId, name }: { traderId: string; name: 
             <div className="between"><span className="mut">Wallet balance</span><span>${status.usdc.toFixed(2)} USDC</span></div>
           </div>
           {status.tradingWallet && state.tone === "warn" && <WalletAddress address={status.tradingWallet} />}
+          {!status.tradingWallet && <button className="btn pri" disabled={!!busy} onClick={() => save(true, "approve")}>{busy === "approve" ? <><span className="spin" />Approving</> : "Approve wallet"}</button>}
           <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
             <button className="btn" style={{ flex: "1 1 0" }} onClick={() => setEditing(true)}>Edit</button>
             <button className="btn warn" style={{ flex: "1 1 0" }} disabled={!!busy} onClick={() => save(false, "stop")}>{busy === "stop" ? <><span className="spin" />Stopping</> : "Stop"}</button>
@@ -182,9 +183,9 @@ export function CopySettingsPanel({ traderId, name }: { traderId: string; name: 
           {form}
           <button className="btn pri" disabled={!!busy} onClick={() => save(true, "start")}>{busy === "start" ? <><span className="spin" />Starting</> : "Start auto-copy"}</button>
           <p className="mut" style={{ margin: 0, fontSize: 12 }}>
-            {status.tradingWallet ? "Trades come from your Flashmob wallet." : "You'll approve Flashmob to trade from your Flashmob wallet, once. It never sees your key."}
+            {status.tradingWallet ? `Trades come from your Flashmob wallet, which has $${status.usdc.toFixed(2)} USDC.` : "You'll approve Flashmob to trade from your Flashmob wallet, once. It never sees your key."}
           </p>
-          {status.tradingWallet && status.usdc < 1 && <WalletAddress address={status.tradingWallet} />}
+          {status.tradingWallet && status.usdc < Number(s.amountUsd) && <WalletAddress address={status.tradingWallet} />}
         </>
       )}
       {error && <p role="alert" className="dn" style={{ margin: 0, fontSize: 13 }}>{error}</p>}

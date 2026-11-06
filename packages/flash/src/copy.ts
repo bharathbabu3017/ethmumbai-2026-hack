@@ -154,6 +154,17 @@ export interface CopyContext {
 const MIN_COPY_USD = 1;
 const money = (n: number) => `$${n.toFixed(2)}`;
 
+/** How much the next copy would spend. The worker and the status on the trader page both use this, so they can't disagree. */
+export function copySize(s: CopySettings, usdcBalance: number, spentLast24hUsd: number): { amountUsd: number } | { skip: string; reason: "limit" | "small" | "funds" } {
+  const wanted = s.sizing === "fixed" ? s.amountUsd : Math.min((usdcBalance * s.percentOfBalance) / 100, s.maxPerTradeUsd);
+  const left = s.dailyCapUsd - spentLast24hUsd;
+  if (left < MIN_COPY_USD) return { skip: `You've reached your ${money(s.dailyCapUsd)} daily limit.`, reason: "limit" };
+  const amountUsd = Math.floor(Math.min(wanted, left) * 100) / 100;
+  if (amountUsd < MIN_COPY_USD) return { skip: `The copy would be under ${money(MIN_COPY_USD)}.`, reason: "small" };
+  if (amountUsd > usdcBalance) return { skip: `Not enough USDC: you need ${money(amountUsd)} and have ${money(usdcBalance)}.`, reason: "funds" };
+  return { amountUsd };
+}
+
 /** Decides whether to auto-copy a trade, and how much to spend. Every reason for skipping is shown to the follower. */
 export function decideCopy(s: CopySettings, t: CopyableTrade, c: CopyContext): { skip: string } | { amountUsd: number; stop: string; target: string; maxSlippagePercent?: string } {
   const blocked = tradeBlock(t, c.price, true);
@@ -167,12 +178,9 @@ export function decideCopy(s: CopySettings, t: CopyableTrade, c: CopyContext): {
     if (drift > s.maxEntryDriftPercent) return { skip: `The price is ${drift.toFixed(1)}% above the trader's entry, past your ${s.maxEntryDriftPercent}% limit.` };
   }
 
-  const wanted = s.sizing === "fixed" ? s.amountUsd : Math.min((c.usdcBalance * s.percentOfBalance) / 100, s.maxPerTradeUsd);
-  const left = s.dailyCapUsd - c.spentLast24hUsd;
-  if (left < MIN_COPY_USD) return { skip: `You've reached your ${money(s.dailyCapUsd)} daily limit.` };
-  const amountUsd = Math.floor(Math.min(wanted, left) * 100) / 100;
-  if (amountUsd < MIN_COPY_USD) return { skip: `The copy would be under ${money(MIN_COPY_USD)}.` };
-  if (amountUsd > c.usdcBalance) return { skip: `Not enough USDC: you need ${money(amountUsd)} and have ${money(c.usdcBalance)}.` };
+  const size = copySize(s, c.usdcBalance, c.spentLast24hUsd);
+  if ("skip" in size) return { skip: size.skip };
+  const { amountUsd } = size;
 
   let stop = "";
   let target = "";
