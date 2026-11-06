@@ -7,6 +7,7 @@ import { AddFunds } from "@/components/add-funds";
 import { Nav } from "@/components/nav";
 import { OpenOrders } from "@/components/open-orders";
 import { OrderHistory } from "@/components/orders-panel";
+import { PortfolioBody } from "@/components/page-skeleton";
 import { SendFunds } from "@/components/send-funds";
 import { SellPrompts } from "@/components/sell-prompts";
 import { TokenIcon } from "@/components/token-icon";
@@ -47,18 +48,18 @@ export default function Portfolio() {
     <>
       <Nav />
       <main className="wrap wide" style={{ paddingTop: 28, paddingBottom: 56, display: "flex", flexDirection: "column", gap: 24 }}>
-        {!ready ? <div className="sk" style={{ height: 240 }} /> : !address ? <div><button className="btn pri" onClick={login}>Connect to see your portfolio</button></div> : (
+        {!ready ? <PortfolioBody /> : !address ? <div><button className="btn pri" onClick={login}>Connect to see your portfolio</button></div> : (
           <>
             <section className="between" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
               <div className="row" style={{ gap: "16px 40px", alignItems: "flex-end" }}>
                 <div>
                   <div className="stat-label">Total value</div>
-                  <h1 className="m" style={{ fontSize: 40, fontWeight: 500, marginTop: 4 }}>{data ? `$${totalUsd.toFixed(2)}` : "-"}</h1>
+                  {data ? <h1 className="m" style={{ fontSize: 40, fontWeight: 500, marginTop: 4 }}>${totalUsd.toFixed(2)}</h1> : <div className="sk" style={{ height: 44, width: 160, marginTop: 4 }} />}
                 </div>
                 {stats.map(([label, value]) => (
                   <div key={label}>
                     <div className="stat-label">{label}</div>
-                    <div className={`m ${pnlClass(value)}`} style={{ fontSize: 22, marginTop: 4 }}>{data ? signedUsd(value) : "-"}</div>
+                    {data ? <div className={`m ${pnlClass(value)}`} style={{ fontSize: 22, marginTop: 4 }}>{signedUsd(value)}</div> : <div className="sk" style={{ height: 28, width: 90, marginTop: 4 }} />}
                   </div>
                 ))}
               </div>
