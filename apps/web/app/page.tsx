@@ -8,14 +8,14 @@ import { ThemeToggle } from "@/components/theme-toggle";
 const steps = [
   ["1. Pick a trader", "Compare traders by win rate, returns and past trades."],
   ["2. Follow them", "Link Telegram and get a message every time they trade."],
-  ["3. Copy the trade", "Open their trade, choose your amount, and sign it from your wallet."],
+  ["3. Copy their trades", "Start auto-copy with your own limits, or copy single trades yourself."],
 ];
 
 const features = [
   ["Verified track records", "Every order a trader places on Flashmob counts, so win rate and returns come from real fills, and losing trades can't be hidden."],
   ["Telegram alerts", "Get a message when a trader places, fills, cancels or closes a trade."],
   ["Copy buys and exits", "Copy market, limit, stop, TWAP and trailing buys. When a trader sells, you get a prompt to sell the same share."],
-  ["Auto-copy (coming soon)", "Trades placed for you, with an amount per trade, a daily limit, and a pause button."],
+  ["Auto-copy", "Trades are placed for you, with an amount per trade, a daily limit, and a pause button."],
   ["Advanced orders", "Market, limit, stop loss, take profit, bracket, TWAP and trailing stop orders."],
   ["Trade on the web or in Telegram", "Place and cancel orders from your wallet on the website, or with simple commands in the bot."],
 ];
@@ -43,7 +43,7 @@ export default function Landing() {
         <div className="rise" style={{ flex: "999 1 480px", minWidth: 0 }}>
           <h1 className="hero">Copy crypto traders, trade by trade</h1>
           <p className="mut" style={{ margin: "22px 0 30px", fontSize: 18, maxWidth: 540 }}>
-            Follow traders with verified onchain records. Get a Telegram alert when they trade, then copy it with your own amount, stop loss and take profit.
+            Follow traders with verified onchain records. Get a Telegram alert when they trade, then copy it automatically or in one tap, with your own limits.
           </p>
           <div className="row">
             <Link href="/home" className="btn pri">Browse traders</Link>

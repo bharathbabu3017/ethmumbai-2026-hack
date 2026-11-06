@@ -1,7 +1,8 @@
-import { getCopySettings, getTrader, getTradingWallet, getUser, saveCopySettings } from "@flashmob/db";
-import { DEFAULT_COPY_SETTINGS, settingsError, type CopySettings } from "@flashmob/flash";
+import { autoSpentLast24h, getCopySettings, getTrader, getTradingWallet, getUser, saveCopySettings, setCopyPaused, setFollow } from "@flashmob/db";
+import { DEFAULT_COPY_SETTINGS, settingsError, USDC_BASE, type CopySettings } from "@flashmob/flash";
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
+import { serverFlash } from "@/lib/orders";
 import { rateLimited } from "@/lib/rate-limit";
 import { getSession, sameOrigin, unauthorized } from "@/lib/session";
 
@@ -16,12 +17,25 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!session) return unauthorized();
   const { traderId } = await params;
   if (!UUID.test(traderId)) return fail("Trader not found", 404);
-  const [saved, user, wallet] = await Promise.all([getCopySettings(db(), session.userId, traderId), getUser(db(), session.userId), getTradingWallet(db(), session.userId)]);
+  const trader = await getTrader(db(), traderId).catch(() => undefined);
+  if (!trader) return fail("Trader not found", 404);
+  const [saved, user, wallet, spent] = await Promise.all([
+    getCopySettings(db(), session.userId, traderId),
+    getUser(db(), session.userId),
+    getTradingWallet(db(), session.userId),
+    autoSpentLast24h(db(), session.userId, trader.userId),
+  ]);
+  const balances = wallet ? (await serverFlash().balances(wallet.address).catch(() => ({ balances: [] }))).balances : [];
+  const onBase = (test: (b: (typeof balances)[number]) => boolean) => Number(balances.find((b) => b.chain === "base" && test(b))?.balance ?? 0);
   return NextResponse.json({
     settings: { ...DEFAULT_COPY_SETTINGS, ...(saved as Partial<CopySettings> | undefined) },
-    telegramLinked: !!user?.telegramId,
     tradingWallet: wallet?.address ?? null,
-    autoCopyLive: process.env.AUTO_COPY_ENABLED === "true",
+    usdc: onBase((b) => b.address.toLowerCase() === USDC_BASE.toLowerCase()),
+    eth: onBase((b) => b.isNative),
+    spent,
+    paused: !!user?.copyPaused,
+    telegramLinked: !!user?.telegramId,
+    masterOn: process.env.AUTO_COPY_ENABLED !== "false",
   });
 }
 
@@ -58,5 +72,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (problem) return fail(problem, 400);
   if (settings.enabled && !(await getTradingWallet(db(), session.userId))) return fail("Approve auto-copy first, so Flashmob can trade from your wallet.", 400);
   await saveCopySettings(db(), session.userId, traderId, settings);
+  // Starting auto-copy also follows the trader, and clears a pause, so one tap is all it takes.
+  if (settings.enabled) {
+    await setFollow(db(), session.userId, traderId, true);
+    await setCopyPaused(db(), session.userId, false);
+  }
   return NextResponse.json({ ok: true });
 }

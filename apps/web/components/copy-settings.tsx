@@ -2,24 +2,21 @@
 
 import { DEFAULT_COPY_SETTINGS, type CopyExits, type CopySettings, type CopySizing } from "@flashmob/flash";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { ensureSession, postJson } from "@/lib/account";
 import { WalletAddress } from "@/components/wallet-address";
+import { ensureSession, postJson } from "@/lib/account";
+import { copyStatus } from "@/lib/copy-status";
 import { plainError } from "@/lib/format";
 import { useWallet } from "@/lib/wallet";
 
-type Form = Record<Exclude<keyof CopySettings, "enabled" | "sizing" | "exits" | "autoSell" | "skipRiskyTokens">, string>;
-
-const toForm = (s: CopySettings): Form => ({
-  amountUsd: String(s.amountUsd),
-  percentOfBalance: String(s.percentOfBalance),
-  maxPerTradeUsd: String(s.maxPerTradeUsd),
-  dailyCapUsd: String(s.dailyCapUsd),
-  stopPercent: s.stopPercent?.toString() ?? "",
-  targetPercent: s.targetPercent?.toString() ?? "",
-  maxSlippagePercent: s.maxSlippagePercent?.toString() ?? "",
-  maxEntryDriftPercent: String(s.maxEntryDriftPercent),
-  blockedTokens: s.blockedTokens.join(", "),
-});
+interface Status {
+  settings: CopySettings;
+  tradingWallet: string | null;
+  usdc: number;
+  eth: number;
+  spent: number;
+  paused: boolean;
+  masterOn: boolean;
+}
 
 function Toggle({ label, hint, on, onChange }: { label: string; hint: string; on: boolean; onChange(v: boolean): void }) {
   return (
@@ -34,134 +31,163 @@ function Field({ id, label, children }: { id: string; label: string; children: R
   return <div style={{ flex: "1 1 0", minWidth: 0 }}><label className="lab" htmlFor={id}>{label}</label>{children}</div>;
 }
 
+const TONES = { on: "var(--up)", warn: "var(--orange)", off: "var(--mut)" };
+
 export function CopySettingsPanel({ traderId, name }: { traderId: string; name: string }) {
   const { address, login, getSigner, approveServerAccess } = useWallet();
-  const [loaded, setLoaded] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [enabled, setEnabled] = useState(false);
-  const [sizing, setSizing] = useState<CopySizing>("fixed");
-  const [exits, setExits] = useState<CopyExits>("trader");
-  const [autoSell, setAutoSell] = useState(false);
-  const [skipRisky, setSkipRisky] = useState(true);
-  const [form, setForm] = useState<Form>(toForm(DEFAULT_COPY_SETTINGS));
-  const [live, setLive] = useState(false);
-  const [tradingWallet, setTradingWallet] = useState<string | null>(null);
-  const [approving, setApproving] = useState(false);
-  const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<Status>();
+  const [s, setS] = useState<CopySettings>(DEFAULT_COPY_SETTINGS);
+  const [blocked, setBlocked] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
 
-  const load = useCallback(() => {
-    if (!address) return;
-    fetch(`/api/copy-settings/${traderId}`).then(async (r) => {
-      if (!r.ok) return setLoaded(true);
-      const { settings: s, tradingWallet: approved, autoCopyLive } = await r.json();
-      setEnabled(s.enabled); setSizing(s.sizing); setExits(s.exits); setAutoSell(s.autoSell); setSkipRisky(s.skipRiskyTokens);
-      setForm(toForm(s)); setTradingWallet(approved); setLive(autoCopyLive); setLoaded(true);
-    }).catch(() => setLoaded(true));
-  }, [address, traderId]);
-  useEffect(load, [load]);
+  const load = useCallback(async () => {
+    const res = await fetch(`/api/copy-settings/${traderId}`);
+    if (!res.ok) return;
+    const next: Status = await res.json();
+    setStatus(next);
+    setS(next.settings);
+    setBlocked(next.settings.blockedTokens.join(", "));
+  }, [traderId]);
 
-  const approve = async () => {
-    setApproving(true);
-    setStatus("");
-    try {
-      await approveServerAccess?.();
-      load();
-    } catch (e) {
-      setStatus(plainError(e));
-    } finally {
-      setApproving(false);
-    }
-  };
+  useEffect(() => {
+    if (address) load().catch(() => {});
+  }, [address, load]);
 
-  const field = (key: keyof Form, id = key) => ({
-    id, className: "inp", inputMode: "decimal" as const, value: form[key],
-    onChange: (e: { target: { value: string } }) => setForm({ ...form, [key]: e.target.value }),
-  });
-
-  const save = async () => {
-    setBusy(true);
-    setStatus("");
+  const save = async (enabled: boolean, label: string) => {
+    setBusy(label);
+    setError("");
     try {
       await ensureSession(getSigner);
-      await postJson(`/api/copy-settings/${traderId}`, {
-        ...form, enabled, sizing, exits, autoSell, skipRiskyTokens: skipRisky, blockedTokens: form.blockedTokens.split(","),
-      });
-      setStatus(enabled ? (live ? `Auto-copy is on for ${name}.` : "Saved. Auto-copy isn't switched on for Flashmob yet, so nothing will trade.") : "Saved.");
+      // Starting needs the wallet approved first, so that's folded into the same tap.
+      if (enabled && !status?.tradingWallet) await approveServerAccess?.();
+      await postJson(`/api/copy-settings/${traderId}`, { ...s, enabled, blockedTokens: blocked.split(",") });
+      setEditing(false);
+      await load();
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : "Something went wrong");
+      setError(plainError(e));
     } finally {
-      setBusy(false);
+      setBusy("");
     }
   };
 
-  if (!address) return <button className="btn" onClick={login}>Connect to set up auto-copy</button>;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <button className="btn" onClick={() => setOpen(!open)}>{enabled && loaded ? "Auto-copy settings (on)" : "Auto-copy settings"}</button>
-      {open && (
-        <>
-          {!tradingWallet && (
-            <div className="panel" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-              <strong>Approve auto-copy</strong>
-              <span className="mut" style={{ fontSize: 13 }}>This lets Flashmob place trades from your Flashmob wallet while you&apos;re away, within your limits. Flashmob never sees its key.</span>
-              <button className="btn pri" disabled={approving || !approveServerAccess} onClick={approve}>{approving ? <><span className="spin" />Approving</> : "Approve"}</button>
-            </div>
-          )}
-          {tradingWallet && (
-            <div>
-              <div className="lab">Auto-copy trades from this wallet. Fund it with USDC and a little ETH on Base.</div>
-              <WalletAddress address={tradingWallet} />
-            </div>
-          )}
-          {!live && <p className="mut" style={{ margin: 0, fontSize: 13 }}>Auto-copy isn&apos;t switched on for Flashmob yet. You can save your settings now.</p>}
-          <Toggle label="Copy automatically" hint={`Every buy ${name} makes is copied from your Flashmob wallet.`} on={enabled} onChange={setEnabled} />
+  const set = <K extends keyof CopySettings>(key: K, value: CopySettings[K]) => setS({ ...s, [key]: value });
+  const num = (key: "amountUsd" | "percentOfBalance" | "maxPerTradeUsd" | "dailyCapUsd" | "maxEntryDriftPercent") => ({
+    id: key, className: "inp", inputMode: "decimal" as const, value: String(s[key]),
+    onChange: (e: { target: { value: string } }) => set(key, e.target.value as unknown as number),
+  });
+  const optional = (key: "stopPercent" | "targetPercent" | "maxSlippagePercent") => ({
+    id: key, className: "inp", inputMode: "decimal" as const, value: s[key]?.toString() ?? "",
+    onChange: (e: { target: { value: string } }) => set(key, e.target.value as unknown as number),
+  });
 
+  if (!address) return <button className="btn pri" onClick={login}>Connect to start auto-copy</button>;
+  if (!status) return <p className="mut" style={{ margin: 0 }}>Loading…</p>;
+
+  const live = status.settings.enabled;
+  const state = copyStatus({ ...status, enabled: live, amountUsd: Number(status.settings.amountUsd), dailyCapUsd: Number(status.settings.dailyCapUsd) });
+  const perTrade = status.settings.sizing === "fixed" ? `$${status.settings.amountUsd} per trade` : `${status.settings.percentOfBalance}% of balance per trade`;
+
+  const form = (
+    <>
+      {s.sizing === "fixed"
+        ? (
+          <div className="row" style={{ flexWrap: "nowrap" }}>
+            <Field id="amountUsd" label="Per trade (USD)"><input {...num("amountUsd")} /></Field>
+            <Field id="dailyCapUsd" label="Daily limit (USD)"><input {...num("dailyCapUsd")} /></Field>
+          </div>
+        ) : <Field id="dailyCapUsd" label="Daily limit (USD)"><input {...num("dailyCapUsd")} /></Field>}
+
+      <button style={{ all: "unset", cursor: "pointer", fontSize: 13, color: "var(--mut)" }} onClick={() => setAdvanced(!advanced)}>{advanced ? "Hide" : "More"} options</button>
+      {advanced && (
+        <>
           <div>
             <label className="lab" htmlFor="sizing">Size each copy by</label>
-            <select id="sizing" className="inp" value={sizing} onChange={(e) => setSizing(e.target.value as CopySizing)}>
+            <select id="sizing" className="inp" value={s.sizing} onChange={(e) => set("sizing", e.target.value as CopySizing)}>
               <option value="fixed">Fixed amount</option>
               <option value="percent">Percent of my USDC balance</option>
             </select>
           </div>
-          {sizing === "fixed" ? (
-            <Field id="amountUsd" label="Amount per trade (USD)"><input {...field("amountUsd")} /></Field>
-          ) : (
+          {s.sizing === "percent" && (
             <div className="row" style={{ flexWrap: "nowrap" }}>
-              <Field id="percentOfBalance" label="Percent of balance"><input {...field("percentOfBalance")} /></Field>
-              <Field id="maxPerTradeUsd" label="Max per trade (USD)"><input {...field("maxPerTradeUsd")} /></Field>
+              <Field id="percentOfBalance" label="Percent of balance"><input {...num("percentOfBalance")} /></Field>
+              <Field id="maxPerTradeUsd" label="Max per trade (USD)"><input {...num("maxPerTradeUsd")} /></Field>
             </div>
           )}
-          <Field id="dailyCapUsd" label="Daily limit (USD)"><input {...field("dailyCapUsd")} /></Field>
-
           <div>
             <label className="lab" htmlFor="exits">Stop loss and take profit</label>
-            <select id="exits" className="inp" value={exits} onChange={(e) => setExits(e.target.value as CopyExits)}>
+            <select id="exits" className="inp" value={s.exits} onChange={(e) => set("exits", e.target.value as CopyExits)}>
               <option value="trader">Use the trader&apos;s</option>
               <option value="custom">Use my own percentages</option>
               <option value="none">None</option>
             </select>
           </div>
-          {exits === "custom" && (
+          {s.exits === "custom" && (
             <div className="row" style={{ flexWrap: "nowrap" }}>
-              <Field id="stopPercent" label="Stop loss (% below)"><input {...field("stopPercent")} /></Field>
-              <Field id="targetPercent" label="Take profit (% above)"><input {...field("targetPercent")} /></Field>
+              <Field id="stopPercent" label="Stop loss (% below)"><input {...optional("stopPercent")} /></Field>
+              <Field id="targetPercent" label="Take profit (% above)"><input {...optional("targetPercent")} /></Field>
             </div>
           )}
-
           <div className="row" style={{ flexWrap: "nowrap" }}>
-            <Field id="maxEntryDriftPercent" label="Skip if price moved (%)"><input {...field("maxEntryDriftPercent")} /></Field>
-            <Field id="maxSlippagePercent" label="Max slippage (%)"><input {...field("maxSlippagePercent")} placeholder="Flash default" /></Field>
+            <Field id="maxEntryDriftPercent" label="Skip if price moved (%)"><input {...num("maxEntryDriftPercent")} /></Field>
+            <Field id="maxSlippagePercent" label="Max slippage (%)"><input {...optional("maxSlippagePercent")} placeholder="Default" /></Field>
           </div>
-          <Field id="blockedTokens" label="Never copy these tokens"><input {...field("blockedTokens")} inputMode="text" placeholder="DEGEN, BRETT" /></Field>
-
-          <Toggle label="Skip risky tokens" hint="Skips tokens that are flagged, or that we can't verify." on={skipRisky} onChange={setSkipRisky} />
-          <Toggle label="Sell automatically" hint="When they sell, sell the same share of your copy. Off means you get a prompt." on={autoSell} onChange={setAutoSell} />
-
-          <button className="btn pri" disabled={busy} onClick={save}>{busy ? "Saving" : "Save settings"}</button>
-          {status && <p role="status" style={{ margin: 0, fontSize: 13 }}>{status}</p>}
+          <Field id="blockedTokens" label="Never copy these tokens"><input id="blockedTokens" className="inp" value={blocked} placeholder="DEGEN, BRETT" onChange={(e) => setBlocked(e.target.value)} /></Field>
+          <Toggle label="Skip risky tokens" hint="Skips tokens that are flagged or can't be verified." on={s.skipRiskyTokens} onChange={(v) => set("skipRiskyTokens", v)} />
+          <Toggle label="Sell when they sell" hint="Sells the same share of your copy. Off means you get a prompt instead." on={s.autoSell} onChange={(v) => set("autoSell", v)} />
         </>
       )}
+    </>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="between" style={{ alignItems: "center" }}>
+        <h2 style={{ fontSize: 16 }}>Auto-copy</h2>
+        <span className="row" style={{ gap: 6, color: TONES[state.tone], fontSize: 13, fontWeight: 500 }}>
+          {state.tone === "on" && <span className="pulse" aria-hidden="true" />}{state.label}
+        </span>
+      </div>
+      <p className="mut" style={{ margin: 0 }}>{live ? state.detail : `Copy every trade ${name} makes, automatically.`}</p>
+
+      {live && !editing && (
+        <>
+          <div className="m" style={{ fontSize: 13 }}>
+            <div className="between"><span className="mut">Size</span><span>{perTrade}</span></div>
+            <div className="between"><span className="mut">Used today</span><span>${status.spent.toFixed(2)} of ${status.settings.dailyCapUsd}</span></div>
+            <div className="between"><span className="mut">Wallet balance</span><span>${status.usdc.toFixed(2)} USDC</span></div>
+          </div>
+          {status.tradingWallet && state.tone === "warn" && <WalletAddress address={status.tradingWallet} />}
+          <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+            <button className="btn" style={{ flex: "1 1 0" }} onClick={() => setEditing(true)}>Edit</button>
+            <button className="btn warn" style={{ flex: "1 1 0" }} disabled={!!busy} onClick={() => save(false, "stop")}>{busy === "stop" ? <><span className="spin" />Stopping</> : "Stop"}</button>
+          </div>
+        </>
+      )}
+
+      {live && editing && (
+        <>
+          {form}
+          <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+            <button className="btn" style={{ flex: "1 1 0" }} onClick={() => { setEditing(false); setS(status.settings); }}>Back</button>
+            <button className="btn pri" style={{ flex: "1 1 0" }} disabled={!!busy} onClick={() => save(true, "save")}>{busy === "save" ? <><span className="spin" />Saving</> : "Save"}</button>
+          </div>
+        </>
+      )}
+
+      {!live && (
+        <>
+          {form}
+          <button className="btn pri" disabled={!!busy} onClick={() => save(true, "start")}>{busy === "start" ? <><span className="spin" />Starting</> : "Start auto-copy"}</button>
+          <p className="mut" style={{ margin: 0, fontSize: 12 }}>
+            {status.tradingWallet ? "Trades come from your Flashmob wallet." : "You'll approve Flashmob to trade from your Flashmob wallet, once. It never sees your key."}
+          </p>
+          {status.tradingWallet && status.usdc < 1 && <WalletAddress address={status.tradingWallet} />}
+        </>
+      )}
+      {error && <p role="alert" className="dn" style={{ margin: 0, fontSize: 13 }}>{error}</p>}
     </div>
   );
 }

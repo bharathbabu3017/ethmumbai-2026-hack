@@ -42,7 +42,7 @@ const frame = (over: Partial<OrderFrame> = {}): OrderFrame => ({
   filled: { targetAmount: "0.5", contraAmount: "1000" }, placedAt: new Date().toISOString(), ...over,
 });
 
-const save = (over = {}) => saveCopySettings(db, follower.userId, trader.id, { ...DEFAULT_COPY_SETTINGS, enabled: true, ...over });
+const save = (over = {}) => saveCopySettings(db, follower.userId, trader.id, { ...DEFAULT_COPY_SETTINGS, enabled: true, amountUsd: 25, dailyCapUsd: 100, ...over });
 const drain = async () => { for (const job of await claimJobs(db)) await runJob({ db, flash, privy: fakePrivy, feeBps: "10", send }, job); };
 
 beforeEach(async () => {

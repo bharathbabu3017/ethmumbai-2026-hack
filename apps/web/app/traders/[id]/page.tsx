@@ -66,16 +66,16 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
           </section>
         </div>
         <aside className="side" style={{ gap: 12 }}>
+          {session?.userId !== trader.userId && <div className="panel"><CopySettingsPanel traderId={id} name={trader.displayName} /></div>}
           <div className="panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <h2 style={{ fontSize: 16 }}>Follow {trader.displayName}</h2>
             <p className="mut" style={{ margin: 0 }}>Get a Telegram alert every time they trade.</p>
             <FollowButton traderId={id} initial={following} />
           </div>
           <div className="panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <h2 style={{ fontSize: 16 }}>Copy their trades</h2>
-            <p className="mut" style={{ margin: 0 }}>Open a trade and choose your amount, stop and target. You sign each copy from your wallet.</p>
-            {latestBuy ? <Link href={`/trades/${latestBuy.id}`} className="btn pri">View latest buy</Link> : <span className="mut" style={{ fontSize: 13 }}>Nothing to copy yet.</span>}
-            {session?.userId !== trader.userId && <CopySettingsPanel traderId={id} name={trader.displayName} />}
+            <h2 style={{ fontSize: 16 }}>Copy one trade</h2>
+            <p className="mut" style={{ margin: 0 }}>Choose your own amount, stop and target for a single trade.</p>
+            {latestBuy ? <Link href={`/trades/${latestBuy.id}`} className="btn">View latest buy</Link> : <span className="mut" style={{ fontSize: 13 }}>Nothing to copy yet.</span>}
           </div>
         </aside>
       </main>

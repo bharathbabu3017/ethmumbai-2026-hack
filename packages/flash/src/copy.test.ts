@@ -69,7 +69,7 @@ test("a stop and target are refused where Flash can't attach them", () => {
   assert.equal(copyInputError(stop, 105, { ...input, stopPrice: null, targetPrice: null }), null);
 });
 
-const settings = { ...DEFAULT_COPY_SETTINGS, enabled: true };
+const settings = { ...DEFAULT_COPY_SETTINGS, enabled: true, amountUsd: 25, dailyCapUsd: 100 };
 const ctx = { price: 105, usdcBalance: 500, spentLast24hUsd: 0, tokenSymbol: "WETH", tokenFlagged: false };
 const liveFill = { ...filled, filledUsd: 208 }; // the trader got in at $104
 

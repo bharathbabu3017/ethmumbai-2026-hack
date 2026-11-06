@@ -73,7 +73,8 @@ const send = (chatId: number, text: string, button?: AlertButton) => {
   sendQueue = sent;
   return sent;
 };
-const autoCopyEnabled = process.env.AUTO_COPY_ENABLED === "true";
+// Nothing copies until a user taps Start. This is an emergency stop for every user at once.
+const autoCopyEnabled = process.env.AUTO_COPY_ENABLED !== "false";
 console.log(`Auto-copy is ${autoCopyEnabled ? "ON" : "off"}`);
 startListener(db, flash, send, apiKey, { enabled: autoCopyEnabled, searchFlash });
 startJobs({ db, flash, feeBps, rpcUrl: process.env.BASE_RPC_URL, privy, send });
