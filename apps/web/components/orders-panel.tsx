@@ -7,6 +7,7 @@ import { flash } from "@/lib/flash";
 import { tradeStatus, usd } from "@/lib/format";
 import { useWallet } from "@/lib/wallet";
 
+const REFRESH_MS = 5_000;
 const CLOSED = ["ORDER_STATUS_FILLED", "ORDER_STATUS_CANCELLED", "ORDER_STATUS_REJECTED", "ORDER_STATUS_TERMINATED"];
 const empty = { margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" };
 
@@ -14,7 +15,11 @@ function History({ reloadKey }: { reloadKey: number }) {
   const { address } = useWallet();
   const [orders, setOrders] = useState<FlashOrder[]>();
   useEffect(() => {
-    if (address) flash.listOrders({ funderAddress: address, statuses: CLOSED, pageSize: 25 }).then((r) => setOrders(r.orders)).catch(() => setOrders([]));
+    if (!address) return;
+    const load = () => flash.listOrders({ funderAddress: address, statuses: CLOSED, pageSize: 25 }).then((r) => setOrders(r.orders)).catch(() => setOrders((o) => o ?? []));
+    void load();
+    const timer = setInterval(load, REFRESH_MS);
+    return () => clearInterval(timer);
   }, [address, reloadKey]);
 
   if (!orders) return <p className="mut" style={empty}>Loading…</p>;

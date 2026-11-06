@@ -5,6 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { flash } from "@/lib/flash";
 import { useWallet } from "@/lib/wallet";
 
+const REFRESH_MS = 3_000;
+
 const LABELS = { limit: "Limit price", trigger: "Trigger price", stop: "Stop loss", target: "Take profit" } as const;
 
 function currentValue(o: FlashOrder, field: keyof typeof LABELS) {
@@ -37,6 +39,9 @@ export function OpenOrders({ reloadKey = 0, title, onCount }: { reloadKey?: numb
 
   useEffect(() => {
     refresh().catch((e) => setError(e.message));
+    // Flash's reads can trail a placement or cancel, so this keeps checking until the list catches up.
+    const timer = setInterval(() => void refresh().catch(() => {}), REFRESH_MS);
+    return () => clearInterval(timer);
   }, [refresh, reloadKey]);
 
   const run = async (fn: () => Promise<void>) => {
