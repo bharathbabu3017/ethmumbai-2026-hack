@@ -406,6 +406,16 @@ export const getJob = async (db: Db, id: string, userId: string) => {
   return job;
 };
 
+/** Whether a withdrawal for this wallet is still going, so a double click can't send twice. */
+export async function withdrawalPending(db: Db, walletId: string) {
+  const [row] = await db
+    .select({ id: walletJobs.id })
+    .from(walletJobs)
+    .where(and(eq(walletJobs.walletId, walletId), inArray(walletJobs.kind, ["agent-withdraw", "agent-exit"]), inArray(walletJobs.status, ["queued", "running"])))
+    .limit(1);
+  return !!row;
+}
+
 const JOB_MAX_AGE_SECONDS = 60;
 // Far longer than any job takes, so only one cut off by a crash gets here.
 const RUNNING_JOB_MAX_AGE_MINUTES = 15;

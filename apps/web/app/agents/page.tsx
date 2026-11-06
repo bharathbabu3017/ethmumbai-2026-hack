@@ -7,6 +7,7 @@ import { Avatar } from "@/components/avatar";
 import { Drawer } from "@/components/drawer";
 import { FundAgent } from "@/components/fund-agent";
 import { Nav } from "@/components/nav";
+import { WithdrawAgent } from "@/components/withdraw-agent";
 import { ensureSession, postJson } from "@/lib/account";
 import { useCached } from "@/lib/cached";
 import { flash } from "@/lib/flash";
@@ -23,7 +24,7 @@ interface Agent {
   usdc: number;
 }
 
-const COLUMNS = "minmax(190px,1.3fr) 120px 100px 90px minmax(130px,1fr) 300px";
+const COLUMNS = "minmax(190px,1.3fr) 120px 100px 90px minmax(130px,1fr) 390px";
 const LABELS = { funding: "Needs funds", running: "Running", paused: "Paused", stopped: "Stopped" };
 const TONES = { funding: "var(--orange)", running: "var(--up)", paused: "var(--mut)", stopped: "var(--mut)" };
 
@@ -39,6 +40,7 @@ export default function Agents() {
     }));
   });
   const [funding, setFunding] = useState<Agent>();
+  const [withdrawing, setWithdrawing] = useState<Agent>();
   const [stopping, setStopping] = useState<Agent>();
   const [sell, setSell] = useState(true);
   const [busy, setBusy] = useState<string>();
@@ -76,9 +78,9 @@ export default function Agents() {
         ) : (
           <>
             <section className="table">
-              <div className="tr head" style={{ gridTemplateColumns: COLUMNS, minWidth: 1040 }}><span>Agent</span><span>Status</span><span>Wallet</span><span>Budget</span><span>Strategy</span><span /></div>
+              <div className="tr head" style={{ gridTemplateColumns: COLUMNS, minWidth: 1130 }}><span>Agent</span><span>Status</span><span>Wallet</span><span>Budget</span><span>Strategy</span><span /></div>
               {agents.map((a) => (
-                <div key={a.id} className="tr" style={{ gridTemplateColumns: COLUMNS, minWidth: 1040, borderTop: "1px solid var(--line)" }}>
+                <div key={a.id} className="tr" style={{ gridTemplateColumns: COLUMNS, minWidth: 1130, borderTop: "1px solid var(--line)" }}>
                   <Link href={`/traders/${a.traderId}`} className="row" style={{ gap: 10, fontWeight: 500, flexWrap: "nowrap" }}><Avatar name={a.displayName} size={32} /> {a.displayName}</Link>
                   <span style={{ fontSize: 13, fontWeight: 500, color: TONES[a.status] }}>{LABELS[a.status]}</span>
                   <span className="m">${a.usdc.toFixed(2)}</span>
@@ -88,6 +90,7 @@ export default function Agents() {
                     {a.status === "running" && <button className="btn" disabled={busy === a.id} onClick={() => act(a.id, { action: "pause" })}>Pause</button>}
                     {a.status === "paused" && <button className="btn pri" disabled={busy === a.id} onClick={() => act(a.id, { action: "resume" })}>Resume</button>}
                     {a.status !== "stopped" && <button className="btn" onClick={() => setFunding(a)}>Add funds</button>}
+                    {a.status !== "stopped" && <button className="btn" onClick={() => setWithdrawing(a)}>Withdraw</button>}
                     <button className="btn warn" onClick={() => setStopping(a)}>{a.status === "stopped" ? "Withdraw" : "Stop"}</button>
                   </span>
                 </div>
@@ -98,6 +101,7 @@ export default function Agents() {
         {error && <p role="alert" className="dn" style={{ margin: 0 }}>{error}</p>}
       </main>
       {funding && <FundAgent name={funding.displayName} agentAddress={funding.address} onClose={() => setFunding(undefined)} onSent={refresh} />}
+      {withdrawing && <WithdrawAgent id={withdrawing.id} name={withdrawing.displayName} agentAddress={withdrawing.address} onClose={() => setWithdrawing(undefined)} onSent={refresh} />}
       {stopping && (
         <Drawer title={stopping.status === "stopped" ? `Withdraw from ${stopping.displayName}` : `Stop ${stopping.displayName}`} onClose={() => setStopping(undefined)}>
           <div>

@@ -2,7 +2,7 @@ import { claimAlert, claimJobs, claimMirror, failDecision, getAgentByUser, ownsA
 import { buildOrder, buildUpdate, cancelMessage, feeFields, FlashError, HIGH_COST_PERCENT, mirrorPlan, OPEN_STATUSES, orderCost, prepareOrder, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
 import { createPublicClient, erc20Abi, http, type Hex } from "viem";
 import { base } from "viem/chains";
-import { withdrawAgent } from "./agent-exit";
+import { withdrawAgent, withdrawPart, type ExitChain } from "./agent-exit";
 import { signerFor, type PrivyAccess } from "./signers";
 import { card } from "./trades";
 
@@ -16,6 +16,16 @@ interface JobDeps {
   rpcUrl?: string;
   privy: PrivyAccess;
   send?: (chatId: number, text: string) => Promise<void>;
+  chain?: (rpcUrl?: string) => ExitChain;
+}
+
+function baseChain(rpcUrl?: string): ExitChain {
+  const reader = createPublicClient({ chain: base, transport: http(rpcUrl) });
+  return {
+    tokenBalance: (token, owner) => reader.readContract({ address: token as Hex, abi: erc20Abi, functionName: "balanceOf", args: [owner as Hex] }),
+    nativeBalance: (owner) => reader.getBalance({ address: owner as Hex }),
+    wait: (ms) => new Promise<void>((r) => setTimeout(r, ms)),
+  };
 }
 
 type Job = Awaited<ReturnType<typeof claimJobs>>[number];
@@ -138,13 +148,13 @@ async function run(deps: JobDeps, job: Job) {
     if (!(await ownsAgentDestination(db, job.userId, destination))) throw new Error("Funds can only go to the agent's owner.");
     const agent = await getAgentByUser(db, job.userId);
     if (agent?.status !== "stopped") throw new Error("Stop the agent before withdrawing.");
-    const reader = createPublicClient({ chain: base, transport: http(deps.rpcUrl) });
-    const chain = {
-      tokenBalance: (token: string, owner: string) => reader.readContract({ address: token as Hex, abi: erc20Abi, functionName: "balanceOf", args: [owner as Hex] }),
-      nativeBalance: (owner: string) => reader.getBalance({ address: owner as Hex }),
-      wait: (ms: number) => new Promise<void>((r) => setTimeout(r, ms)),
-    };
-    return withdrawAgent({ flash, signer, chain, feeBps, destination, sell });
+    return withdrawAgent({ flash, signer, chain: (deps.chain ?? baseChain)(deps.rpcUrl), feeBps, destination, sell });
+  }
+
+  if (job.kind === "agent-withdraw") {
+    const { destination, token, amount } = payload as unknown as { destination: string; token: string; amount: string };
+    if (!(await ownsAgentDestination(db, job.userId, destination))) throw new Error("Funds can only go to the agent's owner.");
+    return withdrawPart({ flash, signer, chain: (deps.chain ?? baseChain)(deps.rpcUrl), destination, token, amount });
   }
 
   throw new Error("Unknown request.");
@@ -173,6 +183,7 @@ export async function runJob(deps: JobDeps, job: Job) {
     const request = (job.payload as { request?: OrderRequest }).request;
     if (automatic && request && request.orderType !== "market" && !("skipped" in result)) await tell(deps, job, card("🕓", `Auto-copy placed: ${label(job)}`, [], "Your order is open. You'll hear when it fills."));
     if (job.kind === "agent-exit" && "sent" in result) await tellOwner(deps, job, card("✅", "Agent stopped", [], `Sent ${(result.sent as string[]).join(", ") || "nothing"} to your wallet.`));
+    if (job.kind === "agent-withdraw" && "sent" in result) await tellOwner(deps, job, card("✅", "Withdrawal sent", [], `Sent ${(result.sent as string[]).join(", ")} to your wallet.`));
     if (job.kind === "copy-move" && !("skipped" in result)) {
       const { trader, limit } = job.payload as { trader: string; limit: string };
       await tell(deps, job, card("🔁", `${trader} moved their order, so yours moved too`, [["New price", `$${Number(limit).toLocaleString("en-US")}`]]));
@@ -184,7 +195,7 @@ export async function runJob(deps: JobDeps, job: Job) {
     const { decisionId } = job.payload as { decisionId?: string };
     if (decisionId) await failDecision(deps.db, decisionId, error);
     if (automatic) await tell(deps, job, card("⚠️", "Auto-copy failed", [], error));
-    if (job.kind === "agent-exit") await tellOwner(deps, job, card("⚠️", "Withdrawal didn't finish", [], `${error} Your funds are safe in the agent's wallet.`));
+    if (job.kind === "agent-exit" || job.kind === "agent-withdraw") await tellOwner(deps, job, card("⚠️", "Withdrawal didn't finish", [], `${error} Your funds are safe in the agent's wallet.`));
   }
 }
 

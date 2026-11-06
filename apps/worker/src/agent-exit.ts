@@ -1,12 +1,11 @@
-import { batchCancelMessage, buildOrder, feeFields, OPEN_STATUSES, prepareOrder, submitPrepared, USDC_BASE, type FlashClient } from "@flashmob/flash";
+import { AGENT_GAS_RESERVE_ETH, batchCancelMessage, buildOrder, feeFields, NATIVE_ASSET, OPEN_STATUSES, prepareOrder, submitPrepared, USDC_BASE, WITHDRAW_ALL, type FlashClient } from "@flashmob/flash";
 import type { OrderSigner } from "@flashmob/signer";
-import { encodeFunctionData, erc20Abi, parseEther } from "viem";
+import { encodeFunctionData, erc20Abi, parseEther, parseUnits } from "viem";
 
 const MIN_SELL_USD = 0.5;
 const FILL_WAIT_MS = 30_000;
 const FILL_POLL_MS = 2_000;
-// What stays behind to pay for the last transfer.
-const GAS_RESERVE = parseEther("0.00002");
+const GAS_RESERVE = parseEther(AGENT_GAS_RESERVE_ETH);
 
 export interface ExitChain {
   tokenBalance(token: string, owner: string): Promise<bigint>;
@@ -80,4 +79,37 @@ export async function withdrawAgent(exit: Exit) {
     sent.push("ETH");
   }
   return { sent };
+}
+
+interface Withdrawal {
+  flash: FlashClient;
+  signer: OrderSigner;
+  chain: ExitChain;
+  destination: string;
+  token: string;
+  amount: string;
+}
+
+/** Sends part of one asset to the owner. The agent keeps running, and its orders are left alone. */
+export async function withdrawPart({ flash, signer, chain, destination, token, amount }: Withdrawal) {
+  const funder = signer.address;
+  const eth = await chain.nativeBalance(funder);
+
+  if (token === NATIVE_ASSET) {
+    const most = eth > GAS_RESERVE ? eth - GAS_RESERVE : 0n;
+    const wei = amount === WITHDRAW_ALL ? most : parseEther(amount);
+    if (wei === 0n || wei > most) throw new Error("That's more ETH than the agent can send. A little stays behind to pay for the transfer.");
+    await signer.sendTransaction({ to: destination, data: "0x", value: wei });
+    return { sent: ["ETH"] };
+  }
+
+  // Only a token this wallet really holds, so a request can never point the signer at some other contract.
+  const held = (await flash.balances(funder)).balances.find((b) => b.chain === "base" && !b.isNative && b.address.toLowerCase() === token.toLowerCase());
+  if (!held) throw new Error("The agent doesn't hold that token.");
+  if (eth === 0n) throw new Error("The agent needs a little ETH to pay for the transfer.");
+  const balance = await chain.tokenBalance(held.address, funder);
+  const units = amount === WITHDRAW_ALL ? balance : parseUnits(amount, held.tokenDecimals);
+  if (units === 0n || units > balance) throw new Error(`That's more ${held.symbol} than the agent holds.`);
+  await signer.sendTransaction({ to: held.address, data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [destination as `0x${string}`, units] }) });
+  return { sent: [held.symbol] };
 }

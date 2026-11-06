@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import { claimJobs, enqueueJob, getJob, getOrCreateWalletUser, findWallet, schema, type Db } from "@flashmob/db";
+import { claimJobs, createAgent, enqueueJob, finishJob, getJob, getOrCreateWalletUser, findWallet, schema, withdrawalPending, type Db } from "@flashmob/db";
 import { migrationsFolder } from "@flashmob/db/migrations";
-import type { FlashClient } from "@flashmob/flash";
+import { USDC_BASE, type FlashClient } from "@flashmob/flash";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
@@ -107,4 +107,31 @@ test("stopping waits for a running job, and claims no more", async () => {
   await stopping;
   assert.equal((await getJob(db, first, owner.userId))!.status, "done");
   assert.equal((await getJob(db, second, owner.userId))!.status, "queued");
+});
+
+async function agentWithdrawal(destination: string) {
+  const agent = await createAgent(db, { ownerId: owner.userId, name: "Dip Hunter", settings: {}, address: "0x00000000000000000000000000000000000000aa", privyWalletId: "agent-wallet" });
+  const id = await enqueueJob(db, { userId: agent.userId, walletId: agent.walletId, kind: "agent-withdraw", payload: { destination, token: USDC_BASE, amount: "1" } });
+  const [job] = await claimJobs(db);
+  const sends: unknown[] = [];
+  const balances = async () => ({ balances: [{ chain: "base", symbol: "USDC", address: USDC_BASE, balance: "5", isNative: false, tokenDecimals: 6 }] });
+  const chain = () => ({ tokenBalance: async () => 5_000_000n, nativeBalance: async () => 1_000_000_000_000_000n, wait: async () => {} });
+  const privy = { ...fakePrivy, client: { wallets: () => ({ ethereum: () => ({ ...fakePrivy.client.wallets().ethereum(), sendTransaction: async (_id: string, tx: unknown) => (sends.push(tx), { hash: "0xhash" }) }) }) } };
+  await runJob({ ...deps(), flash: { ...flash, balances } as unknown as FlashClient, chain, privy: privy as never }, job!);
+  return { job: (await getJob(db, id, agent.userId))!, sends, walletId: agent.walletId };
+}
+
+test("a withdrawal to anyone but the agent's owner is refused before anything is signed", async () => {
+  const { job, sends } = await agentWithdrawal("0x00000000000000000000000000000000000000ee");
+  assert.deepEqual([job.status, job.error], ["failed", "Funds can only go to the agent's owner."]);
+  assert.equal(sends.length, 0);
+});
+
+test("a withdrawal only stands in the way of another until it finishes", async () => {
+  const { job, walletId } = await agentWithdrawal("0x00000000000000000000000000000000000000ee");
+  assert.equal(await withdrawalPending(db, walletId), false);
+  await db.update(schema.walletJobs).set({ status: "running" });
+  assert.equal(await withdrawalPending(db, walletId), true);
+  await finishJob(db, job.id, { error: "done with it" });
+  assert.equal(await withdrawalPending(db, walletId), false);
 });

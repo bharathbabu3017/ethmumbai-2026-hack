@@ -69,7 +69,7 @@ export function FundAgent({ name, agentAddress, onClose, onSent }: { name: strin
 
   return (
     <Drawer title={`Fund ${name}`} onClose={onClose}>
-      <p className="mut" style={{ margin: 0 }}>What you send is the most it can lose. You can stop it and withdraw at any time.</p>
+      <p className="mut" style={{ margin: 0 }}>What you send is the most it can lose. You can withdraw at any time, with or without stopping it.</p>
       <div>
         <div className="between"><label className="lab" htmlFor="fund-usdc">USDC to trade with</label><span className="mut" style={{ fontSize: 12 }}>You have ${myUsdc.toFixed(2)}</span></div>
         <input id="fund-usdc" className="inp" inputMode="decimal" placeholder="0.00" value={usdc} onChange={(e) => setUsdc(e.target.value)} />
