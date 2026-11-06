@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { beforeEach, test } from "node:test";
-import { schema, type Db } from "@flashmob/db";
+import { schema, syncPrivyUser, type Db } from "@flashmob/db";
 import { migrationsFolder } from "@flashmob/db/migrations";
 import { FlashError, type FlashClient } from "@flashmob/flash";
 import { PGlite } from "@electric-sql/pglite";
@@ -180,6 +180,30 @@ test("rules from the website apply in Telegram too", async () => {
   assert.match(lastText(), /between 0\.5% and 50%/);
   await say("/twap buy WETH 100 2");
   assert.match(lastText(), /at least 5 minutes/);
+});
+
+test("an old generated wallet can still be exported after approving a Privy wallet", async () => {
+  await say("/start");
+  const [row] = await db.select().from(schema.users);
+  await syncPrivyUser(db, { privyId: "did:x", telegramId: row!.telegramId!, embedded: { walletId: "pw", address: "0xNewPrivy", delegated: true }, externalAddresses: [] });
+  await say("/export");
+  await tap(confirmData());
+  assert.match(lastText(), /0x[0-9a-f]{64}/);
+});
+
+test("with Privy on, trading waits until the user has approved a wallet", async () => {
+  const client = {} as never;
+  bot = createBot({ token: "1:test", db, flash, searchFlash: flash, masterKey: randomBytes(32), feeBps: "0", privy: { client, authorizationKey: "k" }, botInfo: { id: 1, is_bot: true, first_name: "t", username: "t_bot" } as never });
+  bot.api.config.use(async (_prev, method, payload) => {
+    sent.push({ method, payload });
+    return { ok: true, result: { message_id: 1, date: 0, chat: { id: 7, type: "private" } } } as never;
+  });
+  await say("/start");
+  assert.match(lastText(), /Connect your wallet first/);
+  await say("/buy WETH 10");
+  assert.match(lastText(), /Connect your wallet first/);
+  assert.equal(quotes.length, 0);
+  assert.equal(await db.$count(schema.wallets), 0);
 });
 
 test("parsing rejects bad input", () => {

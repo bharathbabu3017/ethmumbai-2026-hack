@@ -9,7 +9,7 @@ export interface MirrorPrompt {
   qty: number;
   held: number;
   walletAddress: string;
-  walletType: "bot" | "external";
+  walletType: "bot" | "external" | "embedded";
   pairOrderIds: string[];
   stop: number | null;
   target: number | null;

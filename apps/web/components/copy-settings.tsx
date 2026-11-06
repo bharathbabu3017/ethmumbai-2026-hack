@@ -1,8 +1,10 @@
 "use client";
 
 import { DEFAULT_COPY_SETTINGS, type CopyExits, type CopySettings, type CopySizing } from "@flashmob/flash";
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ensureSession, postJson } from "@/lib/account";
+import { WalletAddress } from "@/components/wallet-address";
+import { plainError } from "@/lib/format";
 import { useWallet } from "@/lib/wallet";
 
 type Form = Record<Exclude<keyof CopySettings, "enabled" | "sizing" | "exits" | "autoSell" | "skipRiskyTokens">, string>;
@@ -33,7 +35,7 @@ function Field({ id, label, children }: { id: string; label: string; children: R
 }
 
 export function CopySettingsPanel({ traderId, name }: { traderId: string; name: string }) {
-  const { address, login, getSigner } = useWallet();
+  const { address, login, getSigner, approveServerAccess } = useWallet();
   const [loaded, setLoaded] = useState(false);
   const [open, setOpen] = useState(false);
   const [enabled, setEnabled] = useState(false);
@@ -43,19 +45,34 @@ export function CopySettingsPanel({ traderId, name }: { traderId: string; name: 
   const [skipRisky, setSkipRisky] = useState(true);
   const [form, setForm] = useState<Form>(toForm(DEFAULT_COPY_SETTINGS));
   const [live, setLive] = useState(false);
-  const [telegram, setTelegram] = useState(false);
+  const [tradingWallet, setTradingWallet] = useState<string | null>(null);
+  const [approving, setApproving] = useState(false);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!address) return;
     fetch(`/api/copy-settings/${traderId}`).then(async (r) => {
       if (!r.ok) return setLoaded(true);
-      const { settings: s, telegramLinked, autoCopyLive } = await r.json();
+      const { settings: s, tradingWallet: approved, autoCopyLive } = await r.json();
       setEnabled(s.enabled); setSizing(s.sizing); setExits(s.exits); setAutoSell(s.autoSell); setSkipRisky(s.skipRiskyTokens);
-      setForm(toForm(s)); setTelegram(telegramLinked); setLive(autoCopyLive); setLoaded(true);
+      setForm(toForm(s)); setTradingWallet(approved); setLive(autoCopyLive); setLoaded(true);
     }).catch(() => setLoaded(true));
   }, [address, traderId]);
+  useEffect(load, [load]);
+
+  const approve = async () => {
+    setApproving(true);
+    setStatus("");
+    try {
+      await approveServerAccess?.();
+      load();
+    } catch (e) {
+      setStatus(plainError(e));
+    } finally {
+      setApproving(false);
+    }
+  };
 
   const field = (key: keyof Form, id = key) => ({
     id, className: "inp", inputMode: "decimal" as const, value: form[key],
@@ -84,9 +101,21 @@ export function CopySettingsPanel({ traderId, name }: { traderId: string; name: 
       <button className="btn" onClick={() => setOpen(!open)}>{enabled && loaded ? "Auto-copy settings (on)" : "Auto-copy settings"}</button>
       {open && (
         <>
-          {!telegram && <p className="dn" style={{ margin: 0, fontSize: 13 }}>Auto-copy runs from your Telegram wallet. Link Telegram first.</p>}
+          {!tradingWallet && (
+            <div className="panel" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+              <strong>Approve auto-copy</strong>
+              <span className="mut" style={{ fontSize: 13 }}>This lets Flashmob place trades from your Flashmob wallet while you&apos;re away, within your limits. Flashmob never sees its key.</span>
+              <button className="btn pri" disabled={approving || !approveServerAccess} onClick={approve}>{approving ? <><span className="spin" />Approving</> : "Approve"}</button>
+            </div>
+          )}
+          {tradingWallet && (
+            <div>
+              <div className="lab">Auto-copy trades from this wallet. Fund it with USDC and a little ETH on Base.</div>
+              <WalletAddress address={tradingWallet} />
+            </div>
+          )}
           {!live && <p className="mut" style={{ margin: 0, fontSize: 13 }}>Auto-copy isn&apos;t switched on for Flashmob yet. You can save your settings now.</p>}
-          <Toggle label="Copy automatically" hint={`Every buy ${name} makes is copied from your Telegram wallet.`} on={enabled} onChange={setEnabled} />
+          <Toggle label="Copy automatically" hint={`Every buy ${name} makes is copied from your Flashmob wallet.`} on={enabled} onChange={setEnabled} />
 
           <div>
             <label className="lab" htmlFor="sizing">Size each copy by</label>

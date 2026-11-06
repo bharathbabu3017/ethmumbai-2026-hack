@@ -1,8 +1,8 @@
 "use client";
 
-import { PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
+import { PrivyProvider, useCreateWallet, usePrivy, useSigners, useWallets } from "@privy-io/react-auth";
 import { batchCancelMessage, buildUpdate, cancelMessage, submitPrepared, type EditableOrder, type OrderRequest, type OrderStep, type QuoteResponse } from "@flashmob/flash";
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPublicClient, createWalletClient, custom, http, type Hex } from "viem";
 import { fetchMe, postJson } from "./account";
 import { flash } from "./flash";
@@ -31,6 +31,8 @@ interface WalletState {
   ready: boolean;
   miniApp?: boolean;
   address?: string;
+  /** Lets the server sign with this user's embedded wallet, for the bot and auto-copy. */
+  approveServerAccess?(): Promise<void>;
   actions: WalletActions;
   login(): void;
   logout(): void;
@@ -121,16 +123,42 @@ function MiniBridge({ children }: { children: ReactNode }) {
 const WalletContext = createContext<WalletState>(notConfigured);
 export const useWallet = () => useContext(WalletContext);
 
+/** Turned on after Telegram is enabled in the Privy dashboard. */
+export const TELEGRAM_LOGIN = process.env.NEXT_PUBLIC_PRIVY_TELEGRAM === "true";
+const SIGNER_ID = process.env.NEXT_PUBLIC_PRIVY_SIGNER_ID;
+
 function PrivyBridge({ children }: { children: ReactNode }) {
-  const { ready, authenticated, login, logout } = usePrivy();
+  const { ready, authenticated, login, logout, getAccessToken } = usePrivy();
   const { wallets } = useWallets();
-  const wallet = authenticated ? wallets[0] : undefined;
+  const { addSigners } = useSigners();
+  const { createWallet } = useCreateWallet();
+  // Someone who connected their own wallet trades from it. Everyone else uses their embedded wallet.
+  const embedded = wallets.find((w) => w.walletClientType === "privy");
+  const wallet = authenticated ? wallets.find((w) => w.walletClientType !== "privy") ?? embedded : undefined;
+
+  // Tells our server who this is, using Privy's verified token.
+  const sync = useCallback(async () => {
+    const accessToken = await getAccessToken();
+    if (accessToken) await postJson("/api/privy/sync", { accessToken, active: wallet?.address });
+  }, [getAccessToken, wallet?.address]);
+
+  useEffect(() => {
+    if (authenticated && wallet) sync().catch(() => {});
+  }, [authenticated, wallet, sync]);
+
+  const approveServerAccess = useCallback(async () => {
+    if (!SIGNER_ID) throw new Error("Privy's server signer isn't set up yet");
+    const address = embedded?.address ?? (await createWallet()).address;
+    await addSigners({ address, signers: [{ signerId: SIGNER_ID, policyIds: [] }] });
+    await sync();
+  }, [embedded?.address, createWallet, addSigners, sync]);
 
   const value = useMemo<WalletState>(() => {
     const state: WalletState = {
       configured: true,
       ready,
       address: wallet?.address,
+      approveServerAccess,
       login,
       logout: () => void logout(),
       async getSigner(name = "base") {
@@ -155,7 +183,7 @@ function PrivyBridge({ children }: { children: ReactNode }) {
       actions: browserActions((chain) => state.getSigner(chain)),
     };
     return state;
-  }, [ready, wallet, login, logout]);
+  }, [ready, wallet, login, logout, approveServerAccess]);
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
 }
 
@@ -173,11 +201,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     <PrivyProvider
       appId={appId}
       config={{
-        loginMethods: ["wallet", "email"],
+        loginMethods: TELEGRAM_LOGIN ? ["wallet", "email", "telegram"] : ["wallet", "email"],
         defaultChain: base,
         supportedChains: Object.values(CHAINS),
         appearance: { theme: "dark", accentColor: "#C4F250" },
-        embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
+        embeddedWallets: { ethereum: { createOnLogin: "all-users" } },
       }}
     >
       <PrivyBridge>{children}</PrivyBridge>

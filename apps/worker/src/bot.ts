@@ -1,9 +1,9 @@
-import { claimAction, createAction, getOrCreateTelegramUser, linkTelegram, recordOrder, setCopyPaused, type Db } from "@flashmob/db";
+import { claimAction, createAction, getBotWallet, getOrCreateTelegramAccount, getOrCreateTelegramUser, getTradingWallet, linkTelegram, recordOrder, setCopyPaused, type Db } from "@flashmob/db";
 import { batchCancelMessage, buildOrder, cancelMessage, feeFields, FlashError, OPEN_STATUSES, prepareOrder, resolveBaseToken, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
-import { createBotSigner, decryptKey, generateBotWallet } from "@flashmob/signer";
+import { decryptKey, generateBotWallet } from "@flashmob/signer";
 import { sequentialize } from "@grammyjs/runner";
 import { Bot, InlineKeyboard, type BotConfig, type Context } from "grammy";
-import { base } from "viem/chains";
+import { signerFor, type PrivyAccess } from "./signers";
 import { parseBracket, parseBuy, parseLimit, parseSell, parseSellAt, parseStopBuy, parseTimed, sellQty, type SellAmount } from "./parse";
 
 const CHAIN = "base";
@@ -49,6 +49,8 @@ export interface BotDeps {
   masterKey: Buffer;
   feeBps: string;
   rpcUrl?: string;
+  privy?: PrivyAccess; // when set, wallets come from Privy instead of being generated here
+  appUrl?: string;
   botInfo?: BotConfig<Context>["botInfo"];
 }
 
@@ -57,20 +59,39 @@ interface OrderPayload {
   minReceived?: number;
 }
 
-export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rpcUrl, botInfo }: BotDeps) {
+export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rpcUrl, privy, appUrl, botInfo }: BotDeps) {
   const bot = new Bot(token, { botInfo });
   // Updates run in parallel across people, but stay in order within one chat.
   bot.use(sequentialize((ctx) => ctx.chat?.id.toString()));
   // Wallet details and keys must never appear in a group, so everything is private-chat only.
   const pm = bot.chatType("private");
 
-  const load = (from: { id: number; username?: string }) =>
-    getOrCreateTelegramUser(db, { id: from.id, username: from.username }, (owner) => generateBotWallet(masterKey, owner));
+  const signing = { masterKey, rpcUrl, privy };
 
-  const signerFor = (encryptedKey: string | null, userId: string) => {
-    if (!encryptedKey) throw new Error("This wallet has no stored key");
-    return createBotSigner(encryptedKey, masterKey, userId, base, rpcUrl);
+  type Profile = { id: number; username?: string };
+  const account = (from: Profile) =>
+    privy
+      ? getOrCreateTelegramAccount(db, { id: from.id, username: from.username }).then((user) => ({ user, created: false }))
+      : getOrCreateTelegramUser(db, { id: from.id, username: from.username }, (owner) => generateBotWallet(masterKey, owner));
+
+  // Commands below only run once the wallet check has passed, so a wallet is always there.
+  const load = async (from: Profile) => {
+    const { user, created } = await account(from);
+    const wallet = await getTradingWallet(db, user.id);
+    return { user, created, wallet: wallet! };
   };
+
+  const openAppKeyboard = () => (appUrl ? new InlineKeyboard().webApp("Open Flashmob", `${appUrl}/mini`) : undefined);
+  const NEEDS_WALLET = "Connect your wallet first. Open the app, log in, and approve Flashmob so the bot can trade for you.";
+
+  // Telegram commands that use a wallet need one the server is allowed to sign with.
+  pm.use(async (ctx, next) => {
+    const command = ctx.message?.text?.match(/^\/(\w+)/)?.[1];
+    if (!ctx.from || command === undefined || command === "start" || command === "help") return next();
+    const { user } = await account(ctx.from);
+    if (await getTradingWallet(db, user.id)) return next();
+    await ctx.reply(NEEDS_WALLET, { reply_markup: openAppKeyboard() });
+  });
 
   const confirmKeyboard = (id: string) => new InlineKeyboard().text("Confirm", `ok:${id}`).text("Cancel", `no:${id}`);
 
@@ -87,9 +108,10 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
       };
       return void (await ctx.reply(replies[result]));
     }
+    if (!wallet) return void (await ctx.reply(`Welcome to Flashmob.\n\n${NEEDS_WALLET}\n\n${HELP}`, { reply_markup: openAppKeyboard() }));
     await ctx.reply(
       `${created ? "Your trading wallet is ready." : "Welcome back."}\n\n${wallet.address}\n\n` +
-        `Send USDC on Base to this address, plus a little ETH for gas. We hold this wallet's key so it can trade for you, so only keep what you want to trade with.\n\n${HELP}`,
+        `Send USDC on Base to this address, plus a little ETH for gas. Only keep what you want to trade with.\n\n${HELP}`,
     );
   });
 
@@ -232,6 +254,9 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
 
   pm.command("export", async (ctx) => {
     const { user } = await load(ctx.from);
+    // An older generated wallet stays exportable after moving to Privy, so its funds are never stranded.
+    const generated = await getBotWallet(db, user.id);
+    if (!generated?.encryptedKey) return void (await ctx.reply("Your wallet is secured by Privy, so Flashmob can't see its key."));
     const id = await createAction(db, user.id, "export", {});
     await ctx.reply("This shows your private key. Anyone who sees it can take your funds, and we can never ask you for it. Show it?", {
       reply_markup: new InlineKeyboard().text("Show my key", `ok:${id}`).text("Cancel", `no:${id}`),
@@ -255,7 +280,7 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
       await ctx.editMessageReplyMarkup();
       const { request, minReceived } = action.payload as OrderPayload;
       try {
-        const signer = signerFor(wallet.encryptedKey, user.id);
+        const signer = signerFor(signing, wallet, user.id);
         const quote = await prepareOrder(flash, signer.address, request);
         if (minReceived !== undefined && Number(quote.to.amount) < minReceived) {
           return void (await ctx.reply("The price moved too much since your preview, so nothing was placed. Try again."));
@@ -273,7 +298,7 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
       const { orderId } = action.payload as { orderId: string };
       try {
         const message = cancelMessage(orderId);
-        const signer = signerFor(wallet.encryptedKey, user.id);
+        const signer = signerFor(signing, wallet, user.id);
         await flash.cancelOrder(orderId, { cancelMessage: message, userSignature: await signer.signMessage(message) });
         await ctx.editMessageText("Order cancelled.");
       } catch (e) {
@@ -286,7 +311,7 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
       const { orderIds } = action.payload as { orderIds: string[] };
       try {
         const message = batchCancelMessage(orderIds);
-        const signer = signerFor(wallet.encryptedKey, user.id);
+        const signer = signerFor(signing, wallet, user.id);
         const { results } = await flash.cancelOrders({ orderIds, cancelMessage: message, userSignature: await signer.signMessage(message) });
         await ctx.editMessageText(`Cancelled ${results.filter((r) => r.ok).length} of ${results.length} orders.`);
       } catch (e) {
@@ -296,10 +321,11 @@ export function createBot({ token, db, flash, searchFlash, masterKey, feeBps, rp
     }
 
     if (action.kind === "export") {
-      if (!wallet.encryptedKey) return;
+      const generated = await getBotWallet(db, user.id);
+      if (!generated?.encryptedKey) return;
       await ctx.editMessageReplyMarkup();
-      const key = decryptKey(wallet.encryptedKey, masterKey, user.id);
-      const sent = await ctx.reply(`<tg-spoiler>${key}</tg-spoiler>\n\nSave this now. This message deletes itself in 60 seconds.`, { parse_mode: "HTML" });
+      const key = decryptKey(generated.encryptedKey, masterKey, user.id);
+      const sent = await ctx.reply(`Wallet ${generated.address}\n\n<tg-spoiler>${key}</tg-spoiler>\n\nSave this now. This message deletes itself in 60 seconds.`, { parse_mode: "HTML" });
       setTimeout(() => void ctx.api.deleteMessage(sent.chat.id, sent.message_id).catch(() => {}), EXPORT_VISIBLE_MS).unref();
     }
   });

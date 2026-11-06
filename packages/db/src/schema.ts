@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { bigint, boolean, doublePrecision, index, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
-export const walletType = pgEnum("wallet_type", ["bot", "external"]);
+export const walletType = pgEnum("wallet_type", ["bot", "external", "embedded"]);
 export const orderSource = pgEnum("order_source", ["manual", "copy"]);
 export const actionStatus = pgEnum("action_status", ["pending", "used"]);
 export const mirrorStatus = pgEnum("mirror_status", ["pending", "executing", "placed", "dismissed"]);
@@ -25,6 +25,8 @@ export const wallets = pgTable(
     type: walletType("type").notNull(),
     address: text("address").notNull().unique(),
     encryptedKey: text("encrypted_key"),
+    privyWalletId: text("privy_wallet_id"), // set on a Privy embedded wallet
+    delegated: boolean("delegated").notNull().default(false), // the user has approved our server signer
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("one_bot_wallet_per_user").on(t.userId).where(sql`${t.type} = 'bot'`)],

@@ -1,4 +1,4 @@
-import { autoSpentLast24h, enqueueJob, getBotWallet, isCopyOrder, listAutoCopiers, reserveCopy, type Db, type schema } from "@flashmob/db";
+import { autoSpentLast24h, enqueueJob, getTradingWallet, isCopyOrder, listAutoCopiers, reserveCopy, type Db, type schema } from "@flashmob/db";
 import {
   BASE_TOKENS, buildOrder, copyForm, decideCopy, USDC_BASE,
   type CopyableTrade, type CopySettings, type FlashClient, type TradeForm,
@@ -49,9 +49,12 @@ export async function autoCopy(db: Db, flash: FlashClient, auto: AutoCopy, send:
 
   for (const copier of copiers) {
     if (copier.paused || copier.userId === trader.userId) continue;
-    const wallet = await getBotWallet(db, copier.userId);
-    if (!wallet) continue;
     const tell = (text: string) => (copier.telegramId ? send(copier.telegramId, text) : Promise.resolve());
+    const wallet = await getTradingWallet(db, copier.userId);
+    if (!wallet) {
+      await tell(`Skipped copying ${trader.displayName}: approve auto-copy in the app first.`);
+      continue;
+    }
 
     const settings = copier.settings as CopySettings;
     const { balances } = await flash.balances(wallet.address);

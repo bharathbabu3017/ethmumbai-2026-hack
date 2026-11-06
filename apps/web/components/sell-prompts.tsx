@@ -81,7 +81,7 @@ export function SellPrompts() {
                 <button className="btn" disabled={!!busy} onClick={() => keep(m)}>Keep position</button>
               </div>
             ) : (
-              <p className="mut" style={{ margin: 0, fontSize: 13 }}>{m.walletType === "bot" ? "This is on your Telegram wallet. Open the app in Telegram to sell." : "Connect the wallet that made this copy to sell."}</p>
+              <p className="mut" style={{ margin: 0, fontSize: 13 }}>{m.walletType === "external" ? "Connect the wallet that made this copy to sell." : "This is on your Flashmob wallet. Open the app in Telegram to sell."}</p>
             )}
           </div>
         );

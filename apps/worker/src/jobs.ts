@@ -1,7 +1,6 @@
-import { claimJobs, claimMirror, completeMirror, confirmCopy, finishJob, getBotWallet, getPosition, getUser, mirrorExits, recordOrder, releaseCopy, releaseMirror, type Db } from "@flashmob/db";
+import { claimJobs, claimMirror, completeMirror, confirmCopy, finishJob, getPosition, getTradingWallet, getUser, mirrorExits, recordOrder, releaseCopy, releaseMirror, type Db } from "@flashmob/db";
 import { batchCancelMessage, buildOrder, buildUpdate, cancelMessage, feeFields, FlashError, mirrorPlan, OPEN_STATUSES, prepareOrder, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
-import { createBotSigner } from "@flashmob/signer";
-import { base } from "viem/chains";
+import { signerFor, type PrivyAccess } from "./signers";
 
 const POLL_MS = 1_000;
 const MAX_PRICE_MOVE = 0.02;
@@ -12,6 +11,7 @@ interface JobDeps {
   masterKey: Buffer;
   feeBps: string;
   rpcUrl?: string;
+  privy?: PrivyAccess;
   send?: (chatId: number, text: string) => Promise<void>;
 }
 
@@ -28,10 +28,10 @@ export function unsafeReason(request: OrderRequest, address: string) {
 }
 
 async function run(deps: JobDeps, job: Job) {
-  const { db, flash, masterKey, feeBps, rpcUrl } = deps;
-  const wallet = await getBotWallet(db, job.userId);
-  if (!wallet?.encryptedKey || wallet.id !== job.walletId) throw new Error("This wallet can't be used here.");
-  const signer = createBotSigner(wallet.encryptedKey, masterKey, job.userId, base, rpcUrl);
+  const { db, flash, feeBps } = deps;
+  const wallet = await getTradingWallet(db, job.userId);
+  if (!wallet || wallet.id !== job.walletId) throw new Error("This wallet can't be used here.");
+  const signer = signerFor(deps, wallet, job.userId);
   const payload = job.payload as Record<string, never>;
 
   if (job.kind === "order") {

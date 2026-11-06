@@ -13,6 +13,23 @@ interface TelegramProfile {
 
 type MakeWallet = (userId: string) => { address: string; encryptedKey: string };
 
+/** The wallet our server may sign with: a Privy wallet the user approved, or an older generated one. */
+export async function getTradingWallet(db: Db, userId: string) {
+  const rows = await db.select().from(wallets).where(eq(wallets.userId, userId));
+  return rows.find((w) => w.type === "embedded" && w.delegated) ?? rows.find((w) => w.type === "bot");
+}
+
+/** Finds or creates a Telegram user without making a wallet, for when wallets come from Privy. */
+export async function getOrCreateTelegramAccount(db: Db, tg: TelegramProfile) {
+  const [user] = await db
+    .insert(users)
+    .values({ telegramId: tg.id, telegramUsername: tg.username })
+    .onConflictDoUpdate({ target: users.telegramId, set: { telegramUsername: tg.username ?? null } })
+    .returning();
+  if (!user) throw new Error("Could not load user");
+  return user;
+}
+
 /** Safe to call concurrently: a user and their bot wallet are only ever created once. */
 export async function getOrCreateTelegramUser(db: Db, tg: TelegramProfile, makeWallet: MakeWallet) {
   const [user] = await db
@@ -93,6 +110,26 @@ export async function createLinkToken(db: Db, token: string, userId: string, ttl
   await db.insert(linkTokens).values({ token, userId, expiresAt: new Date(Date.now() + ttlSeconds * 1000) });
 }
 
+/** Moves everything from one account onto another, then removes the empty one. */
+async function mergeUsers(tx: Db, from: string, telegramUserId: string) {
+    await tx.update(wallets).set({ userId: telegramUserId }).where(eq(wallets.userId, from));
+    await tx.update(orders).set({ userId: telegramUserId }).where(eq(orders.userId, from));
+    await tx.update(traders).set({ userId: telegramUserId }).where(eq(traders.userId, from));
+    await tx.update(copies).set({ userId: telegramUserId }).where(eq(copies.userId, from));
+    await tx.update(walletJobs).set({ userId: telegramUserId }).where(eq(walletJobs.userId, from));
+    await tx.delete(copySettings).where(eq(copySettings.userId, from));
+    await tx.update(mirrors).set({ userId: telegramUserId }).where(eq(mirrors.userId, from));
+    await tx.update(mirrors).set({ traderUserId: telegramUserId }).where(eq(mirrors.traderUserId, from));
+    const moved = await tx.select().from(follows).where(eq(follows.followerId, from));
+    await tx.delete(follows).where(eq(follows.followerId, from));
+    if (moved.length) {
+      await tx.insert(follows).values(moved.map((f) => ({ ...f, followerId: telegramUserId }))).onConflictDoNothing();
+    }
+    await tx.update(linkTokens).set({ userId: telegramUserId }).where(eq(linkTokens.userId, from));
+    await tx.delete(pendingActions).where(eq(pendingActions.userId, from));
+    await tx.delete(users).where(eq(users.id, from));
+}
+
 /**
  * Links a web account to a Telegram account using a one-time token. The Telegram user is kept,
  * because bot wallet keys are encrypted to that user's id.
@@ -112,22 +149,7 @@ export async function linkTelegram(db: Db, token: string, telegramUserId: string
     const [b] = await tx.select().from(traders).where(eq(traders.userId, telegramUserId));
     if (a && b) return "conflict" as const;
 
-    await tx.update(wallets).set({ userId: telegramUserId }).where(eq(wallets.userId, from));
-    await tx.update(orders).set({ userId: telegramUserId }).where(eq(orders.userId, from));
-    await tx.update(traders).set({ userId: telegramUserId }).where(eq(traders.userId, from));
-    await tx.update(copies).set({ userId: telegramUserId }).where(eq(copies.userId, from));
-    await tx.update(walletJobs).set({ userId: telegramUserId }).where(eq(walletJobs.userId, from));
-    await tx.delete(copySettings).where(eq(copySettings.userId, from));
-    await tx.update(mirrors).set({ userId: telegramUserId }).where(eq(mirrors.userId, from));
-    await tx.update(mirrors).set({ traderUserId: telegramUserId }).where(eq(mirrors.traderUserId, from));
-    const moved = await tx.select().from(follows).where(eq(follows.followerId, from));
-    await tx.delete(follows).where(eq(follows.followerId, from));
-    if (moved.length) {
-      await tx.insert(follows).values(moved.map((f) => ({ ...f, followerId: telegramUserId }))).onConflictDoNothing();
-    }
-    await tx.update(linkTokens).set({ userId: telegramUserId }).where(eq(linkTokens.userId, from));
-    await tx.delete(pendingActions).where(eq(pendingActions.userId, from));
-    await tx.delete(users).where(eq(users.id, from));
+    await mergeUsers(tx as unknown as Db, from, telegramUserId);
     return "linked" as const;
   });
 }
@@ -567,4 +589,60 @@ export async function mirrorExits(db: Db, walletId: string, tokenAddress: string
     target = pair?.targetPrice ?? order.targetPrice;
   }
   return { pairOrderIds, stop, target };
+}
+
+export interface PrivyIdentity {
+  privyId: string;
+  telegramId?: number;
+  telegramUsername?: string;
+  embedded?: { walletId: string; address: string; delegated: boolean };
+  externalAddresses: string[];
+}
+
+/**
+ * Connects a verified Privy user to one Flashmob account, merging any accounts that turn out to be the same person.
+ * A Telegram account wins a merge, because older generated wallet keys are encrypted to that user's id.
+ */
+export async function syncPrivyUser(db: Db, identity: PrivyIdentity) {
+  return db.transaction(async (raw) => {
+    const tx = raw as unknown as Db;
+    const addresses = [...identity.externalAddresses, ...(identity.embedded ? [identity.embedded.address] : [])];
+    const ids = new Set<string>();
+    const [byPrivy] = await tx.select().from(users).where(eq(users.privyId, identity.privyId));
+    if (byPrivy) ids.add(byPrivy.id);
+    const byTelegram = identity.telegramId ? await getUserByTelegram(tx, identity.telegramId) : undefined;
+    if (byTelegram) ids.add(byTelegram.id);
+    for (const address of addresses) {
+      const wallet = await findWallet(tx, address);
+      if (wallet) ids.add(wallet.userId);
+    }
+
+    let userId = byTelegram?.id ?? [...ids][0];
+    if (!userId) {
+      const [created] = await tx.insert(users).values({}).returning();
+      userId = created!.id;
+    }
+    for (const other of ids) {
+      if (other === userId) continue;
+      const [a] = await tx.select().from(traders).where(eq(traders.userId, other));
+      const [b] = await tx.select().from(traders).where(eq(traders.userId, userId));
+      if (a && b) continue; // two trader profiles can't be merged, so they stay separate
+      await mergeUsers(tx, other, userId);
+    }
+
+    await tx
+      .update(users)
+      .set({ privyId: identity.privyId, ...(identity.telegramId ? { telegramId: identity.telegramId, telegramUsername: identity.telegramUsername ?? null } : {}) })
+      .where(eq(users.id, userId));
+
+    for (const address of identity.externalAddresses) {
+      await tx.insert(wallets).values({ userId, type: "external", address }).onConflictDoNothing();
+    }
+    if (identity.embedded) {
+      const { walletId, address, delegated } = identity.embedded;
+      const values = { userId, type: "embedded" as const, address, privyWalletId: walletId, delegated };
+      await tx.insert(wallets).values(values).onConflictDoUpdate({ target: wallets.address, set: { userId, type: "embedded", privyWalletId: walletId, delegated } });
+    }
+    return userId;
+  });
 }

@@ -59,7 +59,7 @@ export async function handleOrder(db: Db, flash: FlashClient, send: Send, o: Ord
       if (!follower) continue;
       const wallet = await findWalletById(db, mirror.walletId);
       const settings = (await getCopySettings(db, mirror.userId, trader.id)) as CopySettings | undefined;
-      if (auto?.enabled && wallet?.type === "bot" && settings?.enabled && settings.autoSell && !follower.copyPaused) {
+      if (auto?.enabled && wallet?.type !== "external" && settings?.enabled && settings.autoSell && !follower.copyPaused) {
         await enqueueJob(db, { userId: mirror.userId, walletId: mirror.walletId, kind: "mirror", payload: { mirrorId: mirror.id } });
         continue;
       }
@@ -67,7 +67,7 @@ export async function handleOrder(db: Db, flash: FlashClient, send: Send, o: Ord
       await send(follower.telegramId, mirrorAlert(trader.displayName, mirror), {
         label: "Review sale",
         path: "/portfolio",
-        opens: wallet?.type === "bot" ? "miniApp" : "website",
+        opens: wallet?.type === "external" ? "website" : "miniApp",
       });
     }
   }

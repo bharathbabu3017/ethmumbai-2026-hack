@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import {
-  alertRecipients, applyOrderFrame, claimJobs, claimMirror, completeMirror, createMirrors, dismissMirror, listCopyOrders, listMirrors, releaseMirror, enqueueJob, finishJob, getJob, recordOrder, claimAction, confirmCopy, countCopies, createAction, createLinkToken, createTrader, findWallet, getBotWallet,
+  alertRecipients, applyOrderFrame, getOrCreateTelegramAccount, getTradingWallet, getUserByTelegram, syncPrivyUser, claimJobs, claimMirror, completeMirror, createMirrors, dismissMirror, listCopyOrders, listMirrors, releaseMirror, enqueueJob, finishJob, getJob, recordOrder, claimAction, confirmCopy, countCopies, createAction, createLinkToken, createTrader, findWallet, getBotWallet,
   getOrCreateTelegramUser, getOrCreateWalletUser, getPosition, getTrade, getTraderByUser, leaderboard, linkTelegram, listTrades, releaseCopy, reserveCopy,
   setFollow, type Db, type OrderFields,
 } from "./queries";
@@ -321,4 +321,53 @@ test("a prompt can find the copy orders behind it", async () => {
   const [prompt] = await listMirrors(db, follower.userId);
   assert.equal(prompt!.trader, "mirrored10");
   assert.equal((await listCopyOrders(db, follower.walletId, token)).length, 1);
+});
+
+const embedded = (n: number, delegated = false) => ({ walletId: `pw-${n}`, address: `0xEmb${n}`, delegated });
+
+test("a new Privy user gets one account with their embedded wallet", async () => {
+  const id = await syncPrivyUser(db, { privyId: "did:1", embedded: embedded(1), externalAddresses: [] });
+  assert.equal((await findWallet(db, "0xemb1"))!.userId, id);
+  assert.equal(await syncPrivyUser(db, { privyId: "did:1", embedded: embedded(1), externalAddresses: [] }), id);
+});
+
+test("a wallet only becomes usable by the server once the user approves it", async () => {
+  const id = await syncPrivyUser(db, { privyId: "did:2", embedded: embedded(2), externalAddresses: [] });
+  assert.equal(await getTradingWallet(db, id), undefined);
+  await syncPrivyUser(db, { privyId: "did:2", embedded: embedded(2, true), externalAddresses: [] });
+  assert.equal((await getTradingWallet(db, id))!.privyWalletId, "pw-2");
+});
+
+test("revoking approval removes server access", async () => {
+  const id = await syncPrivyUser(db, { privyId: "did:3", embedded: embedded(3, true), externalAddresses: [] });
+  await syncPrivyUser(db, { privyId: "did:3", embedded: embedded(3, false), externalAddresses: [] });
+  assert.equal(await getTradingWallet(db, id), undefined);
+});
+
+test("web and Telegram become one account, keeping the Telegram user", async () => {
+  const tg = await getOrCreateTelegramAccount(db, { id: 5000 });
+  const webId = await getOrCreateWalletUser(db, "0xMeta");
+  await createTrader(db, { userId: webId, displayName: "merged" });
+  const id = await syncPrivyUser(db, { privyId: "did:4", telegramId: 5000, embedded: embedded(4, true), externalAddresses: ["0xMeta"] });
+  assert.equal(id, tg.id);
+  assert.equal((await findWallet(db, "0xmeta"))!.userId, tg.id);
+  assert.ok(await getTraderByUser(db, tg.id));
+});
+
+test("an older generated wallet still works until a Privy wallet is approved, then Privy wins", async () => {
+  const old = await getOrCreateTelegramUser(db, { id: 5001 }, makeWallet);
+  assert.equal((await getTradingWallet(db, old.user.id))!.type, "bot");
+  await syncPrivyUser(db, { privyId: "did:5", telegramId: 5001, embedded: embedded(5, true), externalAddresses: [] });
+  assert.equal((await getTradingWallet(db, old.user.id))!.type, "embedded");
+  assert.equal((await getUserByTelegram(db, 5001))!.privyId, "did:5");
+});
+
+test("two trader profiles are never merged", async () => {
+  const a = await getOrCreateWalletUser(db, "0xT1");
+  await createTrader(db, { userId: a, displayName: "t1" });
+  const tg = await getOrCreateTelegramAccount(db, { id: 5002 });
+  await createTrader(db, { userId: tg.id, displayName: "t2" });
+  await syncPrivyUser(db, { privyId: "did:6", telegramId: 5002, externalAddresses: ["0xT1"] });
+  assert.ok(await getTraderByUser(db, a));
+  assert.ok(await getTraderByUser(db, tg.id));
 });

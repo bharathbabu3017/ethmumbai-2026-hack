@@ -57,6 +57,13 @@
       "when": 1793960051056,
       "tag": "0007_salty_xorn",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793964337469,
+      "tag": "0008_good_hellcat",
+      "breakpoints": true
     }
   ]
 }

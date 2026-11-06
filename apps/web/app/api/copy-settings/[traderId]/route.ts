@@ -1,4 +1,4 @@
-import { getCopySettings, getTrader, getUser, saveCopySettings } from "@flashmob/db";
+import { getCopySettings, getTrader, getTradingWallet, getUser, saveCopySettings } from "@flashmob/db";
 import { DEFAULT_COPY_SETTINGS, settingsError, type CopySettings } from "@flashmob/flash";
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
@@ -16,10 +16,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!session) return unauthorized();
   const { traderId } = await params;
   if (!UUID.test(traderId)) return fail("Trader not found", 404);
-  const [saved, user] = await Promise.all([getCopySettings(db(), session.userId, traderId), getUser(db(), session.userId)]);
+  const [saved, user, wallet] = await Promise.all([getCopySettings(db(), session.userId, traderId), getUser(db(), session.userId), getTradingWallet(db(), session.userId)]);
   return NextResponse.json({
     settings: { ...DEFAULT_COPY_SETTINGS, ...(saved as Partial<CopySettings> | undefined) },
     telegramLinked: !!user?.telegramId,
+    tradingWallet: wallet?.address ?? null,
     autoCopyLive: process.env.AUTO_COPY_ENABLED === "true",
   });
 }
@@ -55,8 +56,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   };
   const problem = settingsError(settings);
   if (problem) return fail(problem, 400);
-  const user = await getUser(db(), session.userId);
-  if (settings.enabled && !user?.telegramId) return fail("Link Telegram first. Auto-copy runs from your Telegram wallet.", 400);
+  if (settings.enabled && !(await getTradingWallet(db(), session.userId))) return fail("Approve auto-copy first, so Flashmob can trade from your wallet.", 400);
   await saveCopySettings(db(), session.userId, traderId, settings);
   return NextResponse.json({ ok: true });
 }

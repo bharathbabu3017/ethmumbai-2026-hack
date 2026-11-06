@@ -10,6 +10,7 @@
     "test": "tsx --test src/*.test.ts"
   },
   "dependencies": {
+    "@privy-io/node": "^0.38.0",
     "viem": "^2.57.16"
   },
   "devDependencies": {
