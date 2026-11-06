@@ -1,5 +1,4 @@
 import { isFollowing, leaderboard, listTraderTrades } from "@flashmob/db";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Avatar } from "@/components/avatar";
 import { CopySettingsPanel } from "@/components/copy-settings";
@@ -7,7 +6,6 @@ import { Nav } from "@/components/nav";
 import { ResultsCurve } from "@/components/results-curve";
 import { SubscribeButton } from "@/components/subscribe-button";
 import { TradeRow } from "@/components/trade-row";
-import { COPYABLE_TYPES } from "@flashmob/flash";
 import { db } from "@/lib/db";
 import { basescan, pct, shortAddress } from "@/lib/format";
 import { getSession } from "@/lib/session";
@@ -31,7 +29,6 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
   ];
   const sales = trades.filter((t) => t.soldCostUsd > 0).reverse();
   const curve = sales.reduce<number[]>((sum, t) => [...sum, (sum.at(-1) ?? 0) + t.realizedUsd], []);
-  const latestBuy = trades.find((t) => t.side === "buy" && COPYABLE_TYPES.includes(t.orderType ?? ""));
 
   return (
     <>
@@ -62,7 +59,7 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
           <section>
             <h2 style={{ fontSize: 18, marginBottom: 14 }}>Trades</h2>
             {trades.length === 0 && <p className="mut" style={{ margin: 0, paddingTop: 14, borderTop: "1px solid var(--line)" }}>No trades yet. Everything this trader places on Flashmob will appear here.</p>}
-            {trades.map((order) => <TradeRow key={order.id} order={order} />)}
+            {trades.map((order) => <TradeRow key={order.id} order={order} canCopy={session?.userId !== trader.userId} />)}
           </section>
         </div>
         <aside className="side" style={{ gap: 12 }}>
@@ -71,11 +68,6 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
             <h2 style={{ fontSize: 16 }}>Telegram alerts</h2>
             <p className="mut" style={{ margin: 0 }}>Get a message every time {trader.displayName} trades. Nothing is bought for you.</p>
             <SubscribeButton traderId={id} initial={following} />
-          </div>
-          <div className="panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <h2 style={{ fontSize: 16 }}>Copy one trade</h2>
-            <p className="mut" style={{ margin: 0 }}>Choose your own amount, stop and target for a single trade.</p>
-            {latestBuy ? <Link href={`/trades/${latestBuy.id}`} className="btn">View latest buy</Link> : <span className="mut" style={{ fontSize: 13 }}>Nothing to copy yet.</span>}
           </div>
         </aside>
       </main>

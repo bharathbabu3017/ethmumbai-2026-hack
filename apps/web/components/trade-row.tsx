@@ -1,3 +1,4 @@
+import { COPYABLE_TYPES } from "@flashmob/flash";
 import Link from "next/link";
 import { tradeSize, tradeStatus, usd } from "@/lib/format";
 
@@ -7,9 +8,11 @@ interface Props {
     limitPrice: number | null; stopPrice: number | null; targetPrice: number | null; filledQty: number; filledUsd: number; realizedUsd: number; soldCostUsd: number;
   };
   trader?: { id: string; displayName: string };
+  /** Shows a Copy button on trades that can still be copied. */
+  canCopy?: boolean;
 }
 
-export function TradeRow({ order: o, trader }: Props) {
+export function TradeRow({ order: o, trader, canCopy }: Props) {
   const status = tradeStatus(o.status, o.filledQty);
   const price = o.filledQty > 0 ? o.filledUsd / o.filledQty : o.limitPrice;
   const result = o.soldCostUsd > 0 ? (o.realizedUsd / o.soldCostUsd) * 100 : null;
@@ -23,7 +26,12 @@ export function TradeRow({ order: o, trader }: Props) {
         </span>
       </div>
       {trader && <Link href={`/traders/${trader.id}`} className="mut" style={{ fontSize: 13 }}>{trader.displayName}</Link>}
-      <div className="m mut" style={{ fontSize: 12 }}>{details}</div>
+      <div className="between" style={{ alignItems: "center" }}>
+        <span className="m mut" style={{ fontSize: 12 }}>{details}</span>
+        {canCopy && o.side === "buy" && COPYABLE_TYPES.includes(o.orderType ?? "") && status.label !== "Cancelled" && (
+          <Link href={`/trades/${o.id}`} className="btn" style={{ minHeight: 30, padding: "0 12px", fontSize: 13, flexShrink: 0 }}>Copy</Link>
+        )}
+      </div>
     </article>
   );
 }
