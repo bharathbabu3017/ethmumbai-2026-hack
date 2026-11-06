@@ -1,5 +1,8 @@
-import { claimAlert, claimJobs, claimMirror, completeMirror, confirmCopy, finishJob, getPosition, getTradingWallet, getUser, mirrorExits, recordOrder, releaseCopy, releaseMirror, type Db } from "@flashmob/db";
+import { claimAlert, claimJobs, claimMirror, failDecision, getAgentByUser, ownsAgentDestination, completeMirror, confirmCopy, finishJob, getPosition, getTradingWallet, getUser, mirrorExits, recordOrder, releaseCopy, releaseMirror, type Db } from "@flashmob/db";
 import { buildOrder, buildUpdate, cancelMessage, feeFields, FlashError, HIGH_COST_PERCENT, mirrorPlan, OPEN_STATUSES, orderCost, prepareOrder, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
+import { createPublicClient, erc20Abi, http, type Hex } from "viem";
+import { base } from "viem/chains";
+import { withdrawAgent } from "./agent-exit";
 import { signerFor, type PrivyAccess } from "./signers";
 import { card } from "./trades";
 
@@ -34,7 +37,12 @@ async function run(deps: JobDeps, job: Job) {
   const payload = job.payload as Record<string, never>;
 
   if (job.kind === "order") {
-    const { request: asked, minReceived, copyId } = payload as unknown as { request: OrderRequest; minReceived?: number; copyId?: string };
+    const { request: asked, minReceived, copyId, decisionId } = payload as unknown as { request: OrderRequest; minReceived?: number; copyId?: string; decisionId?: string };
+    // An owner can pause or stop an agent after this was queued, and that always wins.
+    if (decisionId && (await getAgentByUser(db, job.userId))?.status !== "running") {
+      await failDecision(db, decisionId, "The agent was paused or stopped first.");
+      return { skipped: true };
+    }
     const problem = unsafeReason(asked, wallet.address);
     if (problem) {
       if (copyId) await releaseCopy(db, copyId, job.userId, problem);
@@ -125,6 +133,20 @@ async function run(deps: JobDeps, job: Job) {
     return { orderId, limit };
   }
 
+  if (job.kind === "agent-exit") {
+    const { destination, sell } = payload as unknown as { destination: string; sell: boolean };
+    if (!(await ownsAgentDestination(db, job.userId, destination))) throw new Error("Funds can only go to the agent's owner.");
+    const agent = await getAgentByUser(db, job.userId);
+    if (agent?.status !== "stopped") throw new Error("Stop the agent before withdrawing.");
+    const reader = createPublicClient({ chain: base, transport: http(deps.rpcUrl) });
+    const chain = {
+      tokenBalance: (token: string, owner: string) => reader.readContract({ address: token as Hex, abi: erc20Abi, functionName: "balanceOf", args: [owner as Hex] }),
+      nativeBalance: (owner: string) => reader.getBalance({ address: owner as Hex }),
+      wait: (ms: number) => new Promise<void>((r) => setTimeout(r, ms)),
+    };
+    return withdrawAgent({ flash, signer, chain, feeBps, destination, sell });
+  }
+
   throw new Error("Unknown request.");
 }
 
@@ -136,6 +158,12 @@ async function tell(deps: JobDeps, job: Job, text: string) {
   if (user?.telegramId && (await claimAlert(deps.db, user.telegramId, `job:${job.id}`))) await deps.send?.(user.telegramId, text);
 }
 
+async function tellOwner(deps: JobDeps, job: Job, text: string) {
+  const agent = await getAgentByUser(deps.db, job.userId);
+  const owner = agent && (await getUser(deps.db, agent.ownerId));
+  if (owner?.telegramId && (await claimAlert(deps.db, owner.telegramId, `job:${job.id}`))) await deps.send?.(owner.telegramId, text);
+}
+
 export async function runJob(deps: JobDeps, job: Job) {
   const automatic = job.kind === "mirror" || job.kind.startsWith("copy-") || !!label(job);
   try {
@@ -144,6 +172,7 @@ export async function runJob(deps: JobDeps, job: Job) {
     // A market order's fill alert says it all. One that rests needs its own note, or it would look like nothing happened.
     const request = (job.payload as { request?: OrderRequest }).request;
     if (automatic && request && request.orderType !== "market" && !("skipped" in result)) await tell(deps, job, card("🕓", `Auto-copy placed: ${label(job)}`, [], "Your order is open. You'll hear when it fills."));
+    if (job.kind === "agent-exit" && "sent" in result) await tellOwner(deps, job, card("✅", "Agent stopped", [], `Sent ${(result.sent as string[]).join(", ") || "nothing"} to your wallet.`));
     if (job.kind === "copy-move" && !("skipped" in result)) {
       const { trader, limit } = job.payload as { trader: string; limit: string };
       await tell(deps, job, card("🔁", `${trader} moved their order, so yours moved too`, [["New price", `$${Number(limit).toLocaleString("en-US")}`]]));
@@ -152,7 +181,10 @@ export async function runJob(deps: JobDeps, job: Job) {
     const known = e instanceof FlashError || (e instanceof Error && !/key|decrypt|auth/i.test(e.message));
     const error = known ? (e as Error).message : "Something went wrong. Check your orders before trying again.";
     await finishJob(deps.db, job.id, { error });
+    const { decisionId } = job.payload as { decisionId?: string };
+    if (decisionId) await failDecision(deps.db, decisionId, error);
     if (automatic) await tell(deps, job, card("⚠️", "Auto-copy failed", [], error));
+    if (job.kind === "agent-exit") await tellOwner(deps, job, card("⚠️", "Withdrawal didn't finish", [], `${error} Your funds are safe in the agent's wallet.`));
   }
 }
 

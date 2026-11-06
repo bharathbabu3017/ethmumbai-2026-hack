@@ -17,6 +17,10 @@ test("a valid limit buy becomes an order the normal builder accepts", () => {
   assert.ok("request" in buildOrder({ ...r.form, tokenAddress: "0xweth", funder: "0xagent" }));
 });
 
+test("it can't pile up open orders", () => {
+  assert.match(skipped(check({}, settings, { ...context, openOrders: 3 })), /already has 3 open orders/);
+});
+
 test("doing nothing is a fine answer", () => assert.deepEqual(check({ action: "do_nothing" }), { idle: true }));
 
 test("the model can't spend past any limit", () => {

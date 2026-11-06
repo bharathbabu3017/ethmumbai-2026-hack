@@ -147,9 +147,29 @@ export const agents = pgTable(
     walletId: uuid("wallet_id").notNull().unique().references(() => wallets.id),
     settings: jsonb("settings").notNull(),
     status: agentStatus("status").notNull().default("funding"),
+    lastCheckAt: timestamp("last_check_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("agents_owner").on(t.ownerId)],
+);
+
+export const decisionStatus = pgEnum("decision_status", ["idle", "placed", "refused", "failed"]);
+
+// Every check an agent makes, including doing nothing. This is its public log.
+export const agentDecisions = pgTable(
+  "agent_decisions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentId: uuid("agent_id").notNull().references(() => agents.id),
+    action: text("action").notNull(),
+    tokenSymbol: text("token_symbol"),
+    amountUsd: doublePrecision("amount_usd"),
+    reason: text("reason").notNull(),
+    status: decisionStatus("status").notNull(),
+    note: text("note"), // why our checks refused it, or why placing it failed
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("agent_decisions_agent").on(t.agentId, t.createdAt)],
 );
 
 // Every Telegram alert claims a row here before it's sent, so nothing is delivered twice, even across restarts.

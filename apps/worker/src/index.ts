@@ -1,9 +1,10 @@
 import { pruneAlerts, createDb } from "@flashmob/db";
-import { createFlashClient, PUBLIC_DEV_KEY } from "@flashmob/flash";
+import { askModel, createFlashClient, PUBLIC_DEV_KEY } from "@flashmob/flash";
 import { createPrivy } from "@flashmob/signer";
 import { run } from "@grammyjs/runner";
 import { createBot } from "./bot";
 import { GrammyError, InlineKeyboard } from "grammy";
+import { startAgents } from "./agents";
 import { startJobs } from "./jobs";
 import { startListener, type AlertButton } from "./listener";
 
@@ -86,6 +87,9 @@ console.log(`Auto-copy is ${autoCopyEnabled ? "ON" : "off"}`);
 await pruneAlerts(db).catch(() => {});
 startListener(db, flash, send, apiKey, { enabled: autoCopyEnabled, searchFlash });
 startJobs({ db, flash, feeBps, rpcUrl: process.env.BASE_RPC_URL, privy, send });
+const modelKey = process.env.MODEL_API_KEY;
+if (modelKey) startAgents({ db, flash, searchFlash, ask: (settings, context) => askModel(modelKey, settings, context) });
+console.log(`Agents are ${modelKey ? "ON" : "off (no MODEL_API_KEY)"}`);
 if (appUrl) await bot.api.setChatMenuButton({ menu_button: { type: "web_app", text: "Open app", web_app: { url: `${appUrl}/mini` } } });
 
 console.log("Bot running");

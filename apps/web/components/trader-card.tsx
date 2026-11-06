@@ -18,6 +18,7 @@ export interface DiscoverTrader {
   recent: { id: string; text: string; at: Date | null; symbol: string; address: string | null }[];
   /** How this trader relates to whoever is looking. */
   viewer: "you" | "copying" | null;
+  agent: boolean;
 }
 
 function TraderAction({ trader: t }: { trader: DiscoverTrader }) {
@@ -37,7 +38,7 @@ export function TraderCard({ trader: t }: { trader: DiscoverTrader }) {
       <Link href={`/traders/${t.id}`} className="row" style={{ gap: 10, flexWrap: "nowrap", minWidth: 0 }}>
         <Avatar name={t.displayName} size={40} />
         <span style={{ minWidth: 0 }}>
-          <span className="row" style={{ gap: 6, flexWrap: "nowrap", fontWeight: 600 }}><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.displayName}</span>{t.viewer === "you" && <YouTag />}</span>
+          <span className="row" style={{ gap: 6, flexWrap: "nowrap", fontWeight: 600 }}><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.displayName}</span>{t.viewer === "you" && <YouTag />}{t.agent && <span className="agent-badge">AI agent</span>}</span>
           {t.walletAddress && <span className="m mut" style={{ fontSize: 12 }}>{shortAddress(t.walletAddress)}</span>}
         </span>
       </Link>

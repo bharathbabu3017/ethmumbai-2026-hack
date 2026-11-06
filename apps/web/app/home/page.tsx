@@ -1,4 +1,4 @@
-import { getUser, leaderboard, listTrades, listUserCopies, listUserCopySettings } from "@flashmob/db";
+import { getUser, leaderboard, listAgentTraders, listTrades, listUserCopies, listUserCopySettings } from "@flashmob/db";
 import Link from "next/link";
 import { CopyDiagram } from "@/components/copy-diagram";
 import { GettingStarted } from "@/components/getting-started";
@@ -16,23 +16,27 @@ export const dynamic = "force-dynamic";
 // Cards read better while there are few traders. After that, a ranked table does.
 const TABLE_FROM = 6;
 const TOP_TOKENS = 5;
+const TABS = [["", "All"], ["traders", "Traders"], ["agents", "Agents"]] as const;
 
-export default async function Home() {
-  const [board, feed, session] = await Promise.all([leaderboard(db()), listTrades(db(), 300), getSession()]);
+export default async function Home({ searchParams }: { searchParams: Promise<{ show?: string }> }) {
+  const { show } = await searchParams;
+  const [board, feed, session, agentRows] = await Promise.all([leaderboard(db()), listTrades(db(), 300), getSession(), listAgentTraders(db())]);
+  const agentIds = new Set(agentRows.map((a) => a.traderId));
   const [settings, user, copied] = session
     ? await Promise.all([listUserCopySettings(db(), session.userId), getUser(db(), session.userId), listUserCopies(db(), session.userId)])
     : [[], undefined, []];
   const copying = new Set(settings.filter((s) => s.enabled).map((s) => s.traderId));
   const isTrader = board.some((t) => t.userId === session?.userId);
 
-  const traders: DiscoverTrader[] = board.map((t) => {
+  const everyone: DiscoverTrader[] = board.map((t) => {
     const theirs = feed.filter((r) => r.trader.id === t.id).map((r) => r.order);
     const filled = theirs.filter((o) => o.filledQty > 0);
     const curve = filled.filter((o) => o.soldCostUsd > 0).reverse().reduce<number[]>((sum, o) => [...sum, (sum.at(-1) ?? 0) + o.realizedUsd], []);
     const recent = filled.slice(0, 2).map((o) => ({ id: o.id, text: `${o.side === "sell" ? "Sold" : "Bought"} ${o.tokenSymbol} ${tradeSize(o)}`, at: o.placedAt, symbol: o.tokenSymbol ?? "", address: o.tokenAddress }));
     const viewer = t.userId === session?.userId ? "you" as const : copying.has(t.id) ? "copying" as const : null;
-    return { ...t, curve, recent, viewer };
+    return { ...t, curve, recent, viewer, agent: agentIds.has(t.id) };
   });
+  const traders = everyone.filter((t) => (show === "agents" ? t.agent : show === "traders" ? !t.agent : true));
 
   const bought = new Map<string, { symbol: string; address: string; buys: number; usd: number }>();
   for (const { order: o } of feed) {
@@ -49,12 +53,20 @@ export default async function Home() {
         {copying.size > 0 && <StatusStrip copying={copying.size} paused={!!user?.copyPaused} />}
         <SellPrompts />
         {copying.size === 0 && copied.length === 0 && <GettingStarted signedIn={!!session} />}
-        <div>
-          <h1 style={{ fontSize: 26 }}>Discover traders</h1>
-          <p className="mut" style={{ margin: "4px 0 0" }}>Ranked from real fills. Pick one and your wallet can copy their trades.</p>
+        <div className="between" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div>
+            <h1 style={{ fontSize: 26 }}>Discover</h1>
+            <p className="mut" style={{ margin: "4px 0 0" }}>People and AI agents, ranked from real fills.</p>
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <nav aria-label="Filter" className="row" style={{ gap: 4 }}>
+              {TABS.map(([key, label]) => <Link key={label} href={key ? `/home?show=${key}` : "/home"} className={`chip ${(show ?? "") === key ? "on" : ""}`}>{label}</Link>)}
+            </nav>
+            <Link href="/agents/new" className="btn">Build an agent</Link>
+          </div>
         </div>
 
-        {traders.length === 0 ? (
+        {traders.length === 0 && show === "agents" ? <p className="mut" style={{ margin: 0 }}>No agents yet. <Link href="/agents/new" style={{ color: "var(--text)" }}>Build the first one.</Link></p> : traders.length === 0 ? (
           <div className="panel row" style={{ gap: 24 }}>
             <div style={{ flex: "1 1 220px" }}>
               <h2 style={{ fontSize: 18, marginBottom: 6 }}>No traders yet</h2>

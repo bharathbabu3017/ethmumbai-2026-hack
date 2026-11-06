@@ -36,6 +36,7 @@ export interface AgentDecision {
 const ENTRY: Record<AgentStrategy, string> = { dip: "limit_buy", trend: "stop_buy", stack: "twap_buy" };
 const MIN_TRADE_USD = 1;
 const MIN_TWAP_MINUTES = 10;
+const MAX_OPEN_ORDERS = 3;
 const MAX_TWAP_MINUTES = 30 * 24 * 60;
 const MAX_REASON = 200;
 
@@ -89,6 +90,7 @@ export function checkDecision(d: AgentDecision, s: AgentSettings, c: AgentContex
   }
 
   if (d.action !== ENTRY[s.strategy]) return { skip: `${d.action} isn't allowed for this strategy.` };
+  if (c.openOrders >= MAX_OPEN_ORDERS) return { skip: `It already has ${c.openOrders} open orders.` };
   if (!positive(d.amountUsd) || d.amountUsd < MIN_TRADE_USD) return { skip: `Orders must be at least $${MIN_TRADE_USD}.` };
   const most = Math.min(s.maxTradeUsd, c.budgetLeftUsd, c.usdcBalance);
   if (d.amountUsd > most) return { skip: `$${d.amountUsd} is over the $${most.toFixed(2)} it can spend right now.` };

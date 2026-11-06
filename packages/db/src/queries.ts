@@ -2,7 +2,7 @@ import { and, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-
 import { alias, type PgDatabase, type PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
 import { applyFill } from "./position";
-import { agents, copies, copySettings, copySkips, follows, sentAlerts, linkTokens, mirrors, orders, pendingActions, positions, traders, users, wallets, walletJobs } from "./schema";
+import { agentDecisions, agents, copies, copySettings, copySkips, follows, sentAlerts, linkTokens, mirrors, orders, pendingActions, positions, traders, users, wallets, walletJobs } from "./schema";
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -475,6 +475,73 @@ export const listAgents = (db: Db, ownerId: string) =>
     .innerJoin(wallets, eq(agents.walletId, wallets.id))
     .where(eq(agents.ownerId, ownerId))
     .orderBy(desc(agents.createdAt));
+
+export const getOwnedAgent = async (db: Db, id: string, ownerId: string) => {
+  const [row] = await db.select().from(agents).where(and(eq(agents.id, id), eq(agents.ownerId, ownerId)));
+  return row;
+};
+
+export const getAgentByTrader = async (db: Db, traderId: string) => {
+  const [row] = await db.select().from(agents).where(eq(agents.traderId, traderId));
+  return row;
+};
+
+export const getAgentByUser = async (db: Db, userId: string) => {
+  const [row] = await db.select().from(agents).where(eq(agents.userId, userId));
+  return row;
+};
+
+export const setAgentStatus = (db: Db, id: string, status: "funding" | "running" | "paused" | "stopped") => db.update(agents).set({ status }).where(eq(agents.id, id));
+
+/** Which traders are agents, for badges and the Agents tab. */
+export const listAgentTraders = (db: Db) => db.select({ traderId: agents.traderId, status: agents.status, settings: agents.settings }).from(agents);
+
+/** Agents that might need a check, with what the runner needs to act for them. */
+export const activeAgents = (db: Db) =>
+  db
+    .select({ id: agents.id, userId: agents.userId, walletId: agents.walletId, traderId: agents.traderId, status: agents.status, settings: agents.settings, lastCheckAt: agents.lastCheckAt, address: wallets.address })
+    .from(agents)
+    .innerJoin(wallets, eq(agents.walletId, wallets.id))
+    .where(inArray(agents.status, ["funding", "running"]));
+
+/** Claims this check, so two workers can never run it at once. */
+export async function claimAgentCheck(db: Db, id: string, seen: Date | null) {
+  const rows = await db
+    .update(agents)
+    .set({ lastCheckAt: new Date() })
+    .where(and(eq(agents.id, id), seen ? eq(agents.lastCheckAt, seen) : isNull(agents.lastCheckAt)))
+    .returning({ id: agents.id });
+  return rows.length > 0;
+}
+
+export async function recordDecision(db: Db, d: typeof agentDecisions.$inferInsert) {
+  const [row] = await db.insert(agentDecisions).values(d).returning();
+  return row!;
+}
+
+export const failDecision = (db: Db, id: string, note: string) => db.update(agentDecisions).set({ status: "failed", note }).where(eq(agentDecisions.id, id));
+
+/** What an agent has committed so far. Failed orders don't count, and sales never use budget. */
+export async function agentSpentUsd(db: Db, agentId: string) {
+  const [row] = await db
+    .select({ usd: sql<number>`coalesce(sum(${agentDecisions.amountUsd}), 0)::float` })
+    .from(agentDecisions)
+    .where(and(eq(agentDecisions.agentId, agentId), eq(agentDecisions.status, "placed"), sql`${agentDecisions.action} <> 'sell'`));
+  return row?.usd ?? 0;
+}
+
+export const listDecisions = (db: Db, agentId: string, limit = 30) =>
+  db.select().from(agentDecisions).where(eq(agentDecisions.agentId, agentId)).orderBy(desc(agentDecisions.createdAt)).limit(limit);
+
+/** Whether an address belongs to the agent's owner, the only place its funds may go. */
+export async function ownsAgentDestination(db: Db, agentUserId: string, address: string) {
+  const [row] = await db
+    .select({ id: wallets.id })
+    .from(agents)
+    .innerJoin(wallets, eq(wallets.userId, agents.ownerId))
+    .where(and(eq(agents.userId, agentUserId), sql`lower(${wallets.address}) = ${address.toLowerCase()}`));
+  return !!row;
+}
 
 /** Auto-copies of a trade, with the state of each copy's own order. */
 export const autoCopiesOf = (db: Db, sourceOrderId: string) =>

@@ -30,8 +30,8 @@ export function createPrivySigner(api: EthereumApi, walletId: string, address: s
       const { signature } = await api.signMessage(walletId, { message, authorization_context });
       return signature as Hex;
     },
-    async sendTransaction({ to, data }) {
-      const { hash } = await api.sendTransaction(walletId, { caip2: `eip155:${chain.id}`, params: { transaction: { to, data } }, authorization_context });
+    async sendTransaction({ to, data, value }) {
+      const { hash } = await api.sendTransaction(walletId, { caip2: `eip155:${chain.id}`, params: { transaction: { to, data, ...(value ? { value: `0x${value.toString(16)}` } : {}) } }, authorization_context });
       const receipt = await reader.waitForTransactionReceipt({ hash: hash as Hex });
       if (receipt.status !== "success") throw new Error(`Transaction reverted: ${hash}`);
       return hash as Hex;
