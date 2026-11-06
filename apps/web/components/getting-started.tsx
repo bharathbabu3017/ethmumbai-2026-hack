@@ -10,16 +10,13 @@ const MIN_FUNDED_USD = 1;
 
 function Step({ done, title, text, action }: { done: boolean; title: string; text: string; action?: ReactNode }) {
   return (
-    <div className="row" style={{ flexWrap: "nowrap", alignItems: "stretch" }}>
+    <div className="row" style={{ flexWrap: "nowrap", alignItems: "center" }}>
       <span className={`check ${done ? "done" : ""}`} aria-label={done ? "Done" : "To do"}>{done ? "✓" : ""}</span>
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-        <div>
-          <div style={{ fontWeight: 500 }}>{title}</div>
-          <div className="mut" style={{ fontSize: 13 }}>{text}</div>
-        </div>
-        {/* Sits at the bottom, so every step's button lines up across the row. */}
-        {!done && action && <div style={{ marginTop: "auto" }}>{action}</div>}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 500 }}>{title}</div>
+        <div className="mut" style={{ fontSize: 13 }}>{text}</div>
       </div>
+      {!done && action && <div style={{ flex: "none" }}>{action}</div>}
     </div>
   );
 }
@@ -54,11 +51,11 @@ export function GettingStarted({ signedIn }: { signedIn: boolean }) {
         <h2 style={{ fontSize: 18 }}>Get started</h2>
         <p className="mut" style={{ margin: "4px 0 0" }}>Browsing needs no account. Sign in when you&apos;re ready to copy.</p>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 16 }}>
-        <Step done={signedIn || !!address} title="Sign in" text="Your wallet is created for you." action={ready ? <button className="btn" onClick={login}>Sign in</button> : undefined} />
-        <Step done={funded} title="Add funds" text="USDC to trade with, and a little ETH on Base." action={address ? <button className="btn" onClick={() => setFunds(true)}>Add funds</button> : undefined} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: "12px 32px" }}>
+        <Step done={signedIn || !!address} title="Sign in" text="Your wallet is created for you." action={ready ? <button className="asset" onClick={login}>Sign in</button> : undefined} />
+        <Step done={funded} title="Add funds" text="USDC to trade with, and a little ETH on Base." action={address ? <button className="asset" onClick={() => setFunds(true)}>Add</button> : undefined} />
         <Step done={false} title="Pick a trader" text="Set your limits, and your wallet copies them." />
-        <Step done={!!me?.telegramLinked} title="Link Telegram (optional)" text="Get a message for trades and copies." action={address ? <button className="btn" onClick={linkTelegram}>Link Telegram</button> : undefined} />
+        <Step done={!!me?.telegramLinked} title="Link Telegram (optional)" text="Get a message for trades and copies." action={address ? <button className="asset" onClick={linkTelegram}>Link</button> : undefined} />
       </div>
       {error && <p role="alert" className="dn" style={{ margin: 0 }}>{error}</p>}
       {funds && address && <AddFunds address={address} onClose={() => setFunds(false)} />}
