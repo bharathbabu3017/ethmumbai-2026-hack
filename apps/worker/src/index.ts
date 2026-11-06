@@ -85,7 +85,7 @@ const autoCopyEnabled = process.env.AUTO_COPY_ENABLED !== "false";
 console.log(`Auto-copy is ${autoCopyEnabled ? "ON" : "off"}`);
 await pruneAlerts(db).catch(() => {});
 startListener(db, flash, send, apiKey, { enabled: autoCopyEnabled, searchFlash: flash });
-startJobs({ db, flash, feeBps, rpcUrl: process.env.BASE_RPC_URL, privy, send });
+const stopJobs = startJobs({ db, flash, feeBps, rpcUrl: process.env.BASE_RPC_URL, privy, send });
 const modelKey = process.env.MODEL_API_KEY;
 if (modelKey) startAgents({ db, flash, searchFlash: flash, ask: (settings, context) => askModel(modelKey, settings, context) });
 console.log(`Agents are ${modelKey ? "ON" : "off (no MODEL_API_KEY)"}`);
@@ -93,7 +93,12 @@ if (appUrl) await bot.api.setChatMenuButton({ menu_button: { type: "web_app", te
 
 console.log("Bot running");
 const runner = run(bot);
-const stop = () => void (runner.isRunning() && runner.stop());
+// A job killed halfway could place an order without recording it, so running jobs finish first.
+const stop = async () => {
+  console.log("Stopping");
+  await Promise.allSettled([runner.isRunning() ? runner.stop() : undefined, stopJobs()]);
+  process.exit(0);
+};
 process.once("SIGINT", stop);
 process.once("SIGTERM", stop);
 await runner.task();

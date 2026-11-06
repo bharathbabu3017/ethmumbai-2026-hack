@@ -210,6 +210,19 @@ test("an old job fails instead of running late", async () => {
   assert.match((await getJob(db, id, w.userId))!.error!, /timed out/);
 });
 
+test("a job cut off while running is reported and never run again", async () => {
+  const w = await wallet("0xE9");
+  const id = await enqueueJob(db, { ...w, kind: "order", payload: {} });
+  await claimJobs(db);
+  await claimJobs(db);
+  assert.equal((await getJob(db, id, w.userId))!.status, "running");
+  await db.execute(sql`update wallet_jobs set created_at = now() - interval '20 minutes' where id = ${id}`);
+  assert.equal((await claimJobs(db)).filter((j) => j.id === id).length, 0);
+  const job = (await getJob(db, id, w.userId))!;
+  assert.equal(job.status, "failed");
+  assert.match(job.error!, /interrupted/);
+});
+
 test("a job is only visible to its owner, and records its outcome", async () => {
   const w = await wallet("0xE3");
   const other = await wallet("0xE4");

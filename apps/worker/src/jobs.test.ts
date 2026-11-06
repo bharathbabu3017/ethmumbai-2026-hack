@@ -6,7 +6,7 @@ import type { FlashClient } from "@flashmob/flash";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { runJob, unsafeReason } from "./jobs";
+import { runJob, startJobs, unsafeReason } from "./jobs";
 import { approvedUser, fakePrivy } from "./test-helpers";
 
 const typedData = JSON.stringify({ domain: { name: "T", chainId: 8453 }, types: { M: [{ name: "a", type: "uint256" }] }, primaryType: "M", message: { a: "1" } });
@@ -84,4 +84,27 @@ test("a job for a wallet that isn't approved is refused", async () => {
 
 test("an unknown job fails safely", async () => {
   assert.equal((await runOne("withdraw", { to: "0xattacker" })).status, "failed");
+});
+
+test("stopping waits for a running job, and claims no more", async () => {
+  let release = () => {};
+  const held = new Promise<void>((r) => { release = r; });
+  let submitted = () => {};
+  const reached = new Promise<void>((r) => { submitted = r; });
+  const slow = { ...flash, submitOrder: async (b: any) => (submitted(), await held, flash.submitOrder(b)) } as unknown as FlashClient;
+
+  const first = await enqueueJob(db, { userId: owner.userId, walletId: owner.walletId, kind: "order", payload: { request } });
+  const stop = startJobs({ ...deps(), flash: slow });
+  await reached;
+
+  let stopped = false;
+  const stopping = stop().then(() => { stopped = true; });
+  const second = await enqueueJob(db, { userId: owner.userId, walletId: owner.walletId, kind: "order", payload: { request } });
+  await new Promise((r) => setTimeout(r, 1_200));
+  assert.equal(stopped, false);
+
+  release();
+  await stopping;
+  assert.equal((await getJob(db, first, owner.userId))!.status, "done");
+  assert.equal((await getJob(db, second, owner.userId))!.status, "queued");
 });

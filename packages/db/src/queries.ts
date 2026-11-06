@@ -407,6 +407,8 @@ export const getJob = async (db: Db, id: string, userId: string) => {
 };
 
 const JOB_MAX_AGE_SECONDS = 60;
+// Far longer than any job takes, so only one cut off by a crash gets here.
+const RUNNING_JOB_MAX_AGE_MINUTES = 15;
 
 /** Takes queued jobs for one worker. Each job is only ever claimed once, and an old one is never run late. */
 export async function claimJobs(db: Db, limit = 10) {
@@ -414,6 +416,11 @@ export async function claimJobs(db: Db, limit = 10) {
     .update(walletJobs)
     .set({ status: "failed", error: "This request timed out. Nothing was placed." })
     .where(and(eq(walletJobs.status, "queued"), sql`${walletJobs.createdAt} < now() - make_interval(secs => ${JOB_MAX_AGE_SECONDS})`));
+  // It may have reached Flash before it stopped, so it's reported and never run again.
+  await db
+    .update(walletJobs)
+    .set({ status: "failed", error: "This request was interrupted. Check your orders before trying again." })
+    .where(and(eq(walletJobs.status, "running"), sql`${walletJobs.createdAt} < now() - make_interval(mins => ${RUNNING_JOB_MAX_AGE_MINUTES})`));
   return db
     .update(walletJobs)
     .set({ status: "running" })

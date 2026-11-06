@@ -188,19 +188,24 @@ export async function runJob(deps: JobDeps, job: Job) {
   }
 }
 
+/** Starts running jobs. The function it returns stops claiming new ones and waits for those already running. */
 export function startJobs(deps: JobDeps) {
-  let busy = false;
-  setInterval(async () => {
-    if (busy) return;
-    busy = true;
+  let running: Promise<void> | undefined;
+  const tick = async () => {
     try {
-      await Promise.all((await claimJobs(deps.db)).map((job) => runJob(deps, job)));
+      const results = await Promise.allSettled((await claimJobs(deps.db)).map((job) => runJob(deps, job)));
+      for (const result of results) if (result.status === "rejected") throw result.reason;
     } catch (e) {
       // Database errors keep the real reason, such as a lost connection, in `cause`.
       const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : e instanceof Error ? e.message : "unknown";
       console.error("Could not run wallet jobs:", cause);
-    } finally {
-      busy = false;
     }
+  };
+  const timer = setInterval(() => {
+    running ??= tick().finally(() => { running = undefined; });
   }, POLL_MS);
+  return async () => {
+    clearInterval(timer);
+    await running;
+  };
 }
