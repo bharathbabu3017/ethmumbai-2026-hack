@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Nav } from "@/components/nav";
 import { OpenOrders } from "@/components/open-orders";
 import { SellPrompts } from "@/components/sell-prompts";
+import { WalletAddress } from "@/components/wallet-address";
 import { AutoCopyList } from "@/components/auto-copy-list";
 import { Avatar } from "@/components/avatar";
 import { fetchMe, type Me } from "@/lib/account";
@@ -38,6 +39,10 @@ export default function Portfolio() {
             </div>
             {error && <p role="alert" className="dn" style={{ margin: 0 }}>{error}</p>}
             <SellPrompts />
+            <section className="panel" style={{ maxWidth: 460 }}>
+              <h2 style={{ fontSize: 16, marginBottom: 10 }}>Add funds</h2>
+              <WalletAddress address={address} />
+            </section>
             <section>
               {balances.map((b) => (
                 <div key={b.chain + b.address + b.isNative} className="between" style={{ padding: "12px 0", borderTop: "1px solid var(--line)" }}>

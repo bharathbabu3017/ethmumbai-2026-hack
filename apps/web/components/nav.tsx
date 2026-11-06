@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { WalletMenu } from "@/components/wallet-menu";
 import { useWallet } from "@/lib/wallet";
 
 const LINKS = [
@@ -13,7 +14,7 @@ const LINKS = [
 
 export function Nav() {
   const path = usePathname();
-  const { configured, ready, address, miniApp, login, logout } = useWallet();
+  const { configured, ready, address, login } = useWallet();
   return (
     <header className="topbar">
       <div className="wrap">
@@ -28,7 +29,7 @@ export function Nav() {
         <div className="row" style={{ gap: 8 }}>
           <ThemeToggle />
           {address ? (
-            <button className="btn m" onClick={logout} title={miniApp ? "Your Telegram wallet" : "Disconnect"}>{address.slice(0, 6)}…{address.slice(-4)}</button>
+            <WalletMenu address={address} />
           ) : (
             <button className="btn" onClick={login} disabled={!configured || !ready}>
               {configured ? "Connect" : "Wallet login not set up"}
