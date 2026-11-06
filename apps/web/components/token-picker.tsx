@@ -17,7 +17,7 @@ type Result = PickedToken & { name?: string; price?: string; priceChange24h?: st
 
 const RECENT_KEY = "flashmob-recent-tokens";
 const RECENT_MAX = 5;
-const COLUMNS = "minmax(200px,1.6fr) 110px 80px 90px 90px 90px 80px";
+const COLUMNS = "minmax(190px,1.5fr) 140px 70px 90px 90px 80px 70px";
 
 const compact = (n: number) => Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 const money = (v?: string) => (Number(v) > 0 ? `$${compact(Number(v))}` : "-");
