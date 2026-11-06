@@ -17,7 +17,7 @@ export interface BrowserSigner {
   signTypedData(typedData: string): Promise<string>;
   signMessage(message: string): Promise<string>;
   /** Resolves once the transaction is mined, so an order can safely follow it. */
-  sendTransaction(tx: { to: string; data: string }): Promise<string>;
+  sendTransaction(tx: { to: string; data: string; value?: bigint }): Promise<string>;
 }
 
 /** Everything that needs the wallet's approval. */
@@ -145,8 +145,8 @@ function PrivyBridge({ children }: { children: ReactNode }) {
           address: account,
           signTypedData: (typedData) => client.signTypedData(JSON.parse(typedData)),
           signMessage: (message) => client.signMessage({ message }),
-          async sendTransaction({ to, data }) {
-            const hash = await client.sendTransaction({ to: to as Hex, data: data as Hex });
+          async sendTransaction({ to, data, value }) {
+            const hash = await client.sendTransaction({ to: to as Hex, data: data as Hex, value });
             const receipt = await createPublicClient({ chain, transport: http() }).waitForTransactionReceipt({ hash });
             if (receipt.status !== "success") throw new Error(`Transaction reverted: ${hash}`);
             return hash;

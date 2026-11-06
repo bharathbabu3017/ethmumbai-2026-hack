@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { Avatar } from "@/components/avatar";
 import { Drawer } from "@/components/drawer";
+import { FundAgent } from "@/components/fund-agent";
 import { Nav } from "@/components/nav";
-import { WalletAddress } from "@/components/wallet-address";
 import { ensureSession, postJson } from "@/lib/account";
 import { useCached } from "@/lib/cached";
 import { flash } from "@/lib/flash";
@@ -23,7 +23,7 @@ interface Agent {
   usdc: number;
 }
 
-const COLUMNS = "minmax(200px,1.4fr) 130px 110px 100px minmax(150px,1fr) 200px";
+const COLUMNS = "minmax(190px,1.3fr) 120px 100px 90px minmax(130px,1fr) 300px";
 const LABELS = { funding: "Needs funds", running: "Running", paused: "Paused", stopped: "Stopped" };
 const TONES = { funding: "var(--orange)", running: "var(--up)", paused: "var(--mut)", stopped: "var(--mut)" };
 
@@ -76,9 +76,9 @@ export default function Agents() {
         ) : (
           <>
             <section className="table">
-              <div className="tr head" style={{ gridTemplateColumns: COLUMNS, minWidth: 960 }}><span>Agent</span><span>Status</span><span>Wallet</span><span>Budget</span><span>Strategy</span><span /></div>
+              <div className="tr head" style={{ gridTemplateColumns: COLUMNS, minWidth: 1040 }}><span>Agent</span><span>Status</span><span>Wallet</span><span>Budget</span><span>Strategy</span><span /></div>
               {agents.map((a) => (
-                <div key={a.id} className="tr" style={{ gridTemplateColumns: COLUMNS, minWidth: 960, borderTop: "1px solid var(--line)" }}>
+                <div key={a.id} className="tr" style={{ gridTemplateColumns: COLUMNS, minWidth: 1040, borderTop: "1px solid var(--line)" }}>
                   <Link href={`/traders/${a.traderId}`} className="row" style={{ gap: 10, fontWeight: 500, flexWrap: "nowrap" }}><Avatar name={a.displayName} size={32} /> {a.displayName}</Link>
                   <span style={{ fontSize: 13, fontWeight: 500, color: TONES[a.status] }}>{LABELS[a.status]}</span>
                   <span className="m">${a.usdc.toFixed(2)}</span>
@@ -87,7 +87,7 @@ export default function Agents() {
                   <span className="row" style={{ gap: 8, justifyContent: "flex-end", flexWrap: "nowrap" }}>
                     {a.status === "running" && <button className="btn" disabled={busy === a.id} onClick={() => act(a.id, { action: "pause" })}>Pause</button>}
                     {a.status === "paused" && <button className="btn pri" disabled={busy === a.id} onClick={() => act(a.id, { action: "resume" })}>Resume</button>}
-                    {a.status === "funding" && <button className="btn" onClick={() => setFunding(a)}>Add funds</button>}
+                    {a.status !== "stopped" && <button className="btn" onClick={() => setFunding(a)}>Add funds</button>}
                     <button className="btn warn" onClick={() => setStopping(a)}>{a.status === "stopped" ? "Withdraw" : "Stop"}</button>
                   </span>
                 </div>
@@ -97,12 +97,7 @@ export default function Agents() {
         )}
         {error && <p role="alert" className="dn" style={{ margin: 0 }}>{error}</p>}
       </main>
-      {funding && (
-        <Drawer title={`Fund ${funding.displayName}`} onClose={() => setFunding(undefined)}>
-          <p className="mut" style={{ margin: 0 }}>Send USDC on Base to its wallet, plus a little ETH for approvals. It starts by itself within a minute of funds arriving. This is the most it can lose, and you can withdraw at any time.</p>
-          <WalletAddress address={funding.address} />
-        </Drawer>
-      )}
+      {funding && <FundAgent name={funding.displayName} agentAddress={funding.address} onClose={() => setFunding(undefined)} onSent={refresh} />}
       {stopping && (
         <Drawer title={stopping.status === "stopped" ? `Withdraw from ${stopping.displayName}` : `Stop ${stopping.displayName}`} onClose={() => setStopping(undefined)}>
           <div>
