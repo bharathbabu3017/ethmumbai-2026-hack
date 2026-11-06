@@ -2,13 +2,14 @@
 
 import { PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { createWalletClient, custom, type Hex } from "viem";
+import { createPublicClient, createWalletClient, custom, http, type Hex } from "viem";
 import { base } from "viem/chains";
 
 export interface BrowserSigner {
   address: string;
   signTypedData(typedData: string): Promise<string>;
   signMessage(message: string): Promise<string>;
+  /** Resolves once the transaction is mined, so an order can safely follow it. */
   sendTransaction(tx: { to: string; data: string }): Promise<string>;
 }
 
@@ -53,7 +54,12 @@ function PrivyBridge({ children }: { children: ReactNode }) {
           address: account,
           signTypedData: (typedData) => client.signTypedData(JSON.parse(typedData)),
           signMessage: (message) => client.signMessage({ message }),
-          sendTransaction: ({ to, data }) => client.sendTransaction({ to: to as Hex, data: data as Hex }),
+          async sendTransaction({ to, data }) {
+            const hash = await client.sendTransaction({ to: to as Hex, data: data as Hex });
+            const receipt = await createPublicClient({ chain: base, transport: http() }).waitForTransactionReceipt({ hash });
+            if (receipt.status !== "success") throw new Error(`Transaction reverted: ${hash}`);
+            return hash;
+          },
         };
       },
     }),
