@@ -431,6 +431,16 @@ const copyOrder = alias(orders, "copy_order");
 const sourceOrder = alias(orders, "source_order");
 const ownOrder = alias(orders, "own_order");
 
+/** Copies of a trader's trades. Copiers stay anonymous here. */
+export const copiesOfTrader = (db: Db, traderUserId: string) =>
+  db
+    .select({ id: copies.id, tokenSymbol: sourceOrder.tokenSymbol, amountUsd: copies.amountUsd, auto: copies.auto, createdAt: copies.createdAt })
+    .from(copies)
+    .innerJoin(sourceOrder, eq(copies.sourceOrderId, sourceOrder.id))
+    .where(and(eq(sourceOrder.userId, traderUserId), eq(copies.status, "placed")))
+    .orderBy(desc(copies.createdAt))
+    .limit(50);
+
 /** Everything copied for a user, newest first: buys, sales that mirrored the trader, and skips with their reason. */
 export async function copyHistory(db: Db, userId: string) {
   const fill = { orderStatus: ownOrder.status, filledUsd: ownOrder.filledUsd, filledQty: ownOrder.filledQty };

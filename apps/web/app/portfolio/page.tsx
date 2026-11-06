@@ -3,22 +3,27 @@
 import { holdings, signedUsd, type FlashBalancesResponse, type Held } from "@flashmob/flash";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { AddFunds } from "@/components/add-funds";
 import { Nav } from "@/components/nav";
 import { OpenOrders } from "@/components/open-orders";
 import { OrderHistory } from "@/components/orders-panel";
 import { SellPrompts } from "@/components/sell-prompts";
-import { WalletAddress } from "@/components/wallet-address";
 import { flash } from "@/lib/flash";
 import { pct } from "@/lib/format";
 import { useLiveOrders } from "@/lib/order-stream";
 import { useWallet } from "@/lib/wallet";
 
-const pnlClass = (n: number) => (n < 0 ? "dn" : "up");
+const TABS = ["Assets", "Open orders", "Trade history"] as const;
+const COLUMNS = "minmax(150px,1fr) 150px 110px 170px 84px";
+const pnlClass = (n: number) => (n < 0 ? "dn" : n > 0 ? "up" : "");
 
 export default function Portfolio() {
-  const { address } = useWallet();
+  const { address, login } = useWallet();
   const [balances, setBalances] = useState<FlashBalancesResponse["balances"]>([]);
   const [paid, setPaid] = useState<{ positions: Held[]; realizedUsd: number }>({ positions: [], realizedUsd: 0 });
+  const [tab, setTab] = useState<(typeof TABS)[number]>("Assets");
+  const [open, setOpen] = useState(0);
+  const [funds, setFunds] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
@@ -31,67 +36,65 @@ export default function Portfolio() {
 
   const { rows, totalUsd, openPnlUsd, realizedUsd } = holdings(balances, paid.positions, paid.realizedUsd);
   const stats = [["Open profit/loss", openPnlUsd], ["Realized profit/loss", realizedUsd]] as const;
+
   return (
     <>
       <Nav />
-      <main className="wrap" style={{ paddingTop: 44, paddingBottom: 64, display: "flex", flexDirection: "column", gap: 32 }}>
-        {!address ? (
-          <p className="mut">Connect a wallet to see your balances and orders.</p>
-        ) : (
+      <main className="wrap wide" style={{ paddingTop: 28, paddingBottom: 56, display: "flex", flexDirection: "column", gap: 24 }}>
+        {!address ? <div><button className="btn pri" onClick={login}>Connect to see your portfolio</button></div> : (
           <>
-            <div className="row" style={{ gap: 40, alignItems: "flex-end" }}>
-              <div>
-                <div className="stat-label">Total value</div>
-                <div className="m" style={{ fontSize: 36, marginTop: 4 }}>${totalUsd.toFixed(2)}</div>
-              </div>
-              {stats.map(([label, value]) => (
-                <div key={label}>
-                  <div className="stat-label">{label}</div>
-                  <div className={`m ${pnlClass(value)}`} style={{ fontSize: 22, marginTop: 4 }}>{signedUsd(value)}</div>
+            <section className="between" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
+              <div className="row" style={{ gap: "16px 40px", alignItems: "flex-end" }}>
+                <div>
+                  <div className="stat-label">Total value</div>
+                  <h1 className="m" style={{ fontSize: 40, fontWeight: 500, marginTop: 4 }}>${totalUsd.toFixed(2)}</h1>
                 </div>
-              ))}
-            </div>
+                {stats.map(([label, value]) => (
+                  <div key={label}>
+                    <div className="stat-label">{label}</div>
+                    <div className={`m ${pnlClass(value)}`} style={{ fontSize: 22, marginTop: 4 }}>{signedUsd(value)}</div>
+                  </div>
+                ))}
+              </div>
+              <button className="btn pri" onClick={() => setFunds(true)}>Add funds</button>
+            </section>
             {error && <p role="alert" className="dn" style={{ margin: 0 }}>{error}</p>}
             <SellPrompts />
-            <div className="cols">
-              <div className="main" style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-                <section>
-                  <h2 style={{ fontSize: 18, paddingBottom: 12 }}>Assets</h2>
-                  {rows.map((r) => (
-                    <div key={r.key} className="between" style={{ padding: "12px 0", borderTop: "1px solid var(--line)", alignItems: "center" }}>
-                      <span>
-                        {r.symbol} <span className="mut" style={{ fontSize: 12 }}>{r.chain}</span>
-                        <span className="m mut" style={{ display: "block", fontSize: 12 }}>{r.qty.toPrecision(4)}</span>
-                      </span>
-                      <span style={{ textAlign: "right" }}>
-                        <span className="m" style={{ display: "block" }}>${r.valueUsd.toFixed(2)}</span>
-                        {r.pnlUsd !== null && <span className={`m ${pnlClass(r.pnlUsd)}`} style={{ fontSize: 12 }}>{signedUsd(r.pnlUsd)} ({pct(r.pnlPercent!)})</span>}
-                      </span>
-                    </div>
-                  ))}
-                  {!rows.length && <p className="mut" style={{ margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" }}>No assets yet.</p>}
-                </section>
-                <OpenOrders title="Pending orders" />
-                <section>
-                  <h2 style={{ fontSize: 18, paddingBottom: 12 }}>Trade history</h2>
-                  <OrderHistory />
-                </section>
+
+            <section className="table">
+              <div role="tablist" className="row" style={{ gap: 20, padding: "10px 16px" }}>
+                {TABS.map((t) => (
+                  <button key={t} role="tab" aria-selected={t === tab} className={`tab ${t === tab ? "active" : ""}`} onClick={() => setTab(t)}>
+                    {t}{t === "Open orders" ? ` (${open})` : ""}
+                  </button>
+                ))}
               </div>
-              <aside className="side" style={{ gap: 12 }}>
-                <section className="panel">
-                  <h2 style={{ fontSize: 16, marginBottom: 10 }}>Add funds</h2>
-                  <WalletAddress address={address} />
-                </section>
-                <section className="panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <h2 style={{ fontSize: 16 }}>Copy trading</h2>
-                  <p className="mut" style={{ margin: 0 }}>See who you copy, change your settings, and check every copied trade.</p>
-                  <Link href="/copying" className="btn">Open copy trading</Link>
-                </section>
-              </aside>
-            </div>
+              {tab === "Assets" && (
+                rows.length === 0 ? <p className="mut" style={{ margin: 0, padding: 16, borderTop: "1px solid var(--line)" }}>Send USDC on Base to your wallet to start trading.</p> : (
+                  <>
+                    <div className="tr head" style={{ gridTemplateColumns: COLUMNS, minWidth: 680, borderTop: "1px solid var(--line)" }}><span>Asset</span><span>Amount</span><span>Value</span><span>Profit/loss</span><span /></div>
+                    {rows.map((r) => (
+                      <div key={r.key} className="tr" style={{ gridTemplateColumns: COLUMNS, minWidth: 680, borderTop: "1px solid var(--line)" }}>
+                        <span><span style={{ fontWeight: 500 }}>{r.symbol}</span> <span className="mut" style={{ fontSize: 12, textTransform: "capitalize" }}>{r.chain}</span></span>
+                        <span className="m">{r.qty.toPrecision(4)}</span>
+                        <span className="m">${r.valueUsd.toFixed(2)}</span>
+                        {r.pnlUsd === null ? <span className="mut">-</span> : <span className={`m ${pnlClass(r.pnlUsd)}`}>{signedUsd(r.pnlUsd)} ({pct(r.pnlPercent!)})</span>}
+                        <span style={{ display: "flex", justifyContent: "flex-end" }}>
+                          {r.pnlUsd !== null && <Link href={`/trade?token=${r.address}&symbol=${encodeURIComponent(r.symbol)}&side=sell`} className="btn">Sell</Link>}
+                        </span>
+                      </div>
+                    ))}
+                  </>
+                )
+              )}
+              {/* Stays mounted so the open order count is right on every tab. */}
+              <div hidden={tab !== "Open orders"} style={{ padding: "0 16px 8px" }}><OpenOrders onCount={setOpen} /></div>
+              {tab === "Trade history" && <div style={{ padding: "0 16px 8px" }}><OrderHistory /></div>}
+            </section>
           </>
         )}
       </main>
+      {funds && address && <AddFunds address={address} onClose={() => setFunds(false)} />}
     </>
   );
 }

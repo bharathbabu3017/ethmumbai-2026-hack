@@ -44,16 +44,24 @@ const HINTS: Record<OrderTypeName, string> = {
   "trailing-stop-limit": "Follows the price and places a limit order when it reverses by your trail.",
 };
 
+/** A token from a link, which may not be one of the listed ones. It's never swapped for a different token. */
+function linkedToken(address: string | null, symbol: string | null): PickedToken {
+  const listed = BASE_TOKENS.find((t) => t.address.toLowerCase() === address?.toLowerCase());
+  if (listed || !address || !/^0x[0-9a-fA-F]{40}$/.test(address)) return listed ?? BASE_TOKENS[0]!;
+  return { address, symbol: symbol || `${address.slice(0, 6)}…`, riskFlagged: true };
+}
+
 export default function TradePage() {
   return <Suspense><Trade /></Suspense>;
 }
 
 function Trade() {
   const { address, actions } = useWallet();
-  const linked = useSearchParams().get("token")?.toLowerCase();
-  const [side, setSide] = useState<Side>("buy");
+  const params = useSearchParams();
+  const linked = params.get("token");
+  const [side, setSide] = useState<Side>(params.get("side") === "sell" ? "sell" : "buy");
   const [type, setType] = useState<OrderTypeName>("market");
-  const [token, setToken] = useState<PickedToken>(BASE_TOKENS.find((t) => t.address.toLowerCase() === linked) ?? BASE_TOKENS[0]!);
+  const [token, setToken] = useState<PickedToken>(linkedToken(linked, params.get("symbol")));
   const [payChain, setPayChain] = useState<PayChain>("base");
   const [direction, setDirection] = useState<"upper" | "lower">("upper");
   const [f, setF] = useState<Fields>(EMPTY);
