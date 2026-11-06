@@ -7,7 +7,6 @@ import { parseBuy, parseLimit, parseSell, sellQty } from "./parse";
 
 const CHAIN = "base";
 const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-const MAX_SLIPPAGE = "0.01";
 const MAX_PRICE_MOVE = 0.02; // abort if a market order got this much worse between preview and confirm
 const EXPORT_VISIBLE_MS = 60_000;
 const OPEN_STATUSES = ["ORDER_STATUS_PENDING", "ORDER_STATUS_ACCEPTED", "ORDER_STATUS_PARTIALLY_FILLED"];
@@ -80,7 +79,8 @@ export function createBot({ token, db, flash, masterKey, feeBps, rpcUrl, botInfo
     const quote = await prepareOrder(flash, funder, request);
     const payload: OrderPayload = { request, minReceived: market ? Number(quote.to.amount) * (1 - MAX_PRICE_MOVE) : undefined };
     const id = await createAction(db, userId, "order", payload);
-    await ctx.reply(`${describe(quote.to.amount)}\nEstimated fees: $${quote.fees.estimatedFeeNotional}${warning}\n\nThis expires in 2 minutes.`, { reply_markup: confirmKeyboard(id) });
+    const slippage = quote.recommendedSlippage ? `\nMax slippage: ${(Number(quote.recommendedSlippage) * 100).toFixed(1)}%` : "";
+    await ctx.reply(`${describe(quote.to.amount)}\nEstimated fees: $${quote.fees.estimatedFeeNotional}${slippage}${warning}\n\nThis expires in 2 minutes.`, { reply_markup: confirmKeyboard(id) });
   }
 
   const riskNote = (flagged: boolean) => (flagged ? "\n\nWarning: this token is flagged as risky." : "");
@@ -93,7 +93,7 @@ export function createBot({ token, db, flash, masterKey, feeBps, rpcUrl, botInfo
     if (!asset) return void (await ctx.reply(`Couldn't find ${args.token} on Base.`));
     const request: OrderRequest = {
       targetChain: CHAIN, contraChain: CHAIN, targetAsset: asset.address, contraAsset: USDC,
-      side: "buy", qty: args.usdc, orderType: "market", maxSlippage: MAX_SLIPPAGE, flashIntegratorFeeBps: feeBps,
+      side: "buy", qty: args.usdc, orderType: "market", flashIntegratorFeeBps: feeBps,
     };
     await offerOrder(ctx, user.id, wallet.address, request, (got) => `Buy about ${got} ${asset.symbol} for ${args.usdc} USDC.`, true, riskNote(asset.riskFlagged))
       .catch((e) => ctx.reply(`Couldn't get a quote: ${friendly(e)}`));
@@ -125,7 +125,7 @@ export function createBot({ token, db, flash, masterKey, feeBps, rpcUrl, botInfo
     if (!qty) return void (await ctx.reply(`You only have ${row.balance} ${row.symbol}.`));
     const request: OrderRequest = {
       targetChain: CHAIN, contraChain: CHAIN, targetAsset: row.address, contraAsset: USDC,
-      side: "sell", qty, orderType: "market", maxSlippage: MAX_SLIPPAGE, flashIntegratorFeeBps: feeBps,
+      side: "sell", qty, orderType: "market", flashIntegratorFeeBps: feeBps,
     };
     await offerOrder(ctx, user.id, wallet.address, request, (got) => `Sell ${qty} ${row.symbol} for about ${got} USDC.`, true)
       .catch((e) => ctx.reply(`Couldn't get a quote: ${friendly(e)}`));

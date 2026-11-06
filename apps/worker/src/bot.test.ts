@@ -26,7 +26,7 @@ let updateId = 0;
 const flash = {
   search: async () => ({ assets: [{ symbol: "WETH", address: "0xweth", riskFlagged: false }] }),
   quote: async () => ({
-    quoteId: "q1", from: { amount: "10" }, to: { amount: received }, fees: { estimatedFeeNotional: "0.01" },
+    quoteId: "q1", recommendedSlippage: "0.15", from: { amount: "10" }, to: { amount: received }, fees: { estimatedFeeNotional: "0.01" },
     evm: { approveTx: null, permitTypedData: "", orderTypedData: typedData },
   }),
   submitOrder: async (body: any) => { submits.push(body); return { orderId: `order-${submits.length}` }; },
@@ -74,11 +74,13 @@ const lastText = () => sent.findLast((m) => m.method === "sendMessage")!.payload
 test("double-tapping Confirm places exactly one order, with the fee and a signature", async () => {
   await say("/buy WETH 10");
   assert.equal(submits.length, 0);
+  assert.match(lastText(), /Max slippage: 15\.0%/);
   const data = confirmData();
   await tap(data);
   await tap(data);
   assert.equal(submits.length, 1);
   assert.equal(submits[0].flashIntegratorFeeBps, "10");
+  assert.equal(submits[0].maxSlippage, undefined);
   assert.match(submits[0].userSignature, /^0x/);
   assert.match(lastText(), /already used/);
 });

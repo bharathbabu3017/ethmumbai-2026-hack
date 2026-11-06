@@ -27,7 +27,7 @@ const pair = {
   qty: String(usd),
 } as const;
 
-const probe = await flash.quote({ ...pair, orderType: "market", maxSlippage: "0.01" });
+const probe = await flash.quote({ ...pair, orderType: "market" });
 const price = Number(probe.from.notional) / Number(probe.to.amount);
 console.log(`WETH about $${price.toFixed(2)}. $${usd} buys ${probe.to.amount}. Fee $${probe.fees.estimatedFeeNotional}. Impact ${probe.estimatedPriceImpact}. Recommended slippage ${probe.recommendedSlippage}.`);
 
@@ -40,7 +40,7 @@ const signer = createPrivateKeySigner(pk, base, process.env.BASE_RPC_URL);
 const request: OrderRequest =
   mode === "limit"
     ? { ...pair, orderType: "limit", limitNotionalPrice: (price * 0.8).toFixed(2) } // far below market, so it rests
-    : { ...pair, orderType: "market", maxSlippage: "0.01" };
+    : { ...pair, orderType: "market" };
 if (mode === "bracket") {
   request.attachedBracket = {
     takeProfit: { notionalPrice: (price * 1.05).toFixed(2) },
