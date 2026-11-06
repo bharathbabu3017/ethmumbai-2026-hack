@@ -1,5 +1,5 @@
 import { recentBuyers } from "@flashmob/db";
-import { agentSettingsError, BASE_TOKENS, checkRules, createFlashClient, entryOrders, exitLabels, judge, planTimeframes, readIndicators, type AgentSettings, type AgentToken, type IndicatorsByTimeframe, type Judgment, type PlanCheck } from "@flashmob/flash";
+import { agentSettingsError, BASE_TOKENS, checkRules, createFlashClient, entryOrders, exitLabels, failedReason, judge, planTimeframes, readIndicators, type AgentSettings, type AgentToken, type IndicatorsByTimeframe, type Judgment, type PlanCheck } from "@flashmob/flash";
 import { NextResponse, type NextRequest } from "next/server";
 import { getCandles } from "@/lib/chart-data";
 import { db } from "@/lib/db";
@@ -60,6 +60,6 @@ export async function POST(req: NextRequest) {
   const planned = entryOrders(plan, target.token, target.read, Math.min(settings.maxTradeUsd, settings.budgetUsd));
   const orders = "skip" in planned ? [] : planned.map(({ label, value }) => ({ label, value }));
   const failed = checks.find((c) => !c.pass);
-  const reason = "skip" in planned ? planned.skip : verdict?.reason ?? (failed ? `${failed.label} failed: it's ${failed.value}.` : `Its rules passed on ${target.token.symbol}.`);
+  const reason = "skip" in planned ? planned.skip : verdict?.reason ?? (failed ? failedReason(failed) : `Its rules passed on ${target.token.symbol}.`);
   return NextResponse.json({ buying: buying && !("skip" in planned), checks, orders, exits: exitLabels(plan.exit), reason, sources: verdict?.sources ?? [] });
 }

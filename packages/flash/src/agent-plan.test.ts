@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AgentToken } from "./agent-decision";
-import { checkRules, entryLabel, entryOrders, exitLabels, exitOrders, planError, planLimitsError, planTimeframes, priceText, ruleLabel, type AgentPlan } from "./agent-plan";
+import { checkRules, entryLabel, failedReason, entryOrders, exitLabels, exitOrders, planError, planLimitsError, planTimeframes, priceText, ruleLabel, type AgentPlan } from "./agent-plan";
 import { buildOrder } from "./build";
 import type { Indicators } from "./indicators";
 
@@ -39,6 +39,7 @@ test("rules are tested in code, and missing data never passes", () => {
   assert.equal(checkRules(plan, token, { "1h": { ...hourly, rsi: 45 } }, 0).passed, false);
   const blind = checkRules(plan, token, {}, 0);
   assert.deepEqual([blind.passed, blind.checks[0]!.value], [false, "No data"]);
+  assert.match(failedReason(blind.checks[0]!), /couldn't read/);
 });
 
 test("every metric reads the right number", () => {

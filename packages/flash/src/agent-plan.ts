@@ -70,6 +70,7 @@ export interface PlanOrder {
 
 export type IndicatorsByTimeframe = Partial<Record<Timeframe, Indicators>>;
 
+const NO_DATA = "No data";
 const MAX_RULES = 6;
 const MAX_JUDGMENT = 200;
 const MAX_SUMMARY = 200;
@@ -185,11 +186,13 @@ export function checkRules(plan: AgentPlan, token: AgentToken, read: IndicatorsB
   const checks: PlanCheck[] = plan.rules.map((rule) => {
     const value = reading(rule, token, read, mobBuyers);
     const { unit } = PLAN_METRICS[rule.metric];
-    const shown = value === null ? "No data" : unit === "$" ? money(value) : `${Number(value.toFixed(unit === "x" ? 2 : 1))}${unit}`;
+    const shown = value === null ? NO_DATA : unit === "$" ? money(value) : `${Number(value.toFixed(unit === "x" ? 2 : 1))}${unit}`;
     return { label: `${token.symbol}: ${ruleLabel(rule)}`, value: shown, pass: value !== null && (rule.op === "above" ? value >= rule.value : value <= rule.value) };
   });
   return { checks, passed: checks.every((c) => c.pass) };
 }
+
+export const failedReason = (c: PlanCheck) => (c.value === NO_DATA ? `It couldn't read this: ${c.label}.` : `${c.label} failed: it's ${c.value}.`);
 
 /** Turns the plan's entry into exact orders for this amount. */
 export function entryOrders(plan: AgentPlan, token: AgentToken, read: IndicatorsByTimeframe, amountUsd: number): PlanOrder[] | { skip: string } {

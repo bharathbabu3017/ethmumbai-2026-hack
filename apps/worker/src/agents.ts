@@ -1,5 +1,5 @@
 import { activeAgents, agentSpentUsd, claimAgentCheck, enqueueJob, getPosition, lastDecisionAt, recentBuyers, recordDecision, setAgentStatus, type Db } from "@flashmob/db";
-import { agentExit, buildOrder, checkDecision, checkRules, cleanReason, entryOrders, exitOrders, hasExit, OPEN_STATUSES, planTimeframes, USDC_BASE, type AgentContext, type AgentDecision, type AgentPlan, type AgentSettings, type AgentToken, type FlashClient, type FlashOrder, type IndicatorsByTimeframe, type Judgment, type PlanCheck, type PlanOrder, type Timeframe } from "@flashmob/flash";
+import { agentExit, buildOrder, checkDecision, checkRules, cleanReason, entryOrders, exitOrders, failedReason, hasExit, OPEN_STATUSES, planTimeframes, USDC_BASE, type AgentContext, type AgentDecision, type AgentPlan, type AgentSettings, type AgentToken, type FlashClient, type FlashOrder, type IndicatorsByTimeframe, type Judgment, type PlanCheck, type PlanOrder, type Timeframe } from "@flashmob/flash";
 
 const TICK_MS = 60_000;
 const MIN_FUNDS_USD = 1;
@@ -107,7 +107,7 @@ async function checkPlan(deps: AgentDeps, agent: Agent, settings: AgentSettings,
   }
   if (!chosen) {
     const failed = checks.find((c) => !c.pass);
-    return void (await log({ action: "do_nothing", reason: blocked || (failed ? `${failed.label} failed: it's ${failed.value}.` : "Nothing passed."), status: "idle" }));
+    return void (await log({ action: "do_nothing", reason: blocked || (failed ? failedReason(failed) : "Nothing passed."), status: "idle" }));
   }
 
   const { token, read } = chosen;
