@@ -1,6 +1,6 @@
 "use client";
 
-import type { FlashBalancesResponse, FlashOrder } from "@flashmob/flash";
+import { OPEN_STATUSES, type FlashBalancesResponse, type FlashOrder } from "@flashmob/flash";
 import { useEffect, useState } from "react";
 import { OpenOrders } from "@/components/open-orders";
 import { flash } from "@/lib/flash";
@@ -8,20 +8,28 @@ import { tradeStatus, usd } from "@/lib/format";
 import { useWallet } from "@/lib/wallet";
 
 const REFRESH_MS = 5_000;
-const CLOSED = ["ORDER_STATUS_FILLED", "ORDER_STATUS_CANCELLED", "ORDER_STATUS_REJECTED", "ORDER_STATUS_TERMINATED"];
 const empty = { margin: 0, paddingTop: 12, borderTop: "1px solid var(--line)" };
 
 function History({ reloadKey }: { reloadKey: number }) {
   const { address } = useWallet();
   const [orders, setOrders] = useState<FlashOrder[]>();
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     if (!address) return;
-    const load = () => flash.listOrders({ funderAddress: address, statuses: CLOSED, pageSize: 25 }).then((r) => setOrders(r.orders)).catch(() => setOrders((o) => o ?? []));
+    // Flash's status filter refuses some final statuses, such as rejected, so closed orders are picked out here.
+    const load = () =>
+      flash.listOrders({ funderAddress: address, pageSize: 50 })
+        .then((r) => {
+          setOrders(r.orders.filter((o) => !OPEN_STATUSES.includes(o.status)));
+          setFailed(false);
+        })
+        .catch(() => setFailed(true));
     void load();
     const timer = setInterval(load, REFRESH_MS);
     return () => clearInterval(timer);
   }, [address, reloadKey]);
 
+  if (failed && !orders) return <p className="dn" style={empty}>Couldn&apos;t load your order history.</p>;
   if (!orders) return <p className="mut" style={empty}>Loading…</p>;
   if (!orders.length) return <p className="mut" style={empty}>Filled and cancelled orders appear here.</p>;
   return orders.map((o) => {
