@@ -8,6 +8,7 @@ import { Nav } from "@/components/nav";
 import { OpenOrders } from "@/components/open-orders";
 import { OrderHistory } from "@/components/orders-panel";
 import { SellPrompts } from "@/components/sell-prompts";
+import { TokenIcon } from "@/components/token-icon";
 import { useCached } from "@/lib/cached";
 import { flash } from "@/lib/flash";
 import { pct } from "@/lib/format";
@@ -77,7 +78,7 @@ export default function Portfolio() {
                     <div className="tr head" style={{ gridTemplateColumns: COLUMNS, minWidth: 680, borderTop: "1px solid var(--line)" }}><span>Asset</span><span>Amount</span><span>Value</span><span>Profit/loss</span><span /></div>
                     {rows.map((r) => (
                       <div key={r.key} className="tr" style={{ gridTemplateColumns: COLUMNS, minWidth: 680, borderTop: "1px solid var(--line)" }}>
-                        <span><span style={{ fontWeight: 500 }}>{r.symbol}</span> <span className="mut" style={{ fontSize: 12, textTransform: "capitalize" }}>{r.chain}</span></span>
+                        <span className="row" style={{ gap: 10 }}><TokenIcon token={r} size={26} /><span><span style={{ fontWeight: 500 }}>{r.symbol}</span> <span className="mut" style={{ fontSize: 12, textTransform: "capitalize" }}>{r.chain}</span></span></span>
                         <span className="m">{r.qty.toPrecision(4)}</span>
                         <span className="m">${r.valueUsd.toFixed(2)}</span>
                         {r.pnlUsd === null ? <span className="mut">-</span> : <span className={`m ${pnlClass(r.pnlUsd)}`}>{signedUsd(r.pnlUsd)} ({pct(r.pnlPercent!)})</span>}

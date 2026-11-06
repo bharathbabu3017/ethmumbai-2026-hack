@@ -8,6 +8,7 @@ import { AutoCopySetup, TONES } from "@/components/auto-copy";
 import { Avatar } from "@/components/avatar";
 import { Nav } from "@/components/nav";
 import { SubscribeButton } from "@/components/subscribe-button";
+import { TokenIcon } from "@/components/token-icon";
 import { When } from "@/components/when";
 import { ensureSession, postJson } from "@/lib/account";
 import { useCached } from "@/lib/cached";
@@ -21,6 +22,7 @@ interface Entry {
   kind: "buy" | "sell" | "skip";
   sourceOrderId: string;
   tokenSymbol: string | null;
+  tokenAddress: string | null;
   trader: string;
   traderId: string;
   createdAt: string;
@@ -71,7 +73,7 @@ function HistoryRow({ e }: { e: Entry }) {
   return (
     <div className="tr" style={{ gridTemplateColumns: HISTORY, minWidth: 820 }}>
       <span className={`badge ${skipped ? "" : e.kind}`} style={{ justifyContent: "center", background: skipped ? "var(--soft)" : undefined, color: skipped ? "var(--mut)" : undefined }}>{skipped ? "Skip" : e.kind}</span>
-      <span>{e.tokenSymbol} <Link href={`/traders/${e.traderId}`} className="mut">from {e.trader}</Link></span>
+      <span className="row" style={{ gap: 8, flexWrap: "nowrap" }}><TokenIcon token={{ symbol: e.tokenSymbol ?? "", address: e.tokenAddress }} size={20} />{e.tokenSymbol} <Link href={`/traders/${e.traderId}`} className="mut">from {e.trader}</Link></span>
       <span className="mut" style={{ fontSize: 13 }}>{how}</span>
       <span className="m">{size ? `$${size.toFixed(2)}` : "-"}</span>
       <span style={{ fontSize: 13, color: status.color }}>{status.label}</span>

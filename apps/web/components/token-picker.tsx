@@ -2,6 +2,8 @@
 
 import { BASE_TOKENS } from "@flashmob/flash";
 import { useEffect, useRef, useState } from "react";
+import type { AssetChoice } from "@/components/asset-chooser";
+import { TokenIcon } from "@/components/token-icon";
 import { useCached } from "@/lib/cached";
 import { flash } from "@/lib/flash";
 import { pct, usd } from "@/lib/format";
@@ -39,14 +41,7 @@ export function saveRecent(token: PickedToken) {
   }
 }
 
-function TokenIcon({ token, size = 28 }: { token: PickedToken; size?: number }) {
-  const [broken, setBroken] = useState(false);
-  const box = { width: size, height: size, borderRadius: "50%", flex: "none" as const };
-  if (token.imageUrl && !broken) return <img src={token.imageUrl} alt="" style={box} onError={() => setBroken(true)} />;
-  return <span aria-hidden="true" style={{ ...box, background: "var(--soft)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: size / 2.6, fontWeight: 600 }}>{token.symbol.slice(0, 2)}</span>;
-}
-
-export function TokenSearch({ onPick, onClose }: { onPick(token: PickedToken): void; onClose(): void }) {
+export function TokenSearch({ onPick, onClose, quick, onQuick }: { onPick(token: PickedToken): void; onClose(): void; quick?: AssetChoice[]; onQuick?(choice: AssetChoice): void }) {
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<Result[]>();
   const [searching, setSearching] = useState(false);
@@ -107,6 +102,14 @@ export function TokenSearch({ onPick, onClose }: { onPick(token: PickedToken): v
         <div style={{ padding: 12 }}>
           <input ref={input} className="inp" aria-label="Search by name, symbol or address" placeholder="Search by name, symbol or address" autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
+        {!query && quick && (
+          <div style={{ padding: "0 12px 10px" }}>
+            <div className="mut" style={{ fontSize: 12, marginBottom: 6 }}>Your wallet and USDC</div>
+            <div className="row" style={{ gap: 6 }}>
+              {quick.map((c) => <button key={c.key} className="asset" onClick={() => onQuick?.(c)}><TokenIcon token={c} size={18} />{c.symbol}{c.note && <span className="mut" style={{ fontSize: 12 }}>{c.note}</span>}</button>)}
+            </div>
+          </div>
+        )}
         {!query && recent.length > 0 && (
           <div className="row" style={{ gap: 6, padding: "0 12px 10px" }}>
             <span className="mut" style={{ fontSize: 12 }}>Recent</span>

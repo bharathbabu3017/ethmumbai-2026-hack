@@ -2,6 +2,7 @@
 
 import { editableFields, OPEN_STATUSES, type FlashOrder } from "@flashmob/flash";
 import { useCallback, useEffect, useState } from "react";
+import { TokenIcon } from "@/components/token-icon";
 import { When } from "@/components/when";
 import { flash } from "@/lib/flash";
 import { plainError } from "@/lib/format";
@@ -90,7 +91,7 @@ export function OpenOrders({ reloadKey = 0, title, onCount }: { reloadKey?: numb
           <div key={o.orderId} style={{ padding: "12px 0", borderTop: "1px solid var(--line)" }}>
             <div className="between" style={{ alignItems: "center", flexWrap: "wrap" }}>
               <span>
-                <span style={{ fontWeight: 500, textTransform: "capitalize" }}>{o.side} {o.targetAsset.ticker}</span> <span className="mut">{o.orderType}</span>
+                <span className="row" style={{ gap: 8 }}><TokenIcon token={{ symbol: o.targetAsset.ticker, address: o.targetAsset.address }} /><span style={{ fontWeight: 500, textTransform: "capitalize" }}>{o.side} {o.targetAsset.ticker}</span> <span className="mut">{o.orderType}</span></span>
                 <span className="m mut" style={{ display: "block", fontSize: 12 }}>{describe(o)}</span>
                 <span className="mut" style={{ display: "block", fontSize: 12 }}>Placed <When at={o.placedAt} /></span>
                 {o.attachedBracket && <span className="mut" style={{ display: "block", fontSize: 12 }}>Its stop and target are a separate order once it fills, so cancel that too.</span>}

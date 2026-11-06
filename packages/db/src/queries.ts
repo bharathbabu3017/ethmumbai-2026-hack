@@ -447,7 +447,7 @@ export async function copyHistory(db: Db, userId: string) {
   const who = { trader: traders.displayName, traderId: traders.id };
   const [buys, sales, skips] = await Promise.all([
     db
-      .select({ id: copies.id, sourceOrderId: copies.sourceOrderId, tokenSymbol: sourceOrder.tokenSymbol, amountUsd: copies.amountUsd, auto: copies.auto, createdAt: copies.createdAt, ...who, ...fill })
+      .select({ id: copies.id, sourceOrderId: copies.sourceOrderId, tokenSymbol: sourceOrder.tokenSymbol, tokenAddress: sourceOrder.tokenAddress, amountUsd: copies.amountUsd, auto: copies.auto, createdAt: copies.createdAt, ...who, ...fill })
       .from(copies)
       .innerJoin(sourceOrder, eq(copies.sourceOrderId, sourceOrder.id))
       .innerJoin(traders, eq(sourceOrder.userId, traders.userId))
@@ -456,7 +456,7 @@ export async function copyHistory(db: Db, userId: string) {
       .orderBy(desc(copies.createdAt))
       .limit(50),
     db
-      .select({ id: mirrors.id, sourceOrderId: mirrors.sellOrderId, tokenSymbol: mirrors.tokenSymbol, percent: mirrors.percent, createdAt: mirrors.createdAt, ...who, ...fill })
+      .select({ id: mirrors.id, sourceOrderId: mirrors.sellOrderId, tokenSymbol: mirrors.tokenSymbol, tokenAddress: mirrors.tokenAddress, percent: mirrors.percent, createdAt: mirrors.createdAt, ...who, ...fill })
       .from(mirrors)
       .innerJoin(traders, eq(mirrors.traderUserId, traders.userId))
       .leftJoin(ownOrder, eq(mirrors.orderId, ownOrder.id))
@@ -464,7 +464,7 @@ export async function copyHistory(db: Db, userId: string) {
       .orderBy(desc(mirrors.createdAt))
       .limit(50),
     db
-      .select({ id: copySkips.id, sourceOrderId: copySkips.sourceOrderId, tokenSymbol: sourceOrder.tokenSymbol, reason: copySkips.reason, createdAt: copySkips.createdAt, ...who })
+      .select({ id: copySkips.id, sourceOrderId: copySkips.sourceOrderId, tokenSymbol: sourceOrder.tokenSymbol, tokenAddress: sourceOrder.tokenAddress, reason: copySkips.reason, createdAt: copySkips.createdAt, ...who })
       .from(copySkips)
       .innerJoin(sourceOrder, eq(copySkips.sourceOrderId, sourceOrder.id))
       .innerJoin(traders, eq(sourceOrder.userId, traders.userId))

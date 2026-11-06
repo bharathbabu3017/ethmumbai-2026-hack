@@ -112,3 +112,7 @@ select.inp{font-family:var(--font-inter),sans-serif;appearance:auto}
 .tr-token{all:unset;box-sizing:border-box;display:grid;gap:12px;align-items:center;width:100%;min-width:800px;padding:9px 12px;cursor:pointer;font-size:13px}
 .tr-token.head{cursor:default;color:var(--mut);font-size:12px;position:sticky;top:0;background:var(--panel)}
 .tr-token.active{background:var(--soft)}
+.asset{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 12px;border:1px solid var(--line);border-radius:999px;font-size:13px;font-weight:500}
+.asset:hover{border-color:var(--line2)}
+.asset.sel{border-color:var(--lime);background:var(--soft)}
+.asset:focus-visible{outline:2px solid var(--line2);outline-offset:2px}

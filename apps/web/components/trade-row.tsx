@@ -1,13 +1,14 @@
 import { COPYABLE_TYPES } from "@flashmob/flash";
 import { CopyButton } from "@/components/copy-button";
+import { TokenIcon } from "@/components/token-icon";
 import { When } from "@/components/when";
 import { pct, tradeSize, tradeStatus, usd } from "@/lib/format";
 
-export const TRADE_COLUMNS = "56px 90px 80px 80px 100px 90px minmax(130px,1fr) 84px";
+export const TRADE_COLUMNS = "56px 110px 80px 80px 100px 90px minmax(130px,1fr) 84px";
 
 interface Props {
   order: {
-    id: string; side: string | null; orderType: string | null; tokenSymbol: string | null; qty: string | null; status: string | null; placedAt: Date | null;
+    id: string; side: string | null; orderType: string | null; tokenSymbol: string | null; tokenAddress: string | null; qty: string | null; status: string | null; placedAt: Date | null;
     limitPrice: number | null; filledQty: number; filledUsd: number; realizedUsd: number; soldCostUsd: number;
   };
   /** Shows a Copy button on trades that can be copied. */
@@ -21,7 +22,7 @@ export function TradeRow({ order: o, canCopy }: Props) {
   return (
     <div className="tr" style={{ gridTemplateColumns: TRADE_COLUMNS, minWidth: 720 }}>
       <span className={`badge ${o.side === "sell" ? "sell" : "buy"}`} style={{ justifyContent: "center" }}>{o.side}</span>
-      <span style={{ fontWeight: 500 }}>{o.tokenSymbol}</span>
+      <span className="row" style={{ gap: 8, flexWrap: "nowrap", fontWeight: 500 }}><TokenIcon token={{ symbol: o.tokenSymbol ?? "", address: o.tokenAddress }} size={20} />{o.tokenSymbol}</span>
       <span className="mut" style={{ textTransform: "capitalize" }}>{o.orderType}</span>
       <span className="m">{tradeSize(o)}</span>
       <span className="m">{price ? usd(price) : "-"}</span>

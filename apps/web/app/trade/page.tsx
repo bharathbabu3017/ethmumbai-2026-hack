@@ -7,13 +7,14 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
+import { AssetChooser, type AssetChoice } from "@/components/asset-chooser";
 import { Avatar } from "@/components/avatar";
 import { LevelInput } from "@/components/level-input";
 import { Nav } from "@/components/nav";
 import { OrderProgress } from "@/components/order-progress";
 import { OrdersPanel, type OrdersTab } from "@/components/orders-panel";
 import { PriceChart } from "@/components/price-chart";
-import { saveRecent, TokenPicker, TokenSearch, type PickedToken } from "@/components/token-picker";
+import { TokenPicker, type PickedToken } from "@/components/token-picker";
 import { useCached } from "@/lib/cached";
 import { flash } from "@/lib/flash";
 import { pct, plainError, usd } from "@/lib/format";
@@ -23,7 +24,6 @@ import { useWallet } from "@/lib/wallet";
 const QUOTE_REFRESH_MS = 15_000;
 const STATS_REFRESH_MS = 30_000;
 const MIN_PAY_USD = 0.5;
-const SEARCH_TOKENS = "search";
 const compactUsd = (n: number) => `$${Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n)}`;
 
 interface TokenTrader {
@@ -68,7 +68,6 @@ function Trade() {
   const [token, setToken] = useState<PickedToken>(linkedToken(linked, params.get("symbol")));
   const [payChain, setPayChain] = useState<PayChain>("base");
   const [other, setOther] = useState<{ address: string; symbol: string }>();
-  const [searching, setSearching] = useState(false);
   const [direction, setDirection] = useState<"upper" | "lower">("upper");
   const [f, setF] = useState<Fields>(EMPTY);
   const [advanced, setAdvanced] = useState(false);
@@ -119,6 +118,21 @@ function Trade() {
     && b.address.toLowerCase() !== USDC_BY_CHAIN.base.toLowerCase() && b.address.toLowerCase() !== token.address.toLowerCase());
 
   const reference = (type === "limit" && Number(f.price)) || stats?.price || null;
+  const usdcOn = (c: PayChain): AssetChoice => ({ key: c, address: USDC_BY_CHAIN[c], symbol: "USDC", note: c === "base" ? undefined : `${CHAIN_NAMES[c]} (cross-chain)` });
+  const assetChoices: AssetChoice[] = [
+    usdcOn("base"),
+    ...payOptions.map((b) => ({ key: b.address, address: b.address, symbol: b.symbol, note: `$${Number(b.notional).toFixed(2)}` })),
+    ...(Object.keys(CHAIN_NAMES) as PayChain[]).filter((c) => c !== "base").map(usdcOn),
+  ];
+  const selectedAsset = other ? assetChoices.find((c) => c.key === other.address) ?? { key: other.address, ...other } : usdcOn(payChain);
+  const pickAsset = (c: AssetChoice) => {
+    const chain = c.key in CHAIN_NAMES ? c.key as PayChain : null;
+    setOther(chain ? undefined : { address: c.address, symbol: c.symbol });
+    setPayChain(chain ?? "base");
+    if (side === "buy") setF({ ...f, qty: "" });
+    change();
+  };
+
   const attachable = side === "buy" && (type === "market" || type === "limit" || type === "twap") && payChain === "base";
   const needsTrigger = type === "stop" || type === "stop-loss" || type === "take-profit";
   const trailing = type === "trailing-stop" || type === "trailing-stop-limit";
@@ -241,33 +255,7 @@ function Trade() {
 
           {type === "market" && (
             <div>
-              <label className="lab" htmlFor="pay">{side === "buy" ? "Pay with" : "Receive"}</label>
-              <select id="pay" className="inp" value={other?.address ?? payChain} onChange={(e) => {
-                if (e.target.value === SEARCH_TOKENS) return setSearching(true);
-                const held = payOptions.find((b) => b.address === e.target.value);
-                setOther(held ? { address: held.address, symbol: held.symbol } : other?.address === e.target.value ? other : undefined);
-                setPayChain(held || other?.address === e.target.value ? "base" : e.target.value as PayChain);
-                if (side === "buy") setF({ ...f, qty: "" });
-                change();
-              }}>
-                {(Object.keys(CHAIN_NAMES) as PayChain[]).map((c) => <option key={c} value={c}>USDC on {CHAIN_NAMES[c]}{c === "base" ? "" : " (cross-chain)"}</option>)}
-                {payOptions.map((b) => <option key={b.address} value={b.address}>{b.symbol} (${Number(b.notional).toFixed(2)})</option>)}
-                {other && !payOptions.some((b) => b.address === other.address) && <option value={other.address}>{other.symbol}</option>}
-                <option value={SEARCH_TOKENS}>Search any token…</option>
-              </select>
-              {searching && (
-                <TokenSearch
-                  onClose={() => setSearching(false)}
-                  onPick={(t) => {
-                    saveRecent(t);
-                    setOther({ address: t.address, symbol: t.symbol });
-                    setPayChain("base");
-                    setSearching(false);
-                    if (side === "buy") setF({ ...f, qty: "" });
-                    change();
-                  }}
-                />
-              )}
+              <AssetChooser label={side === "buy" ? "Pay with" : "Receive"} choices={assetChoices} selected={selectedAsset} onPick={pickAsset} />
             </div>
           )}
 
