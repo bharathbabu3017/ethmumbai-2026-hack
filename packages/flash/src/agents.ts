@@ -36,3 +36,18 @@ export function agentSettingsError(s: AgentSettings) {
   if (s.style.length > MAX_STYLE) return `Keep its style under ${MAX_STYLE} characters.`;
   return null;
 }
+
+/** Stands for the chain's own coin, which has no token address. */
+export const NATIVE_ASSET = "eth";
+/** "all" takes everything, less the gas reserve for ETH. */
+export const WITHDRAW_ALL = "all";
+/** Left in an agent's wallet so it can still pay for its next transfer. */
+export const AGENT_GAS_RESERVE_ETH = "0.00002";
+
+/** A plain-English reason this withdrawal can't be asked for, or null if it can. */
+export function withdrawalError({ token, amount }: { token: unknown; amount: unknown }) {
+  if (typeof token !== "string" || (token !== NATIVE_ASSET && !/^0x[0-9a-fA-F]{40}$/.test(token))) return "Pick what to withdraw.";
+  if (amount === WITHDRAW_ALL) return null;
+  if (typeof amount !== "string" || !/^\d+(\.\d+)?$/.test(amount) || !(Number(amount) > 0)) return "Enter an amount.";
+  return null;
+}
