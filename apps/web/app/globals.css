@@ -136,5 +136,11 @@ select.inp{font-family:var(--font-inter),sans-serif;appearance:auto}
 .land-visual svg{max-height:190px}
 .land-line{padding:10px 0;border-top:1px solid var(--line)}
 .land-line:first-child{border-top:0}
-.land-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 28px;margin-top:32px;font-size:14px;color:var(--mut)}
-@media (max-width:640px){.land-tiles{grid-template-columns:1fr}}
+.land-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:24px}
+.land-chips span{padding:8px 14px;border:1px solid var(--line);border-radius:999px;font-size:14px}
+.land-steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px}
+.land-steps h3{font-size:18px;margin:14px 0 4px}
+.land-steps p{margin:0}
+.land-num{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--lime);color:var(--on-lime);font-weight:700}
+.land-three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:640px){.land-tiles,.land-steps,.land-three{grid-template-columns:1fr}}
