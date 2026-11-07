@@ -15,20 +15,50 @@ test("a written strategy becomes a plan with the empty fields removed", async ()
   assert.deepEqual(result.plan.exit, { stopPercent: 5 });
 });
 
-test("a plan outside the bounds comes back as an error", async () => {
-  const result = await writePlan("k", "x", chat(JSON.stringify({ ...raw, entry: { type: "limit", offsetPercent: 80 } })));
+const replies = (...contents: string[]) => {
+  const sent: any[] = [];
+  const fetcher = (async (_url: string, init: RequestInit) => {
+    sent.push(JSON.parse(String(init.body)));
+    return new Response(JSON.stringify({ choices: [{ message: { content: contents[Math.min(sent.length - 1, contents.length - 1)] } }] }));
+  }) as unknown as typeof fetch;
+  return { fetcher, sent };
+};
+const outOfBounds = JSON.stringify({ ...raw, entry: { type: "limit", offsetPercent: 80 } });
+
+test("a plan outside the bounds gets one chance to be fixed, told exactly what was wrong", async () => {
+  const { fetcher, sent } = replies(outOfBounds, JSON.stringify(raw));
+  const result = await writePlan("k", "x", fetcher);
+  assert.ok("plan" in result);
+  assert.equal(sent.length, 2);
+  assert.match(sent[1].messages.at(-1).content, /below the price/);
+});
+
+test("a plan still outside the bounds after that is an error, and is never returned", async () => {
+  const { fetcher, sent } = replies(outOfBounds);
+  const result = await writePlan("k", "x", fetcher);
+  assert.equal(sent.length, 2);
   assert.ok("error" in result);
   assert.match(result.error, /below the price/);
 });
 
-test("an unreadable reply is an error, and what it couldn't do is passed on", async () => {
+test("an unreadable reply is asked for again, then reported", async () => {
+  assert.ok("plan" in (await writePlan("k", "x", replies("not json", JSON.stringify(raw)).fetcher)));
   assert.ok("error" in (await writePlan("k", "x", chat("not json"))));
-  const result = await writePlan("k", "x", chat(JSON.stringify({ ...raw, leftOut: "It can't short." })));
-  assert.ok("leftOut" in result && result.leftOut === "It can't short.");
 });
 
-test("a strategy it can't really do is refused, never swapped for another trade", async () => {
-  assert.deepEqual(await writePlan("k", "short ETH", chat(JSON.stringify({ ...raw, impossible: "It can't short." }))), { error: "It can't short." });
+test("every way the plan differs from the strategy is passed on", async () => {
+  const result = await writePlan("k", "x", chat(JSON.stringify({ ...raw, changes: ["EMA isn't available.", " ", 5] })));
+  assert.ok("plan" in result);
+  assert.deepEqual(result.changes, ["EMA isn't available.", "5"]);
+  const exact = await writePlan("k", "x", chat(JSON.stringify(raw)));
+  assert.ok("plan" in exact);
+  assert.deepEqual(exact.changes, []);
+});
+
+test("a strategy that would be the opposite bet is refused, never swapped for a buy, and offers something it can do", async () => {
+  const plan = { ...raw, impossible: "It can't short." };
+  assert.deepEqual(await writePlan("k", "short ETH", chat(JSON.stringify(plan))), { error: "It can't short." });
+  assert.deepEqual(await writePlan("k", "short ETH", chat(JSON.stringify({ ...plan, suggestion: "Buy ETH after a sharp fall." }))), { error: "It can't short.", suggestion: "Buy ETH after a sharp fall." });
 });
 
 test("the model failing is reported, not hidden", async () => {

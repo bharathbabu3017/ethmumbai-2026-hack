@@ -7,7 +7,7 @@ const MAX_TEXT = 800;
 
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
 
-/** Turns a written strategy into a plan. Nothing is created or placed. */
+/** Turns a written strategy into the closest plan it can. Nothing is created or placed. */
 export async function POST(req: NextRequest) {
   const limited = rateLimited(req, "auth");
   if (limited) return limited;
@@ -23,6 +23,6 @@ export async function POST(req: NextRequest) {
 
   const result = await writePlan(apiKey, text).catch(() => undefined);
   if (!result) return fail("The model didn't answer. Try again.", 502);
-  if ("error" in result) return fail(result.error, 422);
+  if ("error" in result) return NextResponse.json({ refused: result.error, suggestion: result.suggestion ?? null });
   return NextResponse.json(result);
 }

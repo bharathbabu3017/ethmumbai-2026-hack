@@ -49,7 +49,8 @@ export default function NewAgent() {
   const [everyMinutes, setEvery] = useState(60);
   const [searching, setSearching] = useState(false);
   const [plan, setPlan] = useState<AgentPlan>();
-  const [leftOut, setLeftOut] = useState<string | null>(null);
+  const [changes, setChanges] = useState<string[]>([]);
+  const [suggestion, setSuggestion] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview>();
   const [hideStrategy, setHide] = useState(false);
   const [busy, setBusy] = useState<"plan" | "preview" | "create">();
@@ -57,7 +58,7 @@ export default function NewAgent() {
 
   const settings = { style: text, tokens: tokens.map((t) => t.address), budgetUsd, maxTradeUsd, everyMinutes, plan };
   const limit = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPreview(undefined); };
-  const rewrite = (v: string) => { setText(v); setPlan(undefined); setPreview(undefined); };
+  const rewrite = (v: string) => { setText(v); setPlan(undefined); setPreview(undefined); setSuggestion(null); setError(""); };
   const toggle = (t: PickedToken) => limit(setTokens)(tokens.some((x) => x.address === t.address) ? tokens.filter((x) => x.address !== t.address) : [...tokens, t]);
   const choices = [...BASE_TOKENS, ...tokens.filter((t) => !BASE_TOKENS.some((b) => b.address === t.address))];
   const step = preview ? "Step 3 of 3: Try it" : plan ? "Step 2 of 3: Check the plan" : "Step 1 of 3: Describe it";
@@ -75,9 +76,14 @@ export default function NewAgent() {
     }
   };
   const makePlan = () => act("plan", async () => {
-    const result = await postJson<{ plan: AgentPlan; leftOut: string | null }>("/api/agents/plan", { strategy: text });
+    const result = await postJson<{ plan: AgentPlan; changes: string[] } | { refused: string; suggestion: string | null }>("/api/agents/plan", { strategy: text });
+    if ("refused" in result) {
+      setError(result.refused);
+      setSuggestion(result.suggestion);
+      return;
+    }
     setPlan(result.plan);
-    setLeftOut(result.leftOut);
+    setChanges(result.changes);
     setPreview(undefined);
   });
   const runPreview = () => act("preview", async () => setPreview(await postJson<Preview>("/api/agents/preview", settings)));
@@ -128,6 +134,12 @@ export default function NewAgent() {
               <p className="mut" style={{ margin: 0, fontSize: 13 }}>Your limits always win, whatever the strategy says.{Number(maxTradeUsd) < SMALL_TRADE_USD ? ` Trades under $${SMALL_TRADE_USD} lose more to costs.` : ""}</p>
               {!plan && <button className="btn pri" disabled={!!busy} onClick={makePlan}>{busy === "plan" ? <><span className="spin" />Writing the plan, about 30 seconds</> : "Turn this into a plan"}</button>}
               {!plan && failure}
+              {!plan && suggestion && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
+                  <p style={{ margin: 0, fontSize: 13 }}><span className="mut">It could do this instead:</span> {suggestion}</p>
+                  <button className="btn" onClick={() => rewrite(suggestion)}>Use this</button>
+                </div>
+              )}
             </section>
 
             <aside style={{ flex: "1 1 520px", minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
@@ -156,7 +168,12 @@ export default function NewAgent() {
                     <Row left={entryLabel(plan.entry)} />
                     {exitLabels(plan.exit).map((exit) => <Row key={exit} left={exit} />)}
                   </div>
-                  {leftOut && <p className="dn" style={{ margin: 0, fontSize: 13 }}>{leftOut}</p>}
+                  {changes.length > 0 && (
+                    <div style={{ padding: "10px 12px", border: "1px solid var(--orange)", borderRadius: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>Not exactly what you wrote</div>
+                      <ul className="mut" style={{ margin: 0, paddingLeft: 18, fontSize: 13, display: "flex", flexDirection: "column", gap: 2 }}>{changes.map((c) => <li key={c}>{c}</li>)}</ul>
+                    </div>
+                  )}
                   {!preview && (
                     <div className="between" style={{ alignItems: "center", paddingTop: 12, borderTop: "1px solid var(--line)" }}>
                       <span className="mut" style={{ fontSize: 13 }}>Wrong? Edit your text to rewrite it.</span>
