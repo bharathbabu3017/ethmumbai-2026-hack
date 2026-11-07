@@ -186,7 +186,7 @@ export default function NewAgent() {
                     <div><label className="lab" htmlFor="name">Name</label><input id="name" className="inp" style={{ fontFamily: "inherit" }} maxLength={32} value={name} onChange={(e) => setName(e.target.value)} /></div>
                     <label className="row" style={{ flexWrap: "nowrap", gap: 10, minHeight: 32, cursor: "pointer" }}>
                       <input type="checkbox" checked={hideStrategy} onChange={(e) => setHide(e.target.checked)} style={{ width: 18, height: 18, accentColor: "var(--lime)" }} />
-                      <span>Keep it private <span className="mut">(off Discover, with its strategy hidden. Its profile link still shows trades and reasons.)</span></span>
+                      <span>Keep it private <span className="mut">(off Discover, with its strategy and reasons hidden. Its profile link still shows trades. You can change this later.)</span></span>
                     </label>
                     <div className="row" style={{ flexWrap: "nowrap" }}>
                       <button className="btn pri" style={{ flex: "1 1 auto" }} disabled={!!busy || !name.trim()} onClick={create}>{busy === "create" ? <><span className="spin" />Creating</> : name.trim() ? "Create agent" : "Name it to continue"}</button>

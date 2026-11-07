@@ -3,7 +3,7 @@ import { before, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { alertRecipients, applyOrderFrame, getOrCreateTelegramAccount, getTradingWallet, getUserByTelegram, syncPrivyUser, claimJobs, claimMirror, completeMirror, createMirrors, dismissMirror, listCopyOrders, listMirrors, releaseMirror, enqueueJob, finishJob, getJob, recordOrder, claimAction, confirmCopy, countCopies, createAction, createLinkToken, createTrader, findWallet, getOrCreateWalletUser, getPosition, getTrade, getTraderByUser, leaderboard, linkTelegram, listTrades, releaseCopy, reserveCopy, countAgents, createAgent, getTraderByName, listAgents, setFollow, type Db, type OrderFields, removeAgent, getAgentByTrader, listAgentTraders, activeAgents } from "./queries";
+import { alertRecipients, applyOrderFrame, getOrCreateTelegramAccount, getTradingWallet, getUserByTelegram, syncPrivyUser, claimJobs, claimMirror, completeMirror, createMirrors, dismissMirror, listCopyOrders, listMirrors, releaseMirror, enqueueJob, finishJob, getJob, recordOrder, claimAction, confirmCopy, countCopies, createAction, createLinkToken, createTrader, findWallet, getOrCreateWalletUser, getPosition, getTrade, getTraderByUser, leaderboard, linkTelegram, listTrades, releaseCopy, reserveCopy, countAgents, createAgent, getTraderByName, listAgents, setAgentPrivate, setFollow, type Db, type OrderFields, removeAgent, getAgentByTrader, listAgentTraders, activeAgents } from "./queries";
 import { sql } from "drizzle-orm";
 import * as schema from "./schema";
 
@@ -384,4 +384,14 @@ test("a removed agent leaves the owner's list but keeps its public record", asyn
   assert.equal((await getAgentByTrader(db, agent.traderId))?.status, "stopped");
   assert.equal((await listAgentTraders(db)).find((a) => a.traderId === agent.traderId)?.status, "stopped");
   assert.ok(!(await activeAgents(db)).some((a) => a.id === agent.id));
+});
+
+test("an agent can go private and back, and keeps its other settings", async () => {
+  const ownerId = await getOrCreateWalletUser(db, "0xPrivacyOwner");
+  const agent = await createAgent(db, { ownerId, name: "Quiet One", settings: { strategy: "dip", budgetUsd: 25 }, address: "0xQuiet", privyWalletId: "w-quiet" });
+  const settings = async () => (await listAgents(db, ownerId))[0]?.settings;
+  await setAgentPrivate(db, agent.id, true);
+  assert.deepEqual(await settings(), { strategy: "dip", budgetUsd: 25, hideStrategy: true });
+  await setAgentPrivate(db, agent.id, false);
+  assert.deepEqual(await settings(), { strategy: "dip", budgetUsd: 25, hideStrategy: false });
 });

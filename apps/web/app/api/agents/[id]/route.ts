@@ -1,4 +1,4 @@
-import { enqueueJob, getJob, getOwnedAgent, getTradingWallet, removeAgent, setAgentStatus, withdrawalPending } from "@flashmob/db";
+import { enqueueJob, getJob, getOwnedAgent, getTradingWallet, removeAgent, setAgentPrivate, setAgentStatus, withdrawalPending } from "@flashmob/db";
 import { createFlashClient, OPEN_STATUSES, removalError, withdrawalError } from "@flashmob/flash";
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
@@ -35,7 +35,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const agent = await getOwnedAgent(db(), id, session.userId);
   if (!agent) return fail("Agent not found", 404);
 
-  const { action, sell, token, amount } = await req.json();
+  const { action, sell, token, amount, hidden } = await req.json();
+  if (action === "privacy") {
+    if (typeof hidden !== "boolean") return fail("That isn't possible right now.", 400);
+    await setAgentPrivate(db(), id, hidden);
+    return NextResponse.json({ ok: true });
+  }
   if (action === "withdraw") {
     const problem = withdrawalError({ token, amount });
     if (problem) return fail(problem, 400);

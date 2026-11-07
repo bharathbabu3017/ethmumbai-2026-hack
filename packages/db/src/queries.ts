@@ -510,6 +510,10 @@ export const getAgentByUser = async (db: Db, userId: string) => {
 
 export const setAgentStatus = (db: Db, id: string, status: "funding" | "running" | "paused" | "stopped") => db.update(agents).set({ status }).where(eq(agents.id, id));
 
+/** Changes one setting in place, so nothing else an agent was created with can be lost. */
+export const setAgentPrivate = (db: Db, id: string, hidden: boolean) =>
+  db.update(agents).set({ settings: sql`${agents.settings} || jsonb_build_object('hideStrategy', ${hidden}::boolean)` }).where(eq(agents.id, id));
+
 /** Takes it off the owner's list and Discover. Its trades and decisions are kept, because a public record stays honest. */
 export const removeAgent = (db: Db, id: string) => db.update(agents).set({ status: "stopped", removedAt: new Date() }).where(eq(agents.id, id));
 

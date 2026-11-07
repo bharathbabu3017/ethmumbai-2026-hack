@@ -25,16 +25,16 @@ interface DecisionDetails {
   sources?: { title: string; url: string }[];
 }
 
-function DecisionRow({ decision: d, hideChecks }: { decision: Awaited<ReturnType<typeof listDecisions>>[number]; hideChecks: boolean }) {
+function DecisionRow({ decision: d, hideDetails }: { decision: Awaited<ReturnType<typeof listDecisions>>[number]; hideDetails: boolean }) {
   const details = (d.details ?? {}) as DecisionDetails;
-  const checks = hideChecks ? [] : details.checks ?? [];
-  const orders = details.orders ?? [];
+  const checks = hideDetails ? [] : details.checks ?? [];
+  const orders = hideDetails ? [] : details.orders ?? [];
   const summary = (
     <div className="tr" style={{ gridTemplateColumns: "130px minmax(0,1fr) 90px", borderTop: "1px solid var(--line)" }}>
       <span className="mut" style={{ fontSize: 13 }}><When at={d.createdAt} /></span>
       <span style={{ minWidth: 0 }}>
         <span style={{ display: "block", fontWeight: 500, textTransform: "capitalize" }}>{d.action.replace("_", " ")}{d.tokenSymbol ? ` ${d.tokenSymbol}` : ""}{d.amountUsd ? ` $${d.amountUsd}` : ""}</span>
-        <span className="mut" style={{ fontSize: 13 }}>{d.reason}{d.note ? ` (${d.note})` : ""}</span>
+        {!hideDetails && <span className="mut" style={{ fontSize: 13 }}>{d.reason}{d.note ? ` (${d.note})` : ""}</span>}
       </span>
       <span style={{ fontSize: 13, textAlign: "right", color: d.status === "placed" ? "var(--up)" : d.status === "idle" ? "var(--mut)" : "var(--orange)" }}>{DECISION_LABELS[d.status]}</span>
     </div>
@@ -102,6 +102,9 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
   const sales = trades.filter((t) => t.soldCostUsd > 0).reverse();
   const curve = sales.reduce<number[]>((sum, t) => [...sum, (sum.at(-1) ?? 0) + t.realizedUsd], []);
   const mine = session?.userId === trader.userId;
+  // An owner always sees their own agent's strategy. Everyone else sees what it's set to show.
+  const owner = !!agent && agent.ownerId === session?.userId;
+  const secret = !!rules?.hideStrategy && !owner;
 
   return (
     <>
@@ -136,7 +139,7 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
             <section className="table">
               <div style={{ padding: "14px 16px", fontWeight: 600 }}>Decisions</div>
               {decisions.length === 0 ? <p className="mut" style={{ margin: 0, padding: 16, borderTop: "1px solid var(--line)" }}>Every check it makes appears here, including when it does nothing.</p> : decisions.map((d) => (
-                <DecisionRow key={d.id} decision={d} hideChecks={!!rules?.hideStrategy} />
+                <DecisionRow key={d.id} decision={d} hideDetails={secret} />
               ))}
             </section>
           )}
@@ -155,12 +158,13 @@ export default async function TraderPage({ params }: { params: Promise<{ id: str
           {rules && (
             <div className="panel" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <h2 style={{ fontSize: 16 }}>How it trades</h2>
-              {rules.hideStrategy ? <p className="mut" style={{ margin: 0 }}>Its creator keeps the strategy private.</p> : rules.plan ? <p style={{ margin: 0 }}>{rules.style}</p> : <p className="mut" style={{ margin: 0 }}>{AGENT_STRATEGIES[rules.strategy].about}{rules.style ? ` ${rules.style}` : ""}</p>}
+              {owner && rules.hideStrategy && <p className="mut" style={{ margin: 0, fontSize: 13 }}>Private. Only you can see its strategy and reasons.</p>}
+              {secret ? <p className="mut" style={{ margin: 0 }}>Its creator keeps the strategy private.</p> : rules.plan ? <p style={{ margin: 0 }}>{rules.style}</p> : <p className="mut" style={{ margin: 0 }}>{AGENT_STRATEGIES[rules.strategy].about}{rules.style ? ` ${rules.style}` : ""}</p>}
               <div className="m" style={{ fontSize: 13 }}>
                 <div className="between"><span className="mut">Budget</span><span>${rules.budgetUsd}</span></div>
                 <div className="between"><span className="mut">Max per trade</span><span>${rules.maxTradeUsd}</span></div>
                 <div className="between"><span className="mut">Checks every</span><span>{rules.everyMinutes} min</span></div>
-                {!rules.hideStrategy && (rules.plan
+                {!secret && (rules.plan
                   ? [entryLabel(rules.plan.entry), ...exitLabels(rules.plan.exit)].map((line) => <div key={line} style={{ paddingTop: 4 }}>{line}</div>)
                   : <div className="between"><span className="mut">Orders</span><span>{AGENT_STRATEGIES[rules.strategy].orders}</span></div>)}
               </div>

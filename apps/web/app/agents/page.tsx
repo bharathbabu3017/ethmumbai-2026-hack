@@ -24,7 +24,7 @@ interface Agent {
   usdc: number;
 }
 
-const COLUMNS = "minmax(190px,1.3fr) 120px 100px 90px minmax(130px,1fr) 400px";
+const COLUMNS = "minmax(190px,1.3fr) 150px 100px 90px minmax(130px,1fr) 400px";
 const LABELS = { funding: "Needs funds", running: "Running", paused: "Paused", stopped: "Stopped" };
 const TONES = { funding: "var(--orange)", running: "var(--up)", paused: "var(--mut)", stopped: "var(--mut)" };
 
@@ -43,6 +43,7 @@ export default function Agents() {
   const [withdrawing, setWithdrawing] = useState<Agent>();
   const [stopping, setStopping] = useState<Agent>();
   const [removing, setRemoving] = useState<Agent>();
+  const [publishing, setPublishing] = useState<Agent>();
   const [sell, setSell] = useState(true);
   const [busy, setBusy] = useState<string>();
   const [error, setError] = useState("");
@@ -55,6 +56,7 @@ export default function Agents() {
       await postJson(`/api/agents/${id}`, body);
       setStopping(undefined);
       setRemoving(undefined);
+      setPublishing(undefined);
       refresh();
     } catch (e) {
       setError(plainError(e));
@@ -67,11 +69,14 @@ export default function Agents() {
   const stopped = agents?.filter((a) => a.status === "stopped") ?? [];
   const table = (rows: Agent[]) => (
     <section className="table">
-      <div className="tr head" style={{ gridTemplateColumns: COLUMNS, minWidth: 1130 }}><span>Agent</span><span>Status</span><span>Wallet</span><span>Budget</span><span>Strategy</span><span /></div>
+      <div className="tr head" style={{ gridTemplateColumns: COLUMNS, minWidth: 1160 }}><span>Agent</span><span>Status</span><span>Wallet</span><span>Budget</span><span>Strategy</span><span /></div>
       {rows.map((a) => (
-        <div key={a.id} className="tr" style={{ gridTemplateColumns: COLUMNS, minWidth: 1130, borderTop: "1px solid var(--line)" }}>
+        <div key={a.id} className="tr" style={{ gridTemplateColumns: COLUMNS, minWidth: 1160, borderTop: "1px solid var(--line)" }}>
           <Link href={`/traders/${a.traderId}`} className={`row ${a.status === "stopped" ? "mut" : ""}`} style={{ gap: 10, fontWeight: 500, flexWrap: "nowrap" }}><Avatar name={a.displayName} size={32} /> {a.displayName}</Link>
-          <span style={{ fontSize: 13, fontWeight: 500, color: TONES[a.status] }}>{LABELS[a.status]}</span>
+          <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span style={{ fontSize: 13, fontWeight: 500, color: TONES[a.status] }}>{LABELS[a.status]}</span>
+            {a.status !== "stopped" && <button className="link-btn" disabled={busy === a.id} onClick={() => (a.settings.hideStrategy ? setPublishing(a) : act(a.id, { action: "privacy", hidden: true }))}>{a.settings.hideStrategy ? "Private · make public" : "Public · make private"}</button>}
+          </span>
           <span className="m">${a.usdc.toFixed(2)}</span>
           <span className="m">${a.settings.budgetUsd}</span>
           <span className="mut">{AGENT_STRATEGIES[a.settings.strategy].label}</span>
@@ -123,6 +128,13 @@ export default function Agents() {
           <p className="mut" style={{ margin: 0, fontSize: 13 }}>Its trades and decisions stay at its public link. Its wallet must be empty first, so no funds are ever hidden.</p>
           {error && <p role="alert" className="dn" style={{ margin: 0 }}>{error}</p>}
           <button className="btn warn" disabled={busy === removing.id} onClick={() => act(removing.id, { action: "remove" })}>{busy === removing.id ? <><span className="spin" />Checking its wallet</> : "Remove agent"}</button>
+        </Drawer>
+      )}
+      {publishing && (
+        <Drawer title={`Make ${publishing.displayName} public?`} onClose={() => setPublishing(undefined)}>
+          <p style={{ margin: 0 }}>Anyone will be able to read its strategy, its rules and the reason for each decision, including past ones. It appears on Discover while it's running.</p>
+          <p className="mut" style={{ margin: 0, fontSize: 13 }}>You can make it private again, but anyone who has already seen its strategy will know it.</p>
+          <button className="btn pri" disabled={busy === publishing.id} onClick={() => act(publishing.id, { action: "privacy", hidden: false })}>{busy === publishing.id ? <><span className="spin" />Working</> : "Make public"}</button>
         </Drawer>
       )}
       {stopping && (
