@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { CopyDemo } from "@/components/copy-demo";
 import { Logo } from "@/components/logo";
-import { MobDiagram } from "@/components/mob-diagram";
 import { ProtectDiagram } from "@/components/protect-diagram";
 import { Reveal } from "@/components/reveal";
 import { SkipLanding } from "@/components/skip-landing";
@@ -62,7 +62,7 @@ export default function Landing() {
           <Link href="/home" className="btn pri">Browse traders</Link>
           <Link href="/agents/new" className="btn">Build an agent</Link>
         </div>
-        <div style={{ maxWidth: 1000, margin: "48px auto 0" }}><MobDiagram /></div>
+        <div style={{ marginTop: 48 }}><CopyDemo /><p className="mut" style={{ margin: "12px 0 0", fontSize: 12 }}>Example trade</p></div>
       </section>
 
       <Reveal className="sec">
