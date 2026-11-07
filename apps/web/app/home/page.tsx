@@ -1,4 +1,5 @@
 import { getUser, leaderboard, listAgentTraders, listTrades, listUserCopies, listUserCopySettings } from "@flashmob/db";
+import { agentListed } from "@flashmob/flash";
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { CopyDiagram } from "@/components/copy-diagram";
@@ -23,14 +24,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
   const { show } = await searchParams;
   const [board, feed, session, agentRows, cookieStore] = await Promise.all([leaderboard(db()), listTrades(db(), 300), getSession(), listAgentTraders(db()), cookies()]);
   const agentIds = new Set(agentRows.map((a) => a.traderId));
-  const stoppedIds = new Set(agentRows.filter((a) => a.status === "stopped").map((a) => a.traderId));
+  const unlisted = new Set(agentRows.filter((a) => !agentListed(a)).map((a) => a.traderId));
   const [settings, user, copied] = session
     ? await Promise.all([listUserCopySettings(db(), session.userId), getUser(db(), session.userId), listUserCopies(db(), session.userId)])
     : [[], undefined, []];
   const copying = new Set(settings.filter((s) => s.enabled).map((s) => s.traderId));
   const isTrader = board.some((t) => t.userId === session?.userId);
 
-  const everyone: DiscoverTrader[] = board.filter((t) => !stoppedIds.has(t.id)).map((t) => {
+  const everyone: DiscoverTrader[] = board.filter((t) => !unlisted.has(t.id)).map((t) => {
     const theirs = feed.filter((r) => r.trader.id === t.id).map((r) => r.order);
     const filled = theirs.filter((o) => o.filledQty > 0);
     const curve = filled.filter((o) => o.soldCostUsd > 0).reverse().reduce<number[]>((sum, o) => [...sum, (sum.at(-1) ?? 0) + o.realizedUsd], []);

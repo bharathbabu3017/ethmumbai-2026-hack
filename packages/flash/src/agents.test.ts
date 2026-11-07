@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { removalError, agentSettingsError, withdrawalError, type AgentSettings } from "./agents";
+import { agentListed, removalError, agentSettingsError, withdrawalError, type AgentSettings } from "./agents";
 
 const good: AgentSettings = { strategy: "dip", style: "", tokens: ["0x4200000000000000000000000000000000000006"], budgetUsd: 25, maxTradeUsd: 2, everyMinutes: 60 };
 
@@ -31,4 +31,10 @@ test("an agent can only be removed once it's stopped and empty", () => {
   assert.match(removalError("paused", 0, 0)!, /Stop it/);
   assert.match(removalError("stopped", 4.2, 0)!, /\$4\.20/);
   assert.match(removalError("stopped", 0, 2)!, /open orders/);
+});
+
+test("only a running agent that isn't private is listed", () => {
+  assert.equal(agentListed({ status: "running", settings: good }), true);
+  assert.equal(agentListed({ status: "running", settings: { ...good, hideStrategy: true } }), false);
+  for (const status of ["funding", "paused", "stopped"]) assert.equal(agentListed({ status, settings: good }), false);
 });

@@ -37,6 +37,9 @@ const MIN_TRADE_USD = 1;
 const MAX_STYLE = 800;
 const MAX_TOKENS = 10;
 
+/** Only a running agent that isn't private is listed publicly. Its profile link works either way. */
+export const agentListed = (a: { status: string; settings: unknown }) => a.status === "running" && !(a.settings as AgentSettings).hideStrategy;
+
 /** Dust is fine to leave behind: stopping keeps a little ETH back to pay for the transfer. */
 const MAX_LEFT_ON_REMOVE_USD = 0.25;
 
