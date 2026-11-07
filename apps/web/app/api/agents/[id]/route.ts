@@ -1,5 +1,5 @@
-import { enqueueJob, getJob, getOwnedAgent, getTradingWallet, removeAgent, setAgentPrivate, setAgentStatus, withdrawalPending } from "@flashmob/db";
-import { createFlashClient, OPEN_STATUSES, removalError, withdrawalError } from "@flashmob/flash";
+import { enqueueJob, getJob, getOwnedAgent, getTraderByName, getTradingWallet, removeAgent, setAgentPrivate, setAgentStatus, updateAgent, withdrawalPending } from "@flashmob/db";
+import { agentSettingsError, createFlashClient, OPEN_STATUSES, removalError, removedTokensError, withdrawalError, type AgentSettings } from "@flashmob/flash";
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { rateLimited } from "@/lib/rate-limit";
@@ -35,7 +35,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const agent = await getOwnedAgent(db(), id, session.userId);
   if (!agent) return fail("Agent not found", 404);
 
-  const { action, sell, token, amount, hidden } = await req.json();
+  const body = await req.json();
+  const { action, sell, token, amount, hidden } = body;
+  if (action === "edit") {
+    if (agent.status === "stopped") return fail("A stopped agent can't be edited.", 409);
+    const name = String(body.name ?? "").trim();
+    if (name.length < 2 || name.length > 32) return fail("Give it a name between 2 and 32 characters.", 400);
+    // Privacy has its own switch, so an edit never carries it.
+    const settings: Omit<AgentSettings, "hideStrategy"> = {
+      strategy: "custom", style: String(body.style ?? "").trim(), tokens: Array.isArray(body.tokens) ? body.tokens.map(String) : [],
+      budgetUsd: Number(body.budgetUsd), maxTradeUsd: Number(body.maxTradeUsd), everyMinutes: Number(body.everyMinutes), plan: body.plan,
+    };
+    const invalid = agentSettingsError(settings);
+    if (invalid) return fail(invalid, 400);
+    const taken = await getTraderByName(db(), name);
+    if (taken && taken.id !== agent.traderId) return fail("That name is taken.", 409);
+
+    const kept = new Set(settings.tokens.map((t) => t.toLowerCase()));
+    const removed = (agent.settings as AgentSettings).tokens.filter((t) => !kept.has(t.toLowerCase()));
+    if (removed.length) {
+      const wallet = await getTradingWallet(db(), agent.userId);
+      if (!wallet) return fail("Agent not found", 404);
+      const flash = createFlashClient({ apiKey: process.env.FLASH_API_KEY ?? "" });
+      // If we can't see the wallet, we can't say the token is safe to drop.
+      const seen = await Promise.all([flash.balances(wallet.address), flash.listOrders({ funderAddress: wallet.address, statuses: OPEN_STATUSES })]).catch(() => undefined);
+      if (!seen) return fail("Couldn't check its wallet. Try again.", 502);
+      const problem = removedTokensError(removed, seen[0].balances.filter((b) => b.chain === "base"), seen[1].orders.map((o) => o.targetAsset.address));
+      if (problem) return fail(problem, 409);
+    }
+    await updateAgent(db(), { id, traderId: agent.traderId, name, settings });
+    return NextResponse.json({ ok: true });
+  }
   if (action === "privacy") {
     if (typeof hidden !== "boolean") return fail("That isn't possible right now.", 400);
     await setAgentPrivate(db(), id, hidden);

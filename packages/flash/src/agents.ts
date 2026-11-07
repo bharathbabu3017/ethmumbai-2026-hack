@@ -40,8 +40,20 @@ const MAX_TOKENS = 10;
 /** Only a running agent that isn't private is listed publicly. Its profile link works either way. */
 export const agentListed = (a: { status: string; settings: unknown }) => a.status === "running" && !(a.settings as AgentSettings).hideStrategy;
 
+/** Why these tokens can't come off its list. It only manages exits on listed tokens, so nothing it holds or has open may be dropped. */
+export function removedTokensError(removed: string[], balances: { address: string; symbol: string; notional: string }[], openOrderTokens: string[]) {
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  for (const token of removed) {
+    const held = balances.find((b) => same(b.address, token) && Number(b.notional) >= MIN_MANAGED_USD);
+    if (held) return `It still holds ${held.symbol}. Keep it on the list until that's sold or withdrawn.`;
+    if (openOrderTokens.some((t) => same(t, token))) return "It has open orders on a token you removed. Keep it on the list until they finish.";
+  }
+  return null;
+}
+
 /** Dust is fine to leave behind: stopping keeps a little ETH back to pay for the transfer. */
 const MAX_LEFT_ON_REMOVE_USD = 0.25;
+const MIN_MANAGED_USD = 0.25;
 
 /** Why an agent can't be removed yet. Removing hides it, so it must never hide money. */
 export function removalError(status: string, walletUsd: number, openOrders: number) {

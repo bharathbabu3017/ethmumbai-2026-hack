@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { agentListed, removalError, agentSettingsError, withdrawalError, type AgentSettings } from "./agents";
+import { agentListed, removedTokensError, removalError, agentSettingsError, withdrawalError, type AgentSettings } from "./agents";
 
 const good: AgentSettings = { strategy: "dip", style: "", tokens: ["0x4200000000000000000000000000000000000006"], budgetUsd: 25, maxTradeUsd: 2, everyMinutes: 60 };
 
@@ -37,4 +37,14 @@ test("only a running agent that isn't private is listed", () => {
   assert.equal(agentListed({ status: "running", settings: good }), true);
   assert.equal(agentListed({ status: "running", settings: { ...good, hideStrategy: true } }), false);
   for (const status of ["funding", "paused", "stopped"]) assert.equal(agentListed({ status, settings: good }), false);
+});
+
+test("a token can't come off an agent's list while it's held or has open orders", () => {
+  const weth = "0x4200000000000000000000000000000000000006";
+  const held = [{ address: weth.toUpperCase().replace("0X", "0x"), symbol: "WETH", notional: "12" }];
+  assert.match(removedTokensError([weth], held, [])!, /still holds WETH/);
+  assert.match(removedTokensError([weth], [], [weth])!, /open orders/);
+  assert.equal(removedTokensError([weth], [{ ...held[0]!, notional: "0.01" }], []), null);
+  assert.equal(removedTokensError(["0x00000000000000000000000000000000000000aa"], held, [weth]), null);
+  assert.equal(removedTokensError([], held, [weth]), null);
 });

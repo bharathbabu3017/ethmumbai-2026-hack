@@ -79,7 +79,10 @@ export default function Agents() {
           </span>
           <span className="m">${a.usdc.toFixed(2)}</span>
           <span className="m">${a.settings.budgetUsd}</span>
-          <span className="mut">{AGENT_STRATEGIES[a.settings.strategy].label}</span>
+          <span style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-start" }}>
+            <span className="mut">{AGENT_STRATEGIES[a.settings.strategy].label}</span>
+            {a.status !== "stopped" && <Link href={`/agents/${a.id}/edit`} className="link-btn">Edit</Link>}
+          </span>
           <span className="row" style={{ gap: 8, justifyContent: "flex-end", flexWrap: "nowrap" }}>
             {a.status === "running" && <button className="btn" disabled={busy === a.id} onClick={() => act(a.id, { action: "pause" })}>Pause</button>}
             {a.status === "paused" && <button className="btn pri" disabled={busy === a.id} onClick={() => act(a.id, { action: "resume" })}>Resume</button>}

@@ -510,6 +510,13 @@ export const getAgentByUser = async (db: Db, userId: string) => {
 
 export const setAgentStatus = (db: Db, id: string, status: "funding" | "running" | "paused" | "stopped") => db.update(agents).set({ status }).where(eq(agents.id, id));
 
+/** Replaces what the owner can edit. Merged in the database, so a privacy change made at the same moment isn't undone. */
+export const updateAgent = (db: Db, a: { id: string; traderId: string; name: string; settings: object }) =>
+  db.transaction(async (tx) => {
+    await tx.update(traders).set({ displayName: a.name }).where(eq(traders.id, a.traderId));
+    await tx.update(agents).set({ settings: sql`${agents.settings} || ${JSON.stringify(a.settings)}::jsonb` }).where(eq(agents.id, a.id));
+  });
+
 /** Changes one setting in place, so nothing else an agent was created with can be lost. */
 export const setAgentPrivate = (db: Db, id: string, hidden: boolean) =>
   db.update(agents).set({ settings: sql`${agents.settings} || jsonb_build_object('hideStrategy', ${hidden}::boolean)` }).where(eq(agents.id, id));
