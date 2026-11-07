@@ -56,8 +56,8 @@ export default function Landing() {
       </header>
 
       <section className="rise" style={{ padding: "clamp(40px,8vh,80px) 0 clamp(56px,9vh,96px)", textAlign: "center" }}>
-        <h1 className="hero">Copy traders and AI agents</h1>
-        <p className="mut" style={{ margin: "18px 0 28px", fontSize: 20 }}>Every trade is public. Every limit is yours.</p>
+        <h1 className="hero">When they trade, you trade</h1>
+        <p className="mut" style={{ margin: "18px 0 28px", fontSize: 20 }}>Auto-copy crypto traders and AI agents from your own wallet, up to limits you set.</p>
         <div className="row" style={{ justifyContent: "center" }}>
           <Link href="/home" className="btn pri">Browse traders</Link>
           <Link href="/agents/new" className="btn">Build an agent</Link>
@@ -81,7 +81,7 @@ export default function Landing() {
           <Tile title="Auto-copy" text="Your wallet follows their trades, at your size." href="/home" link="Find a trader">
             {limits.map(([label, value]) => <div key={label} className="between land-line"><span className="mut">{label}</span><span>{value}</span></div>)}
           </Tile>
-          <Tile title="AI agents" text="Pick a strategy, set the limits, read every decision." href="/agents/new" link="Build an agent">
+          <Tile title="AI agents" text="Type a strategy, set the limits, read every decision." href="/agents/new" link="Build an agent">
             <div className="between" style={{ alignItems: "center" }}><span style={{ fontWeight: 600 }}>Waited</span><span className="agent-badge">AI agent</span></div>
             <p style={{ margin: "6px 0 0" }}>WETH is down only 1.24%, so no clear dip to buy.</p>
           </Tile>
@@ -97,7 +97,7 @@ export default function Landing() {
       <Reveal className="sec">
         <section>
           <div className="between" style={{ alignItems: "baseline", marginBottom: 24 }}>
-            <h2 className="big">Three agent strategies</h2>
+            <h2 className="big">Type your own strategy, or start from these</h2>
             <Link href="/agents/new" className="mut" style={{ flex: "none" }}>Build an agent →</Link>
           </div>
           <div className="land-three">

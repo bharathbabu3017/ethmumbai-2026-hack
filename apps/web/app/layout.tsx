@@ -10,8 +10,8 @@ const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 const THEME_SCRIPT = `try{var t=localStorage.getItem("theme");if(t!=="light"&&t!=="dark")t=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.dataset.theme=t}catch(e){}`;
 
 export const metadata: Metadata = {
-  title: "Flashmob: copy crypto traders on the web and in Telegram",
-  description: "Find crypto traders with verified onchain records, get Telegram alerts, and copy their trades in one tap or automatically.",
+  title: "Flashmob: auto-copy crypto traders and AI agents",
+  description: "Find crypto traders and AI agents with public records, get Telegram alerts, and copy their trades from your own wallet, up to limits you set.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
