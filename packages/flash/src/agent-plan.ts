@@ -26,12 +26,19 @@ export interface PlanRule {
   value: number;
 }
 
-export type EntryType = "market" | "limit" | "ladder" | "breakout" | "twap";
+export const ENTRY_TYPES = ["market", "limit", "ladder", "breakout", "pullback", "bounce", "twap"] as const;
+export type EntryType = (typeof ENTRY_TYPES)[number];
 
 export interface PlanEntry {
   type: EntryType;
-  /** Limit: how far below the price. Breakout: how far above it, or the 7-day high if unset. TWAP: the most it pays above the price. */
+  /** Limit and pullback: how far below the price. Breakout: how far above it, or the 7-day high if unset. TWAP: the most it pays above the price. */
   offsetPercent?: number;
+  /** Breakout and pullback: the most it pays above the trigger once it fires. Unset buys at market. */
+  capPercent?: number;
+  /** Bounce: how far the price must rise off its low before it buys. */
+  trailPercent?: number;
+  /** Bounce: buy with a limit at the trail instead of at market, so it can miss. */
+  limitOnly?: boolean;
   rungs?: number;
   stepPercent?: number;
   durationMinutes?: number;
@@ -43,6 +50,10 @@ export interface PlanExit {
   stopPercent?: number;
   targetPercent?: number;
   trailPercent?: number;
+  /** Starts trailing only once the price is this far above the entry. */
+  trailArmPercent?: number;
+  /** Sells with a limit at the trail instead of at market, so it can miss in a fast fall. */
+  trailLimitOnly?: boolean;
 }
 
 export interface AgentPlan {
@@ -117,16 +128,20 @@ export function planError(plan: AgentPlan) {
     if (!within(entry.stepPercent, 0.2, 15)) return "Ladder orders must be 0.2% to 15% apart.";
   }
   if (entry.type === "breakout" && !unset(entry.offsetPercent) && !within(entry.offsetPercent, 0.1, 30)) return "A breakout must trigger 0.1% to 30% above the price.";
+  if (entry.type === "pullback" && !within(entry.offsetPercent, 0.1, 30)) return "A pullback buy must trigger 0.1% to 30% below the price.";
+  if (entry.type === "bounce" && !within(entry.trailPercent, 0.5, 50)) return "A bounce buy must trail by 0.5% to 50%.";
+  if (!unset(entry.capPercent) && (!["breakout", "pullback"].includes(entry.type) || !within(entry.capPercent, 0.1, 30))) return "A price cap must be 0.1% to 30% above a stop buy's trigger.";
   if (entry.type === "twap") {
     if (!within(entry.durationMinutes, 10, 43_200)) return "A TWAP must run for 10 minutes to 30 days.";
     if (!unset(entry.offsetPercent) && !within(entry.offsetPercent, 0.1, 30)) return "A TWAP's price cap must be 0.1% to 30% above the price.";
   }
-  if (!["market", "limit", "ladder", "breakout", "twap"].includes(entry.type)) return "The plan needs a way to buy.";
+  if (!ENTRY_TYPES.includes(entry.type)) return "The plan needs a way to buy.";
   if (!unset(entry.repeatHours) && !within(entry.repeatHours, 1, HOUR_LIMIT)) return "It can repeat every 1 to 720 hours.";
 
   if (!unset(exit.stopPercent) && !within(exit.stopPercent, 0.5, 50)) return "A stop must be 0.5% to 50% away.";
   if (!unset(exit.targetPercent) && !within(exit.targetPercent, 0.5, 500)) return "A target must be 0.5% to 500% away.";
   if (!unset(exit.trailPercent) && !within(exit.trailPercent, 0.5, 50)) return "A trail must be 0.5% to 50%.";
+  if (!unset(exit.trailArmPercent) && (unset(exit.trailPercent) || !within(exit.trailArmPercent, 0.5, 500))) return "A trail can start 0.5% to 500% above the entry.";
   const hasExit = !unset(exit.stopPercent) || !unset(exit.targetPercent) || !unset(exit.trailPercent);
   if (!hasExit && unset(entry.repeatHours)) return "The plan needs a way to sell: a stop, a target or a trail.";
   return null;
@@ -149,15 +164,19 @@ export function entryLabel(e: PlanEntry) {
   if (e.type === "market") return `Market buy${repeat}`;
   if (e.type === "limit") return `Limit buy ${e.offsetPercent}% below the price${repeat}`;
   if (e.type === "ladder") return `${e.rungs} limit buys, ${e.stepPercent}% apart${repeat}`;
-  if (e.type === "breakout") return `Stop buy ${e.offsetPercent ? `${e.offsetPercent}% above the price` : "at the 7-day high"}${repeat}`;
+  const cap = e.capPercent ? `, paying at most ${e.capPercent}% above that` : "";
+  if (e.type === "breakout") return `Stop buy ${e.offsetPercent ? `${e.offsetPercent}% above the price` : "at the 7-day high"}${cap}${repeat}`;
+  if (e.type === "pullback") return `Stop buy ${e.offsetPercent}% below the price${cap}${repeat}`;
+  if (e.type === "bounce") return `Trailing ${e.limitOnly ? "limit " : ""}buy after a ${e.trailPercent}% bounce off the low${repeat}`;
   return `TWAP buy over ${e.durationMinutes} minutes${repeat}`;
 }
 
 export function exitLabels(x: PlanExit) {
   const { stopPercent: stop, targetPercent: target, trailPercent: trail } = x;
-  if (stop && target && trail) return [`Half: stop at -${stop}%, target at +${target}%`, `Other half: ${trail}% trailing stop`];
-  if (trail) return [`${trail}% trailing stop`];
-  if (stop && target) return [`Stop at -${stop}%, target at +${target}%`];
+  const trailing = `${trail}% trailing ${x.trailLimitOnly ? "stop limit" : "stop"}${x.trailArmPercent ? `, starting at +${x.trailArmPercent}%` : ""}`;
+  if (stop && target && trail) return [`Half: bracket, stop at -${stop}%, target at +${target}%`, `Other half: ${trailing}`];
+  if (trail) return [trailing[0]!.toUpperCase() + trailing.slice(1)];
+  if (stop && target) return [`Bracket: stop at -${stop}%, target at +${target}%`];
   if (stop) return [`Stop at -${stop}%`];
   if (target) return [`Target at +${target}%`];
   return ["Holds what it buys"];
@@ -215,13 +234,21 @@ export function entryOrders(plan: AgentPlan, token: AgentToken, read: Indicators
       return { label: `Limit buy ${symbol} ${money(each)}`, value: money(Number(limit)), amountUsd: each, form: { side: "buy" as const, type: "limit" as const, qty: String(each), price: limit, expiryDays: ENTRY_EXPIRY_DAYS } };
     });
   }
+  const capped = (trigger: number) => (entry.capPercent ? { price: priceText(trigger * (1 + entry.capPercent / 100)) } : {});
+  if (entry.type === "pullback") {
+    const trigger = below(entry.offsetPercent!);
+    return [{ label: `Stop buy ${symbol} ${money(amountUsd)}`, value: money(trigger), amountUsd, form: { side: "buy", type: "stop", qty: String(cents(amountUsd)), trigger: priceText(trigger), triggerDirection: "lower", expiryDays: ENTRY_EXPIRY_DAYS, ...capped(trigger) } }];
+  }
+  if (entry.type === "bounce") {
+    return [{ label: `Trailing buy ${symbol} ${money(amountUsd)}`, value: `${entry.trailPercent}%`, amountUsd, form: { side: "buy", type: entry.limitOnly ? "trailing-stop-limit" : "trailing-stop", qty: String(cents(amountUsd)), trailPercent: String(entry.trailPercent), expiryDays: ENTRY_EXPIRY_DAYS } }];
+  }
   if (entry.type === "breakout") {
     const high = read["1h"]?.high7d;
     const level = entry.offsetPercent ? price * (1 + entry.offsetPercent / 100) : high;
     if (!level) return { skip: `It couldn't read the 7-day high of ${symbol}.` };
     if (level <= price) return { skip: `${symbol} is already above its breakout level.` };
     const trigger = priceText(level);
-    return [{ label: `Stop buy ${symbol} ${money(amountUsd)}`, value: money(Number(trigger)), amountUsd, form: { side: "buy", type: "stop", qty: String(cents(amountUsd)), trigger, triggerDirection: "upper", expiryDays: ENTRY_EXPIRY_DAYS } }];
+    return [{ label: `Stop buy ${symbol} ${money(amountUsd)}`, value: money(Number(trigger)), amountUsd, form: { side: "buy", type: "stop", qty: String(cents(amountUsd)), trigger, triggerDirection: "upper", expiryDays: ENTRY_EXPIRY_DAYS, ...capped(level) } }];
   }
   const cap = priceText(price * (1 + (entry.offsetPercent ?? DEFAULT_TWAP_CAP) / 100));
   return [{ label: `TWAP buy ${symbol} ${money(amountUsd)}`, value: `${entry.durationMinutes} min, up to ${money(Number(cap))}`, amountUsd, form: { side: "buy", type: "twap", qty: String(cents(amountUsd)), durationMinutes: String(entry.durationMinutes), price: cap } }];
@@ -233,7 +260,8 @@ export function exitOrders(x: PlanExit, symbol: string, qty: number, price: numb
   const from = (base: number) => ({ stop: stop ? base * (1 - stop / 100) : 0, target: target ? base * (1 + target / 100) : 0 });
   const fromEntry = from(entryPrice ?? price);
   const levels = (stop && fromEntry.stop >= price) || (target && fromEntry.target <= price) ? from(price) : fromEntry;
-  const trailing = (amount: number): PlanOrder => ({ label: `Trailing stop on ${symbol}`, value: `${trail}%`, amountUsd: 0, form: { side: "sell", type: "trailing-stop", qty: qtyText(amount), trailPercent: String(trail) } });
+  const arm = x.trailArmPercent ? { activationPrice: priceText((entryPrice ?? price) * (1 + x.trailArmPercent / 100)) } : {};
+  const trailing = (amount: number): PlanOrder => ({ label: `Trailing stop on ${symbol}`, value: `${trail}%`, amountUsd: 0, form: { side: "sell", type: x.trailLimitOnly ? "trailing-stop-limit" : "trailing-stop", qty: qtyText(amount), trailPercent: String(trail), ...arm } });
   const bracket = (amount: number): PlanOrder => ({ label: `Stop and target on ${symbol}`, value: `${money(levels.stop)} / ${money(levels.target)}`, amountUsd: 0, form: { side: "sell", type: "bracket", qty: qtyText(amount), bracketStop: priceText(levels.stop), bracketTarget: priceText(levels.target) } });
 
   if (stop && target && trail) return [bracket(qty / 2), trailing(qty / 2)];

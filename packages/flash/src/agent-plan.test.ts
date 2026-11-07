@@ -117,6 +117,61 @@ test("labels read plainly", () => {
   assert.equal(ruleLabel({ metric: "rsi", op: "below", value: 30 }), "RSI, 1h at most 30");
   assert.equal(ruleLabel({ metric: "liquidity", op: "above", value: 500000 }), "Liquidity at least $500,000");
   assert.equal(entryLabel(plan.entry), "3 limit buys, 1% apart");
-  assert.deepEqual(exitLabels(plan.exit), ["Half: stop at -5%, target at +8%", "Other half: 4% trailing stop"]);
+  assert.deepEqual(exitLabels(plan.exit), ["Half: bracket, stop at -5%, target at +8%", "Other half: 4% trailing stop"]);
   assert.deepEqual(exitLabels({}), ["Holds what it buys"]);
+});
+
+const every = { summary: "Test.", rules: [{ metric: "rsi", op: "below", value: 30 }], exit: { stopPercent: 5 } } as const;
+const weth = { symbol: "WETH", address: "0x4200000000000000000000000000000000000006", price: 100, change24h: 0, volume24h: 0, liquidity: 0, heldQty: 0 };
+const planOf = (entry: object) => ({ ...every, rules: [...every.rules], exit: { ...every.exit }, entry }) as never;
+const flashRequest = (form: object) => {
+  const built = buildOrder({ ...form, tokenAddress: weth.address, funder: "0xabc" } as never);
+  assert.ok("request" in built, JSON.stringify(built));
+  return built.request;
+};
+
+test("a pullback is a stop buy below the price, and a cap makes it a stop limit", () => {
+  const [plain] = entryOrders(planOf({ type: "pullback", offsetPercent: 3 }), weth, {}, 10) as any[];
+  const request = flashRequest(plain.form);
+  assert.equal(request.orderType, "stop");
+  assert.deepEqual(request.triggers, [{ notionalPrice: "97", triggerType: "lower" }]);
+  assert.equal(request.limitNotionalPrice, undefined);
+  const [capped] = entryOrders(planOf({ type: "pullback", offsetPercent: 3, capPercent: 1 }), weth, {}, 10) as any[];
+  assert.equal(flashRequest(capped.form).limitNotionalPrice, "97.97");
+});
+
+test("a breakout with a cap never pays more than the cap above its trigger", () => {
+  const [order] = entryOrders(planOf({ type: "breakout", offsetPercent: 2, capPercent: 1 }), weth, {}, 10) as any[];
+  const request = flashRequest(order.form);
+  assert.deepEqual([request.triggers![0]!.triggerType, request.limitNotionalPrice], ["upper", "103.02"]);
+});
+
+test("a bounce is a trailing buy, at market or as a limit", () => {
+  const [market] = entryOrders(planOf({ type: "bounce", trailPercent: 4 }), weth, {}, 10) as any[];
+  const request = flashRequest(market.form);
+  assert.deepEqual([request.orderType, request.side, request.qty, request.trailingStop], ["trailing-stop", "buy", "10", { trailPercent: "0.04" }]);
+  const [limit] = entryOrders(planOf({ type: "bounce", trailPercent: 4, limitOnly: true }), weth, {}, 10) as any[];
+  assert.equal(flashRequest(limit.form).orderType, "trailing-stop-limit");
+});
+
+test("a stop and target is one bracket, and a trail can wait for a gain or sell as a limit", () => {
+  const [bracket] = exitOrders({ stopPercent: 5, targetPercent: 10 }, "WETH", 1, 100, 100);
+  assert.equal(flashRequest(bracket!.form).orderType, "bracket");
+  const [trail] = exitOrders({ trailPercent: 4, trailArmPercent: 10, trailLimitOnly: true }, "WETH", 1, 100, 100);
+  const request = flashRequest(trail!.form);
+  assert.equal(request.orderType, "trailing-stop-limit");
+  assert.deepEqual(request.trailingStop, { trailPercent: "0.04", activationPrice: "110" });
+  assert.deepEqual(exitLabels({ stopPercent: 5, targetPercent: 10 }), ["Bracket: stop at -5%, target at +10%"]);
+  assert.deepEqual(exitLabels({ trailPercent: 4, trailArmPercent: 10, trailLimitOnly: true }), ["4% trailing stop limit, starting at +10%"]);
+});
+
+test("the new orders are held to the same limits", () => {
+  const problem = (entry: object, exit: object = every.exit) => planError({ ...every, rules: [...every.rules], entry, exit } as never);
+  assert.equal(problem({ type: "pullback", offsetPercent: 3 }), null);
+  assert.match(problem({ type: "pullback" })!, /below the price/);
+  assert.match(problem({ type: "pullback", offsetPercent: 80 })!, /below the price/);
+  assert.match(problem({ type: "bounce", trailPercent: 90 })!, /trail by/);
+  assert.match(problem({ type: "market", capPercent: 1 })!, /price cap/);
+  assert.match(problem({ type: "breakout", capPercent: 90 })!, /price cap/);
+  assert.match(problem({ type: "market" }, { stopPercent: 5, trailArmPercent: 10 })!, /trail can start/);
 });

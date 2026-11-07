@@ -23,7 +23,7 @@ const STARTERS = [
 
 const SOURCES: Partial<Record<PlanMetric, string>> = { mobBuyers: "Flashmob", liquidity: "Market", change24h: "Market" };
 
-const AVAILABLE = [["Indicators", "RSI, moving averages, volatility, highs and lows"], ["News", "Recent headlines on its tokens"], ["Flashmob trades", "What traders here are buying"], ["Orders", "Market, limit, ladders, stop buys, TWAP, brackets, trailing stops"]];
+const AVAILABLE = [["Indicators", "RSI, moving averages, volatility, highs and lows"], ["News", "Recent headlines on its tokens"], ["Flashmob trades", "What traders here are buying"], ["Orders", "Market, limit, ladders, stop and stop limit buys, TWAP, brackets, trailing buys and stops"]];
 
 interface Preview {
   buying: boolean;
