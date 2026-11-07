@@ -8,9 +8,10 @@ import { createPublicClient, createWalletClient, custom, http, type Hex } from "
 import { postJson } from "./account";
 import { pickWallet } from "./pick-wallet";
 import { flash } from "./flash";
-import { arbitrum, base, mainnet, optimism, polygon, type Chain } from "viem/chains";
+import { arbitrum, avalanche, base, bsc, mainnet, optimism, polygon, type Chain } from "viem/chains";
 
-const CHAINS: Record<string, Chain> = { base, ethereum: mainnet, arbitrum, optimism, polygon };
+/** Every network the wallet can sign on, by Flash's name for it. */
+export const CHAINS: Record<string, Chain> = { base, ethereum: mainnet, arbitrum, optimism, polygon, avalanche, bsc };
 
 export interface BrowserSigner {
   address: string;

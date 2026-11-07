@@ -15,8 +15,14 @@ export interface AssetAmountValue {
 /** What's in a wallet on Base, which is the only network funds move on here. */
 export const onBase = (balances: Balance[] | undefined) => (balances ?? []).filter((b) => b.chain === "base" && Number(b.balance) > 0);
 
-/** `most` as plain digits. Whole balances stay exact, because a number can round up past what's held. */
-const plain = (asset: Balance, most: number) => (most === Number(asset.balance) ? asset.balance : most.toFixed(Math.min(asset.tokenDecimals, 18)).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, ""));
+const SHOWN_DECIMALS = 8;
+
+/** `most` as plain digits. Whole balances stay exact, and the rest rounds down so it never passes what's held. */
+function plain(asset: Balance, most: number) {
+  if (most === Number(asset.balance)) return asset.balance;
+  const decimals = Math.min(asset.tokenDecimals, SHOWN_DECIMALS);
+  return (Math.floor(most * 10 ** decimals) / 10 ** decimals).toFixed(decimals).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+}
 
 /** Why this amount can't be sent, or null if it can. `most` is what can really leave the wallet. */
 export function amountProblem({ asset, amount }: AssetAmountValue, most: number) {
