@@ -404,3 +404,14 @@ test("editing an agent changes its name and settings, and leaves its privacy alo
   assert.equal(row?.displayName, "After");
   assert.deepEqual(row?.settings, { strategy: "custom", budgetUsd: 40, hideStrategy: true });
 });
+
+test("linking Telegram keeps the agents you own and any skipped copies don't block it", async () => {
+  const tg = await getOrCreateTelegramAccount(db, { id: 6100 });
+  const webId = await getOrCreateWalletUser(db, "0xAgentOwner");
+  const agent = await createAgent(db, { ownerId: webId, name: "Keeper", settings: {}, address: "0xKeeper", privyWalletId: "w-keep" });
+  await db.insert(schema.orders).values({ id: "skipped-order", userId: webId, walletId: (await findWallet(db, "0xAgentOwner"))!.id } as never);
+  await db.insert(schema.copySkips).values({ sourceOrderId: "skipped-order", userId: webId, reason: "limit" });
+  await createLinkToken(db, "tok-agent", webId);
+  assert.equal(await linkTelegram(db, "tok-agent", tg.id), "linked");
+  assert.equal((await listAgents(db, tg.id))[0]?.id, agent.id);
+});

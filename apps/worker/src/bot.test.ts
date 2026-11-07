@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import { schema, type Db } from "@flashmob/db";
+import { createAgent, getOrCreateTelegramAccount, getOwnedAgent, schema, setAgentStatus, type Db } from "@flashmob/db";
 import { migrationsFolder } from "@flashmob/db/migrations";
 import { FlashError, type FlashClient } from "@flashmob/flash";
 import { PGlite } from "@electric-sql/pglite";
@@ -202,4 +202,45 @@ test("sell amounts round down and never exceed the balance", () => {
   assert.equal(sellQty("1", { percent: 50 }), "0.5");
   assert.equal(sellQty("1", { qty: "2" }), null);
   assert.ok(Number(sellQty("0.333333333", { percent: 33 })) <= 0.333333333 * 0.33);
+});
+
+async function ownedAgent(status: "running" | "paused" = "running") {
+  const owner = await getOrCreateTelegramAccount(db, { id: 7 });
+  const agent = await createAgent(db, { ownerId: owner.id, name: "Dip Hunter", settings: {}, address: "0x00000000000000000000000000000000000000aa", privyWalletId: "w-agent" });
+  await setAgentStatus(db, agent.id, status);
+  return agent;
+}
+const statusOf = async (id: string, ownerUser: string) => (await getOwnedAgent(db, id, ownerUser))?.status;
+
+test("/agents lists your agents with a pause button, and nothing that moves funds", async () => {
+  await ownedAgent();
+  await say("/agents");
+  assert.match(lastText(), /Dip Hunter/);
+  assert.match(lastText(), /Running/);
+  const buttons = sent.findLast((m) => m.payload.reply_markup)!.payload.reply_markup.inline_keyboard.flat().map((b: any) => b.text);
+  assert.deepEqual(buttons, ["Pause"]);
+});
+
+test("/agents works without an approved wallet, and says so when there are none", async () => {
+  await say("/agents", 99);
+  assert.match(lastText(), /don't have any agents/);
+});
+
+test("the owner can pause and resume from Telegram", async () => {
+  const agent = await ownedAgent();
+  const owner = await getOrCreateTelegramAccount(db, { id: 7 });
+  await tap(`agent:pause:${agent.id}`);
+  assert.equal(await statusOf(agent.id, owner.id), "paused");
+  await tap(`agent:resume:${agent.id}`);
+  assert.equal(await statusOf(agent.id, owner.id), "running");
+});
+
+test("nobody else can pause an agent, and a stale button changes nothing", async () => {
+  const agent = await ownedAgent();
+  const owner = await getOrCreateTelegramAccount(db, { id: 7 });
+  await tap(`agent:pause:${agent.id}`, 8);
+  assert.equal(await statusOf(agent.id, owner.id), "running");
+  await tap(`agent:resume:${agent.id}`);
+  assert.match(lastText(), /isn't possible/);
+  assert.equal(await statusOf(agent.id, owner.id), "running");
 });

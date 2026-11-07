@@ -88,7 +88,9 @@ async function mergeUsers(tx: Db, from: string, telegramUserId: string) {
     await tx.update(traders).set({ userId: telegramUserId }).where(eq(traders.userId, from));
     await tx.update(copies).set({ userId: telegramUserId }).where(eq(copies.userId, from));
     await tx.update(walletJobs).set({ userId: telegramUserId }).where(eq(walletJobs.userId, from));
+    await tx.update(agents).set({ ownerId: telegramUserId }).where(eq(agents.ownerId, from));
     await tx.delete(copySettings).where(eq(copySettings.userId, from));
+    await tx.delete(copySkips).where(eq(copySkips.userId, from));
     await tx.update(mirrors).set({ userId: telegramUserId }).where(eq(mirrors.userId, from));
     await tx.update(mirrors).set({ traderUserId: telegramUserId }).where(eq(mirrors.traderUserId, from));
     const moved = await tx.select().from(follows).where(eq(follows.followerId, from));
@@ -530,9 +532,10 @@ export const listAgentTraders = (db: Db) => db.select({ traderId: agents.traderI
 /** Agents that might need a check, with what the runner needs to act for them. */
 export const activeAgents = (db: Db) =>
   db
-    .select({ id: agents.id, userId: agents.userId, walletId: agents.walletId, traderId: agents.traderId, status: agents.status, settings: agents.settings, lastCheckAt: agents.lastCheckAt, address: wallets.address })
+    .select({ id: agents.id, ownerId: agents.ownerId, userId: agents.userId, walletId: agents.walletId, traderId: agents.traderId, status: agents.status, settings: agents.settings, lastCheckAt: agents.lastCheckAt, address: wallets.address, name: traders.displayName })
     .from(agents)
     .innerJoin(wallets, eq(agents.walletId, wallets.id))
+    .innerJoin(traders, eq(agents.traderId, traders.id))
     .where(inArray(agents.status, ["funding", "running"]));
 
 /** Claims this check, so two workers can never run it at once. */

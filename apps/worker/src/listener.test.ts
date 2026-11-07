@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import { confirmCopy, getOrCreateTelegramAccount, getTraderByUser, setAlertLimits, createTrader, reserveCopy, getOrCreateWalletUser, getOrder, getPosition, findWallet, setFollow, schema, type Db } from "@flashmob/db";
+import { confirmCopy, createAgent, getOrCreateTelegramAccount, getTraderByUser, setAlertLimits, createTrader, reserveCopy, getOrCreateWalletUser, getOrder, getPosition, findWallet, setFollow, schema, type Db } from "@flashmob/db";
 import { migrationsFolder } from "@flashmob/db/migrations";
 import { USDC_BASE, type FlashClient } from "@flashmob/flash";
 import { PGlite } from "@electric-sql/pglite";
@@ -208,4 +208,40 @@ test("sync applies orders oldest first, so a buy lands before its sale", async (
   const sell = rest({ orderId: "o2", side: "sell", filled: { targetAmount: "0.5", contraAmount: "1200" } });
   await syncOrders(db, syncFlash([sell, rest()]), send);
   assert.equal((await getOrder(db, "o2"))!.realizedUsd, 200);
+});
+
+const AGENT = "0x00000000000000000000000000000000000000aa";
+const OWNER_CHAT = 900;
+const toOwner = () => sent.filter((m) => m.chatId === OWNER_CHAT).map((m) => m.text);
+async function agentOwned() {
+  const owner = await approvedUser(db, OWNER_CHAT);
+  return createAgent(db, { ownerId: owner.user.id, name: "Dip <Hunter>", settings: {}, address: AGENT, privyWalletId: "w-agent" });
+}
+const agentFrame = (over: Partial<OrderFrame> = {}) => frame({ orderId: "a1", funderAddress: AGENT, ...over });
+const agentFilled = agentFrame({ status: "ORDER_STATUS_FILLED", filled: { targetAmount: "0.0125", contraAmount: "25" } });
+
+test("an agent's owner hears its orders resting and filling, once each, with its name", async () => {
+  await agentOwned();
+  await handleOrder(db, flash, send, agentFrame(), true);
+  await handleOrder(db, flash, send, agentFilled, true);
+  await handleOrder(db, flash, send, agentFilled, true);
+  assert.equal(toOwner().length, 2);
+  assert.match(toOwner()[0]!, /placed a limit buy of WETH/);
+  assert.match(toOwner()[1]!, /^🤖 <b>Dip &lt;Hunter&gt;<\/b>\n/);
+});
+
+test("an owner who follows their own agent isn't told about a fill twice", async () => {
+  const agent = await agentOwned();
+  const owner = (await getOrCreateTelegramAccount(db, { id: OWNER_CHAT }));
+  await setFollow(db, owner.id, agent.traderId, true);
+  await handleOrder(db, flash, send, agentFrame(), true);
+  await handleOrder(db, flash, send, agentFilled, true);
+  assert.equal(toOwner().length, 2);
+});
+
+test("an owner without Telegram is simply skipped", async () => {
+  const ownerId = await getOrCreateWalletUser(db, "0xNoTelegram");
+  await createAgent(db, { ownerId, name: "Quiet", settings: {}, address: AGENT, privyWalletId: "w-agent" });
+  await handleOrder(db, flash, send, agentFilled, true);
+  assert.equal(sent.length, 0);
 });

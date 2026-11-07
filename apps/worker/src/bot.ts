@@ -1,5 +1,5 @@
-import { claimAction, createAction, getOrCreateTelegramAccount, getTradingWallet, linkTelegram, recordOrder, setCopyPaused, walletPnl, type Db } from "@flashmob/db";
-import { batchCancelMessage, buildOrder, cancelMessage, feeFields, FlashError, HIGH_COST_PERCENT, holdings, OPEN_STATUSES, orderCost, prepareOrder, resolveBaseToken, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
+import { claimAction, createAction, getOrCreateTelegramAccount, getOwnedAgent, getTradingWallet, linkTelegram, listAgents, listDecisions, recordOrder, setAgentStatus, setCopyPaused, walletPnl, type Db } from "@flashmob/db";
+import { batchCancelMessage, buildOrder, cancelMessage, feeFields, FlashError, HIGH_COST_PERCENT, holdings, OPEN_STATUSES, orderCost, prepareOrder, resolveBaseToken, submitPrepared, USDC_BASE, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
 import { sequentialize } from "@grammyjs/runner";
 import { Bot, InlineKeyboard, type BotConfig, type Context } from "grammy";
 import { signerFor, type PrivyAccess } from "./signers";
@@ -37,6 +37,7 @@ Manage
 /balance - your balances
 /orders - pending orders, with cancel buttons
 /cancelall - cancel all pending orders
+/agents - your agents, with pause and resume
 /pause and /resume - stop or restart all auto-copy`;
 
 export interface BotDeps {
@@ -80,7 +81,7 @@ export function createBot({ token, db, flash, searchFlash, feeBps, rpcUrl, privy
   // Telegram commands that use a wallet need one the server is allowed to sign with.
   pm.use(async (ctx, next) => {
     const command = ctx.message?.text?.match(/^\/(\w+)/)?.[1];
-    if (!ctx.from || command === undefined || command === "start" || command === "help") return next();
+    if (!ctx.from || command === undefined || command === "start" || command === "help" || command === "agents") return next();
     if ((await load(ctx.from)).wallet) return next();
     await ctx.reply(NEEDS_WALLET, { reply_markup: openAppKeyboard() });
   });
@@ -120,6 +121,41 @@ export function createBot({ token, db, flash, searchFlash, feeBps, rpcUrl, privy
     const { user } = await load(ctx.from);
     await setCopyPaused(db, user.id, false);
     await ctx.reply("Auto-copy has resumed.");
+  });
+
+  const AGENT_LABELS: Record<string, string> = { funding: "Needs funds", running: "Running", paused: "Paused", stopped: "Stopped" };
+
+  const agentKeyboard = (id: string, status: string) => {
+    const keyboard = new InlineKeyboard();
+    if (status === "running") keyboard.text("Pause", `agent:pause:${id}`);
+    if (status === "paused") keyboard.text("Resume", `agent:resume:${id}`);
+    // Anything that moves funds stays in the app, where the owner can see what it will do.
+    if (appUrl) keyboard.webApp("Manage", `${appUrl}/mini?next=/agents`);
+    return keyboard;
+  };
+
+  pm.command("agents", async (ctx) => {
+    const { user } = await load(ctx.from);
+    const agents = await listAgents(db, user.id);
+    if (!agents.length) return void (await ctx.reply("You don't have any agents yet. Build one in the app.", { reply_markup: openAppKeyboard() }));
+    for (const agent of agents) {
+      const [{ balances }, [last]] = await Promise.all([flash.balances(agent.address).catch(() => ({ balances: [] })), listDecisions(db, agent.id, 1)]);
+      const usdc = balances.find((b) => b.chain === "base" && b.address.toLowerCase() === USDC_BASE.toLowerCase());
+      const rows: [string, string][] = [["Status", AGENT_LABELS[agent.status] ?? agent.status], ["USDC", `$${Number(usdc?.balance ?? 0).toFixed(2)}`]];
+      await ctx.reply(card("🤖", agent.displayName, rows, last ? `Last check: ${last.reason}` : "No checks yet."), { parse_mode: "HTML", reply_markup: agentKeyboard(agent.id, agent.status) });
+    }
+  });
+
+  pm.callbackQuery(/^agent:(pause|resume):(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const { user } = await load(ctx.from);
+    const [, action, id] = ctx.match;
+    const agent = await getOwnedAgent(db, id!, user.id);
+    if (!agent || agent.status !== (action === "pause" ? "running" : "paused")) return void (await ctx.reply("That isn't possible right now. Use /agents to see where it stands."));
+    const status = action === "pause" ? "paused" : "running";
+    await setAgentStatus(db, agent.id, status);
+    await ctx.editMessageReplyMarkup({ reply_markup: agentKeyboard(agent.id, status) });
+    await ctx.reply(action === "pause" ? "Paused. It won't place new buys or exits. Orders it already placed stay open." : "Running again.");
   });
 
   pm.command("balance", async (ctx) => {

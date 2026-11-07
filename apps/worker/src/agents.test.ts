@@ -4,9 +4,10 @@ import { activeAgents, claimJobs, createAgent, getOrCreateWalletUser, listDecisi
 import { migrationsFolder } from "@flashmob/db/migrations";
 import { USDC_BASE, type AgentDecision, type AgentPlan, type AgentSettings, type FlashClient, type Indicators, type Judgment } from "@flashmob/flash";
 import { PGlite } from "@electric-sql/pglite";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { checkAgent, protectPositions, type AgentDeps } from "./agents";
+import { checkAgent, fundsProblem, protectPositions, type AgentDeps } from "./agents";
 import { runJob } from "./jobs";
 import { fakePrivy } from "./test-helpers";
 
@@ -267,4 +268,40 @@ test("a costly market buy by an agent is skipped", async () => {
   (flash as any).quote = real;
   assert.equal(submits.length, 0);
   assert.equal((await log())[0]?.status, "failed");
+});
+
+const OWNER_CHAT = 77;
+async function linked() {
+  const told: string[] = [];
+  await db.update(schema.users).set({ telegramId: OWNER_CHAT }).where(eq(schema.users.id, (await current()).ownerId));
+  return { told, tracked: { ...deps(), send: async (_chat: number, text: string) => void told.push(text) } };
+}
+
+test("the owner hears once when it goes live", async () => {
+  const { told, tracked } = await linked();
+  await checkAgent(tracked, await current());
+  await db.update(schema.agents).set({ status: "funding" });
+  await checkAgent(tracked, await current());
+  assert.equal(told.filter((t) => t.includes("Dip Hunter is live")).length, 1);
+});
+
+test("the owner hears once when it can't buy, and the reason is the real one", async () => {
+  const { told, tracked } = await linked();
+  await setAgentStatus(db, agentId, "running");
+  usdc = "0.5";
+  await checkAgent(tracked, await current());
+  await db.update(schema.agents).set({ lastCheckAt: new Date(0) });
+  await checkAgent(tracked, await current());
+  assert.equal(told.length, 1);
+  assert.match(told[0]!, /can't buy[\s\S]*less than \$1 USDC/);
+  assert.equal(fundsProblem(0, 20, 20), "It has no ETH left to pay for approvals.");
+  assert.equal(fundsProblem(1, 20, 0), "It has used up its budget.");
+  assert.equal(fundsProblem(1, 20, 20), null);
+});
+
+test("a failed alert never stops the agent", async () => {
+  const { tracked } = await linked();
+  await checkAgent({ ...tracked, send: async () => { throw new Error("Telegram is down"); } }, await current());
+  assert.equal((await current()).status, "running");
+  assert.equal(asked, 1);
 });

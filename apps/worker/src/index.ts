@@ -54,6 +54,7 @@ await bot.api.setMyCommands([
   { command: "twap", description: "TWAP: /twap buy WETH 100 60" },
   { command: "trail", description: "Trailing stop: /trail sell WETH 100% 5" },
   { command: "orders", description: "Pending orders" },
+  { command: "agents", description: "Your agents" },
   { command: "pause", description: "Pause all auto-copy" },
   { command: "resume", description: "Resume auto-copy" },
   { command: "cancelall", description: "Cancel all pending orders" },
@@ -94,6 +95,7 @@ if (modelKey) {
     ask: (settings, context) => askModel(modelKey, settings, context),
     readMarket: (address, timeframes) => readIndicators(getCandles, address, timeframes),
     judge: (plan, symbol, checks) => judge(modelKey, plan.judgment!, !!plan.useNews, symbol, checks),
+    send,
   });
 }
 console.log(`Agents are ${modelKey ? "ON" : "off (no MODEL_API_KEY)"}`);

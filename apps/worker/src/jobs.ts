@@ -1,4 +1,4 @@
-import { claimAlert, claimJobs, claimMirror, failDecision, getAgentByUser, ownsAgentDestination, completeMirror, confirmCopy, finishJob, getPosition, getTradingWallet, getUser, mirrorExits, recordOrder, releaseCopy, releaseMirror, type Db } from "@flashmob/db";
+import { claimAlert, claimJobs, claimMirror, failDecision, getAgentByUser, ownsAgentDestination, completeMirror, confirmCopy, finishJob, getPosition, getTraderByUser, getTradingWallet, getUser, mirrorExits, recordOrder, releaseCopy, releaseMirror, type Db } from "@flashmob/db";
 import { buildOrder, buildUpdate, cancelMessage, feeFields, FlashError, HIGH_COST_PERCENT, mirrorPlan, OPEN_STATUSES, orderCost, prepareOrder, submitPrepared, type FlashClient, type OrderRequest, type TradeForm } from "@flashmob/flash";
 import { createPublicClient, erc20Abi, http, type Hex } from "viem";
 import { base } from "viem/chains";
@@ -193,7 +193,11 @@ export async function runJob(deps: JobDeps, job: Job) {
     const error = known ? (e as Error).message : "Something went wrong. Check your orders before trying again.";
     await finishJob(deps.db, job.id, { error });
     const { decisionId, decisionUsd } = job.payload as { decisionId?: string; decisionUsd?: number };
-    if (decisionId) await failDecision(deps.db, decisionId, error, decisionUsd);
+    if (decisionId) {
+      await failDecision(deps.db, decisionId, error, decisionUsd);
+      const agent = await getTraderByUser(deps.db, job.userId);
+      await tellOwner(deps, job, card("⚠️", `${agent?.displayName ?? "Your agent"}'s order failed`, [], `${error} If this was a stop or target, its position may not be protected yet.`));
+    }
     if (automatic) await tell(deps, job, card("⚠️", "Auto-copy failed", [], error));
     if (job.kind === "agent-exit" || job.kind === "agent-withdraw") await tellOwner(deps, job, card("⚠️", "Withdrawal didn't finish", [], `${error} Your funds are safe in the agent's wallet.`));
   }

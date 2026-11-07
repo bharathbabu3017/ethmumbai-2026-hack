@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import { claimJobs, createAgent, enqueueJob, finishJob, getJob, getOrCreateWalletUser, findWallet, schema, withdrawalPending, type Db } from "@flashmob/db";
+import { claimJobs, createAgent, enqueueJob, finishJob, getJob, getOrCreateWalletUser, findWallet, recordDecision, schema, setAgentStatus, withdrawalPending, type Db } from "@flashmob/db";
 import { migrationsFolder } from "@flashmob/db/migrations";
 import { USDC_BASE, type FlashClient } from "@flashmob/flash";
 import { PGlite } from "@electric-sql/pglite";
@@ -134,4 +134,17 @@ test("a withdrawal only stands in the way of another until it finishes", async (
   assert.equal(await withdrawalPending(db, walletId), true);
   await finishJob(db, job.id, { error: "done with it" });
   assert.equal(await withdrawalPending(db, walletId), false);
+});
+
+test("when an agent's order fails, its owner hears why", async () => {
+  const agent = await createAgent(db, { ownerId: owner.userId, name: "Dip Hunter", settings: {}, address: "0x00000000000000000000000000000000000000aa", privyWalletId: "agent-wallet" });
+  await setAgentStatus(db, agent.id, "running");
+  const decision = await recordDecision(db, { agentId: agent.id, action: "buy", reason: "Rules passed.", status: "placed" });
+  await enqueueJob(db, { userId: agent.userId, walletId: agent.walletId, kind: "order", payload: { request: { ...request, contraChain: "arbitrum" }, decisionId: decision.id } });
+  const [job] = await claimJobs(db);
+  const told: [number, string][] = [];
+  await runJob({ ...deps(), send: async (chat, text) => void told.push([chat, text]) }, job!);
+  assert.equal(told.length, 1);
+  assert.equal(told[0]![0], 1);
+  assert.match(told[0]![1], /Dip Hunter's order failed/);
 });

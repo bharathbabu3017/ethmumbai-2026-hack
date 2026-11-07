@@ -1,7 +1,7 @@
-import { alertRecipients, applyOrderFrame, autoCopiesOf, claimAlert, copyContext, createMirrors, enqueueJob, findWallet, findWalletById, getCopySettings, getOrder, getOrders, getTraderByUser, getUser, type Db } from "@flashmob/db";
+import { alertRecipients, applyOrderFrame, autoCopiesOf, claimAlert, copyContext, createMirrors, enqueueJob, findWallet, findWalletById, getAgentByUser, getCopySettings, getOrder, getOrders, getTraderByUser, getUser, type Db } from "@flashmob/db";
 import { FLASH_WS_URL, type CopySettings, type FlashClient } from "@flashmob/flash";
 import { autoCopy, type AutoCopy } from "./autocopy";
-import { mirrorAlert, OPEN_STATUSES, orderFields, ownOrderAlert, tradeAlert, type Levels, type OrderFrame } from "./trades";
+import { esc, mirrorAlert, OPEN_STATUSES, orderFields, ownOrderAlert, tradeAlert, type Levels, type OrderFrame } from "./trades";
 
 const HEARTBEAT_TIMEOUT_MS = 10_000;
 
@@ -68,9 +68,13 @@ export async function handleOrder(db: Db, flash: FlashClient, send: Send, frame:
     await autoCopy(db, flash, auto, send, order, trader, o.funderAddress).catch((e) => console.error("Auto-copy failed:", e instanceof Error ? e.message : "unknown"));
   }
 
-  if (statusChanged && closed) {
-    const owner = await getUser(db, wallet.userId);
-    if (owner?.telegramId) await once(owner.telegramId, `own:${order.id}:${o.status}`, ownOrderAlert(o, order, await copyContext(db, order.id)));
+  // An agent has no Telegram of its own, so its orders are reported to whoever owns it.
+  const agent = await getAgentByUser(db, wallet.userId);
+  const owner = await getUser(db, agent?.ownerId ?? wallet.userId);
+  const ownerChat = owner?.telegramId ?? null;
+  if (statusChanged && closed && ownerChat) {
+    const alert = ownOrderAlert(o, order, await copyContext(db, order.id));
+    await once(ownerChat, `own:${order.id}:${o.status}`, agent && trader ? `🤖 <b>${esc(trader.displayName)}</b>\n${alert}` : alert);
   }
   if (!trader || !order.isPublic) return;
   const text = tradeAlert(trader.displayName, order, { isNew: !seenBefore, statusChanged }, other);
@@ -78,7 +82,11 @@ export async function handleOrder(db: Db, flash: FlashClient, send: Send, frame:
     const copyable = order.side === "buy" && OPEN_OR_FILLED(o.status);
     const button: AlertButton | undefined = copyable ? { label: "Copy", path: `/trades/${order.id}`, opens: "miniApp" } : undefined;
     const size = order.filledUsd > 0 ? order.filledUsd : order.side === "buy" ? Number(order.qty) || null : null;
-    for (const chatId of await alertRecipients(db, trader.id, size)) await once(chatId, `trade:${order.id}:${o.status}`, text, button);
+    if (agent && ownerChat && !closed) await once(ownerChat, `trade:${order.id}:${o.status}`, text);
+    for (const chatId of await alertRecipients(db, trader.id, size)) {
+      // An owner who follows their own agent already heard about this close above.
+      if (!(agent && closed && chatId === ownerChat)) await once(chatId, `trade:${order.id}:${o.status}`, text, button);
+    }
   }
 
   // Once a sale is finished, followers who copied this trader get the chance to sell the same share.

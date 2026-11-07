@@ -1,5 +1,6 @@
-import { activeAgents, agentSpentUsd, claimAgentCheck, enqueueJob, getPosition, lastDecisionAt, recentBuyers, recordDecision, setAgentStatus, type Db } from "@flashmob/db";
+import { activeAgents, agentSpentUsd, claimAgentCheck, claimAlert, enqueueJob, getPosition, getUser, lastDecisionAt, recentBuyers, recordDecision, setAgentStatus, type Db } from "@flashmob/db";
 import { agentExit, buildOrder, checkDecision, checkRules, cleanReason, entryOrders, exitOrders, failedReason, hasExit, OPEN_STATUSES, planTimeframes, USDC_BASE, type AgentContext, type AgentDecision, type AgentPlan, type AgentSettings, type AgentToken, type FlashClient, type FlashOrder, type IndicatorsByTimeframe, type Judgment, type PlanCheck, type PlanOrder, type Timeframe } from "@flashmob/flash";
+import { card } from "./trades";
 
 const TICK_MS = 60_000;
 const MIN_FUNDS_USD = 1;
@@ -9,6 +10,7 @@ const MIN_BUY_USD = 1;
 const MIN_EXIT_USD = 2; // below this, costs eat the order
 const EXIT_GAP_MS = 5 * 60_000; // a new exit can take a moment to show up in open orders
 const MAX_PLAN_ORDERS = 12;
+const FUNDS_ALERT_DAYS = 7; // an agent holding a position is often out of USDC, so this stays rare
 
 export interface AgentDeps {
   db: Db;
@@ -18,6 +20,7 @@ export interface AgentDeps {
   readMarket(address: string, timeframes: Timeframe[]): Promise<IndicatorsByTimeframe>;
   judge(plan: AgentPlan, symbol: string, checks: PlanCheck[]): Promise<Judgment>;
   pause?(ms: number): Promise<void>;
+  send?: (chatId: number, text: string) => Promise<void>;
 }
 
 type Agent = Awaited<ReturnType<typeof activeAgents>>[number];
@@ -26,6 +29,20 @@ const isDue = (a: Agent, now: number) => {
   const { everyMinutes } = a.settings as AgentSettings;
   return !a.lastCheckAt || now - a.lastCheckAt.getTime() >= everyMinutes * 60_000;
 };
+
+/** Tells the owner once per key, if they've linked Telegram. An alert must never get in the way of the agent. */
+async function tellOwner({ db, send }: AgentDeps, agent: Agent, key: string, text: string) {
+  const owner = await getUser(db, agent.ownerId);
+  if (owner?.telegramId && (await claimAlert(db, owner.telegramId, key))) await send?.(owner.telegramId, text);
+}
+
+/** Why it can't buy anything right now, or null if it can. */
+export function fundsProblem(eth: number, usdc: number, budgetLeft: number) {
+  if (eth <= 0) return "It has no ETH left to pay for approvals.";
+  if (budgetLeft < MIN_BUY_USD) return "It has used up its budget.";
+  if (usdc < MIN_BUY_USD) return "It has less than $1 USDC left.";
+  return null;
+}
 
 const shown = (orders: PlanOrder[]) => orders.map(({ label, value }) => ({ label, value }));
 const sameToken = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
@@ -146,6 +163,7 @@ export async function checkAgent(deps: AgentDeps, agent: Agent) {
   if (agent.status === "funding") {
     if (usdcBalance < MIN_FUNDS_USD || eth <= 0) return;
     await setAgentStatus(db, agent.id, "running");
+    await tellOwner(deps, agent, `agent-live:${agent.id}`, card("🟢", `${agent.name} is live`, [["USDC", `$${usdcBalance.toFixed(2)}`]], "It's checking the market now. You'll hear here when it trades.")).catch(() => {});
   }
   if (!(await claimAgentCheck(db, agent.id, agent.lastCheckAt))) return;
 
@@ -162,6 +180,8 @@ export async function checkAgent(deps: AgentDeps, agent: Agent) {
 
   const { orders } = await flash.listOrders({ funderAddress: agent.address, statuses: OPEN_STATUSES });
   const budgetLeftUsd = Math.max(settings.budgetUsd - (await agentSpentUsd(db, agent.id)), 0);
+  const stuck = fundsProblem(eth, usdcBalance, budgetLeftUsd);
+  if (stuck) await tellOwner(deps, agent, `agent-funds:${agent.id}:${Math.floor(Date.now() / (FUNDS_ALERT_DAYS * 86_400_000))}`, card("⚠️", `${agent.name} can't buy`, [], `${stuck} Exits it already placed keep working.`)).catch(() => {});
   if (settings.plan) return checkPlan(deps, agent, settings, tokens, orders, Math.min(settings.maxTradeUsd, budgetLeftUsd, usdcBalance));
   const context: AgentContext = { tokens, budgetLeftUsd, usdcBalance, openOrders: orders.length };
 
